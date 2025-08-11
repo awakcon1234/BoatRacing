@@ -54,8 +54,8 @@ public class BoatRacingPlugin extends JavaPlugin {
             getLogger().warning("Failed to initialize bStats metrics: " + t.getMessage());
         }
 
-        // Updates
-        if (getConfig().getBoolean("updates.enabled", true)) {
+    // Updates
+    if (getConfig().getBoolean("updates.enabled", true)) {
             String currentVersion = getPluginMeta().getVersion();
             updateChecker = new UpdateChecker(this, "Jaie55", "BoatRacing", currentVersion);
             updateChecker.checkAsync();
@@ -76,6 +76,15 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (getConfig().getBoolean("updates.notify-admins", true)) {
                 Bukkit.getPluginManager().registerEvents(new UpdateNotifier(this, updateChecker, prefix), this);
             }
+            // Periodic update checks every 5 minutes
+            long period = 20L * 60L * 5L; // 5 minutes
+            Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
+                try {
+                    if (getConfig().getBoolean("updates.enabled", true)) {
+                        updateChecker.checkAsync();
+                    }
+                } catch (Throwable ignored) {}
+            }, period, period);
         }
 
     if (getCommand("boatracing") != null) {
@@ -115,9 +124,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 if (!authors.isEmpty()) {
                     p.sendMessage(Text.colorize(prefix + "&eAuthors: &f" + String.join(", ", authors)));
                 }
-                // Links (repo/wiki/discord-style info)
-                p.sendMessage(Text.colorize(prefix + "&eWiki: &fhttps://github.com/Jaie55/BoatRacing#readme"));
-                p.sendMessage(Text.colorize(prefix + "&eDiscord: &fhttps://discord.rawcommunity.es"));
+                // Links removed per request
 
                 boolean updatesEnabled = getConfig().getBoolean("updates.enabled", true);
                 if (!updatesEnabled) {
