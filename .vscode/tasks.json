@@ -1,0 +1,86 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build BoatRacing",
+			"type": "shell",
+			"command": "${workspaceFolder}\\mvnw.cmd",
+			"args": [
+				"clean",
+				"package"
+			],
+			"options": {
+				"shell": {
+					"executable": "cmd.exe",
+					"args": [
+						"/d",
+						"/c"
+					]
+				}
+			},
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"isBackground": false
+		},
+		{
+			"label": "Build BoatRacing with Maven Wrapper",
+			"type": "shell",
+			"command": ".\\mvnw.cmd",
+			"args": [
+				"-q",
+				"-Dstyle.color=always",
+				"-DskipTests",
+				"clean",
+				"package"
+			],
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build BoatRacing",
+			"type": "shell",
+			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
+			"args": [
+				"clean",
+				"package",
+				"-q"
+			],
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build BoatRacing",
+			"type": "shell",
+			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
+			"args": [
+				"clean",
+				"package",
+				"-q"
+			],
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build BoatRacing",
+			"type": "shell",
+			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
+			"args": [
+				"clean",
+				"package",
+				"-q"
+			],
+			"problemMatcher": [
+				"$javac"
+			],
+			"group": "build"
+		}
+	]
+}

@@ -1,0 +1,8 @@
+es\jaie55\boatracing\BoatRacingPlugin.class
+es\jaie55\boatracing\update\UpdateNotifier.class
+es\jaie55\boatracing\team\Team.class
+es\jaie55\boatracing\update\UpdateChecker.class
+es\jaie55\boatracing\util\Text.class
+es\jaie55\boatracing\util\chat\InputHandler.class
+es\jaie55\boatracing\team\TeamManager.class
+es\jaie55\boatracing\ui\TeamGUI.class

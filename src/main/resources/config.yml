@@ -1,0 +1,15 @@
+prefix: "&6[BoatRacing] "
+teams:
+  # persisted teams will be stored here
+  # schema: teamId -> { name, color, number, leader, members }
+  # numbers are unique per team
+max-members-per-team: 2
+bstats:
+  enabled: true
+  # Anonymous usage metrics via bStats. Set to false to opt-out.
+updates:
+  enabled: true
+  # Log a WARN in console on startup if out of date
+  console-warn: true
+  # Notify admins with permission in-game on join
+  notify-admins: true

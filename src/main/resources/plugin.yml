@@ -1,0 +1,21 @@
+name: BoatRacing
+main: es.jaie55.boatracing.BoatRacingPlugin
+version: ${project.version}
+api-version: '1.21'
+authors: [Jaie55]
+description: F1-style ice boat racing plugin
+commands:
+  boatracing:
+    description: BoatRacing base command
+  usage: /<command> teams|reload|version
+    permission: boatracing.use
+permissions:
+  boatracing.use:
+    description: Use BoatRacing commands
+    default: true
+  boatracing.reload:
+    description: Reload BoatRacing plugin configuration and data
+    default: op
+  boatracing.update:
+    description: Receive in-game update notifications
+    default: op
