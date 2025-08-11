@@ -45,17 +45,28 @@ public class TeamGUI implements Listener {
     private static final Component TITLE_MEMBER_ACTIONS = Text.title("Member actions");
     private static final Component TITLE_TRANSFER_CONFIRM = Text.title("Transfer leadership?");
     private static final Component TITLE_KICK_CONFIRM = Text.title("Kick member?");
-    // Allowed boats (including chest variants and pale oak)
+    // Allowed boats (normal boats first, then chest variants)
     private static final Material[] ALLOWED_BOATS = new Material[] {
-        Material.OAK_BOAT, Material.OAK_CHEST_BOAT,
-        Material.SPRUCE_BOAT, Material.SPRUCE_CHEST_BOAT,
-        Material.BIRCH_BOAT, Material.BIRCH_CHEST_BOAT,
-        Material.JUNGLE_BOAT, Material.JUNGLE_CHEST_BOAT,
-        Material.ACACIA_BOAT, Material.ACACIA_CHEST_BOAT,
-        Material.DARK_OAK_BOAT, Material.DARK_OAK_CHEST_BOAT,
-        Material.MANGROVE_BOAT, Material.MANGROVE_CHEST_BOAT,
-        Material.CHERRY_BOAT, Material.CHERRY_CHEST_BOAT,
-        Material.PALE_OAK_BOAT, Material.PALE_OAK_CHEST_BOAT
+        // Normales
+        Material.OAK_BOAT,
+        Material.SPRUCE_BOAT,
+        Material.BIRCH_BOAT,
+        Material.JUNGLE_BOAT,
+        Material.ACACIA_BOAT,
+        Material.DARK_OAK_BOAT,
+        Material.MANGROVE_BOAT,
+        Material.CHERRY_BOAT,
+        Material.PALE_OAK_BOAT,
+        // Con cofre
+        Material.OAK_CHEST_BOAT,
+        Material.SPRUCE_CHEST_BOAT,
+        Material.BIRCH_CHEST_BOAT,
+        Material.JUNGLE_CHEST_BOAT,
+        Material.ACACIA_CHEST_BOAT,
+        Material.DARK_OAK_CHEST_BOAT,
+        Material.MANGROVE_CHEST_BOAT,
+        Material.CHERRY_CHEST_BOAT,
+        Material.PALE_OAK_CHEST_BOAT
     };
     private final BoatRacingPlugin plugin;
     private final NamespacedKey KEY_TEAM_ID;

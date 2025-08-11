@@ -461,12 +461,23 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (args.length >= 2 && args[0].equalsIgnoreCase("teams")) {
                 if (!sender.hasPermission("boatracing.teams")) return Collections.emptyList();
                 if (args.length == 2) return Arrays.asList("create", "rename", "color", "join", "leave", "kick", "boat", "number", "transfer", "disband", "confirm", "cancel");
+                // Autocompletar nombres de equipos para 'join'
+                if (args.length >= 3 && args[1].equalsIgnoreCase("join")) {
+                    String prefix = args[2].toLowerCase();
+                    java.util.List<String> names = new java.util.ArrayList<>();
+                    for (es.jaie55.boatracing.team.Team t : teamManager.getTeams()) {
+                        String name = t.getName();
+                        if (name != null && name.toLowerCase().startsWith(prefix)) names.add(name);
+                    }
+                    return names;
+                }
                 if (args.length >= 3 && args[1].equalsIgnoreCase("create")) return Collections.emptyList();
                 if (args.length >= 3 && args[1].equalsIgnoreCase("color")) return java.util.Arrays.stream(org.bukkit.DyeColor.values()).map(Enum::name).map(String::toLowerCase).toList();
                 if (args.length >= 3 && args[1].equalsIgnoreCase("boat")) return Arrays.asList(
-                    "oak_boat","oak_chest_boat","spruce_boat","spruce_chest_boat","birch_boat","birch_chest_boat",
-                    "jungle_boat","jungle_chest_boat","acacia_boat","acacia_chest_boat","dark_oak_boat","dark_oak_chest_boat",
-                    "mangrove_boat","mangrove_chest_boat","cherry_boat","cherry_chest_boat","pale_oak_boat","pale_oak_chest_boat"
+                    // Normales primero
+                    "oak_boat","spruce_boat","birch_boat","jungle_boat","acacia_boat","dark_oak_boat","mangrove_boat","cherry_boat","pale_oak_boat",
+                    // Luego con cofre
+                    "oak_chest_boat","spruce_chest_boat","birch_chest_boat","jungle_chest_boat","acacia_chest_boat","dark_oak_chest_boat","mangrove_chest_boat","cherry_chest_boat","pale_oak_chest_boat"
                 );
                 // Suggest team members for kick/transfer
                 if (args.length >= 3 && (args[1].equalsIgnoreCase("kick") || args[1].equalsIgnoreCase("transfer"))) {

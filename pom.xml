@@ -6,9 +6,9 @@
 
     <groupId>es.jaie55</groupId>
     <artifactId>boatracing</artifactId>
-    <version>1.0.0</version>
+    <version>1.0.1</version>
     <name>BoatRacing</name>
-    <description>F1-style ice boat racing plugin for Paper</description>
+    <description>F1-style ice boat racing plugin</description>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
