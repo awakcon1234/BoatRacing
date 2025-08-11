@@ -7,11 +7,19 @@ description: F1-style ice boat racing plugin
 commands:
   boatracing:
     description: BoatRacing base command
-  usage: /<command> teams|reload|version
-    permission: boatracing.use
+    usage: /<command> teams|reload|version
 permissions:
   boatracing.use:
-    description: Use BoatRacing commands
+    description: Meta permission for BoatRacing base usage
+    default: true
+    children:
+      boatracing.teams: true
+      boatracing.version: true
+  boatracing.teams:
+    description: Use /boatracing teams
+    default: true
+  boatracing.version:
+    description: Use /boatracing version
     default: true
   boatracing.reload:
     description: Reload BoatRacing plugin configuration and data

@@ -104,6 +104,11 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             // /boatracing version
             if (args[0].equalsIgnoreCase("version")) {
+                if (!p.hasPermission("boatracing.version")) {
+                    p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                    return true;
+                }
                 String current = getPluginMeta().getVersion();
                 java.util.List<String> authors = getPluginMeta().getAuthors();
                 p.sendMessage(Text.colorize(prefix + "&e" + getName() + "-" + current));
@@ -158,10 +163,20 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             // /boatracing teams
             if (args.length == 1) {
+                if (!p.hasPermission("boatracing.teams")) {
+                    p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                    return true;
+                }
                 teamGUI.openMain(p);
                 return true;
             }
             // /boatracing teams create <name>
+            if (!p.hasPermission("boatracing.teams")) {
+                p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                return true;
+            }
             if (args.length >= 2 && args[1].equalsIgnoreCase("create")) {
                 if (teamManager.getTeamByMember(p.getUniqueId()).isPresent()) {
                     p.sendMessage(Text.colorize(prefix + "&cYou are already in a team. Leave it first."));
@@ -436,8 +451,15 @@ public class BoatRacingPlugin extends JavaPlugin {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (command.getName().equalsIgnoreCase("boatracing")) {
-            if (args.length == 1) return Arrays.asList("teams", "reload", "version");
+            if (args.length == 1) {
+                java.util.List<String> root = new java.util.ArrayList<>();
+                if (sender.hasPermission("boatracing.teams")) root.add("teams");
+                if (sender.hasPermission("boatracing.reload")) root.add("reload");
+                if (sender.hasPermission("boatracing.version")) root.add("version");
+                return root;
+            }
             if (args.length >= 2 && args[0].equalsIgnoreCase("teams")) {
+                if (!sender.hasPermission("boatracing.teams")) return Collections.emptyList();
                 if (args.length == 2) return Arrays.asList("create", "rename", "color", "join", "leave", "kick", "boat", "number", "transfer", "disband", "confirm", "cancel");
                 if (args.length >= 3 && args[1].equalsIgnoreCase("create")) return Collections.emptyList();
                 if (args.length >= 3 && args[1].equalsIgnoreCase("color")) return java.util.Arrays.stream(org.bukkit.DyeColor.values()).map(Enum::name).map(String::toLowerCase).toList();
