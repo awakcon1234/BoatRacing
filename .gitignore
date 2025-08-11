@@ -1,0 +1,31 @@
+# Strict allowlist: ignore everything by default
+/*
+
+# Keep the ignore file itself
+!.gitignore
+
+# Allow essential project files
+!/pom.xml
+!/README.md
+!/LICENSE
+
+# Allow source code
+!/src/**
+
+# Allow Maven wrapper config only (not scripts)
+!/.mvn/wrapper/maven-wrapper.properties
+
+# Allow GitHub meta if present
+!/.github/**
+
+# Explicit excludes (redundant with the allowlist but documented)
+/CHECKLIST.md
+/mvnw
+/mvnw.cmd
+/target/
+/dependency-reduced-pom.xml
+/.classpath
+/.project
+/.settings/
+/.vscode/
+/.project
