@@ -117,7 +117,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 }
                 // Links (repo/wiki/discord-style info)
                 p.sendMessage(Text.colorize(prefix + "&eWiki: &fhttps://github.com/Jaie55/BoatRacing#readme"));
-                p.sendMessage(Text.colorize(prefix + "&eDiscord: &fN/A"));
+                p.sendMessage(Text.colorize(prefix + "&eDiscord: &fhttps://discord.rawcommunity.es"));
 
                 boolean updatesEnabled = getConfig().getBoolean("updates.enabled", true);
                 if (!updatesEnabled) {
