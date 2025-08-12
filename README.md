@@ -6,7 +6,7 @@ An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI.
 
 See `CHANGELOG.md` for the latest changes.
 
-## What’s new (Unreleased)
+## What’s new (1.0.3)
 - Admin Tracks GUI: manage multiple named tracks — Create and select, Delete (with confirmation), and Reapply selected. Requires `boatracing.setup`.
 - Admin Race GUI: manage race lifecycle from a GUI — open/close registration, start/force/stop, quick-set laps, remove registrants, and handy setup tips.
 - Terminology: “loaded” → “selected”; “pit lane” → “pit area”.
