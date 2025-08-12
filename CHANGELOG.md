@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
-## [Unreleased]
+## [1.0.3]
 ### Added
 - Admin Tracks GUI: create, select, save as, delete named tracks (with confirmation). Requires `boatracing.setup`.
 - Admin Race GUI: manage race lifecycle (open/close registration, start/force/stop), quick-set/custom laps, and registrant removal.
@@ -54,4 +54,5 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Public release noted in README. Core gameplay, teams, GUIs, WE/FAWE setup, racing, and update checks.
 
 [Unreleased]: https://github.com/Jaie55/BoatRacing/compare/v1.0.3...HEAD
+
 [1.0.3]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.3
