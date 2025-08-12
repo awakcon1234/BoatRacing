@@ -34,6 +34,10 @@ public class TeamManager {
 
     public Collection<Team> getTeams() { return teams.values(); }
     public java.util.List<Team> getTeamsSnapshot() { return new java.util.ArrayList<>(teams.values()); }
+    public Optional<Team> findByName(String name) {
+        if (name == null) return Optional.empty();
+        return teams.values().stream().filter(t -> t.getName().equalsIgnoreCase(name)).findFirst();
+    }
 
     public Optional<Team> getTeamByMember(UUID player) {
         return teams.values().stream().filter(t -> t.isMember(player)).findFirst();
@@ -48,11 +52,41 @@ public class TeamManager {
 
     public Team createTeam(Player leader, String name, DyeColor color) {
         UUID id = UUID.randomUUID();
-        Team team = new Team(id, name, color, leader.getUniqueId());
+    Team team = new Team(id, name, color, leader.getUniqueId());
         teams.put(id, team);
         save();
         leader.sendMessage(Text.colorize(plugin.pref() + "&aCreated team '" + name + "'"));
         return team;
+    }
+
+    // Admin variant: create a team with an optional initial member; no chat message.
+    public Team createTeam(UUID firstMember, String name, DyeColor color) {
+        UUID id = UUID.randomUUID();
+        Team team = new Team(id, name, color, firstMember);
+        teams.put(id, team);
+        save();
+        return team;
+    }
+
+    public boolean removeTeam(Team team) {
+        if (team == null) return false;
+        teams.remove(team.getId());
+        save();
+        return true;
+    }
+
+    public boolean addMember(Team team, UUID playerId) {
+        if (team == null || playerId == null) return false;
+        boolean ok = team.addMember(playerId);
+        if (ok) save();
+        return ok;
+    }
+
+    public boolean removeMember(Team team, UUID playerId) {
+        if (team == null || playerId == null) return false;
+        boolean ok = team.removeMember(playerId);
+        if (ok) save();
+        return ok;
     }
 
     public void deleteTeam(Team team) {
@@ -63,11 +97,10 @@ public class TeamManager {
     public void save() {
         // Write teams
         teamsCfg.set("teams", null);
-        for (Team t : teams.values()) {
+    for (Team t : teams.values()) {
             String path = "teams." + t.getId();
             teamsCfg.set(path + ".name", t.getName());
             teamsCfg.set(path + ".color", t.getColor().name());
-            teamsCfg.set(path + ".leader", t.getLeader().toString());
             java.util.List<String> mems = t.getMembers().stream().map(UUID::toString).collect(Collectors.toList());
             teamsCfg.set(path + ".members", mems);
         }
@@ -91,7 +124,7 @@ public class TeamManager {
         teamsCfg = YamlConfiguration.loadConfiguration(teamsFile);
         racersCfg = YamlConfiguration.loadConfiguration(racersFile);
 
-        ConfigurationSection sec = teamsCfg.getConfigurationSection("teams");
+    ConfigurationSection sec = teamsCfg.getConfigurationSection("teams");
         if (sec == null || sec.getKeys(false).isEmpty()) {
             // Backward-compat: load from old config.yml if present
             FileConfiguration cfg = plugin.getConfig();
@@ -101,9 +134,11 @@ public class TeamManager {
                     String path = "teams." + key;
                     String name = cfg.getString(path + ".name", "Team");
                     DyeColor color = DyeColor.valueOf(cfg.getString(path + ".color", DyeColor.WHITE.name()));
-                    UUID leader = UUID.fromString(cfg.getString(path + ".leader"));
                     UUID id = UUID.fromString(key);
-                    Team t = new Team(id, name, color, leader);
+            // Old format had a leader; add them as initial member if present
+            UUID leader = null;
+            try { String l = cfg.getString(path + ".leader"); if (l != null) leader = UUID.fromString(l); } catch (Exception ignored) {}
+            Team t = new Team(id, name, color, leader);
                     java.util.List<String> mems = cfg.getStringList(path + ".members");
                     for (String s : mems) {
                         try { t.addMember(UUID.fromString(s)); } catch (Exception ignored) {}
@@ -133,9 +168,9 @@ public class TeamManager {
             String path = "teams." + key;
             String name = teamsCfg.getString(path + ".name", "Team");
             DyeColor color = DyeColor.valueOf(teamsCfg.getString(path + ".color", DyeColor.WHITE.name()));
-            UUID leader = UUID.fromString(teamsCfg.getString(path + ".leader"));
             UUID id = UUID.fromString(key);
-            Team t = new Team(id, name, color, leader);
+            // New format: no leader; just members list
+            Team t = new Team(id, name, color, null);
             java.util.List<String> mems = teamsCfg.getStringList(path + ".members");
             for (String s : mems) {
                 try { t.addMember(UUID.fromString(s)); } catch (Exception ignored) {}

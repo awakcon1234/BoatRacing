@@ -1,9 +1,12 @@
 prefix: "&6[BoatRacing] "
-teams:
-  # persisted teams will be stored here
-  # schema: teamId -> { name, color, number, leader, members }
-  # numbers are unique per team
 max-members-per-team: 2
+player-actions:
+  # Allow non-admin players to perform these actions
+  allow-team-create: true
+  allow-team-rename: false
+  allow-team-color: false
+  allow-set-boat: true
+  allow-set-number: true
 bstats:
   enabled: true
   # Anonymous usage metrics via bStats. Set to false to opt-out.
@@ -13,3 +16,7 @@ updates:
   console-warn: true
   # Notify admins with permission in-game on join
   notify-admins: true
+racing:
+  laps: 3
+  pit-penalty-seconds: 5.0
+  registration-seconds: 300

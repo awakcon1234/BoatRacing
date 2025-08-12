@@ -6,7 +6,7 @@
 
     <groupId>es.jaie55</groupId>
     <artifactId>boatracing</artifactId>
-    <version>1.0.1</version>
+    <version>1.0.3</version>
     <name>BoatRacing</name>
     <description>F1-style ice boat racing plugin</description>
 
@@ -30,6 +30,7 @@
             <id>codemc-public</id>
             <url>https://repo.codemc.org/repository/maven-public/</url>
         </repository>
+        
     </repositories>
 
     <dependencies>
@@ -49,6 +50,7 @@
             <artifactId>bstats-bukkit</artifactId>
             <version>3.0.2</version>
         </dependency>
+        
     </dependencies>
 
     <build>

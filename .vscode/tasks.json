@@ -30,56 +30,20 @@
 			"command": ".\\mvnw.cmd",
 			"args": [
 				"-q",
-				"-Dstyle.color=always",
 				"-DskipTests",
 				"clean",
 				"package"
 			],
-			"problemMatcher": [
-				"$javac"
-			],
-			"group": "build"
-		},
-		{
-			"label": "Build BoatRacing",
-			"type": "shell",
-			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
-			"args": [
-				"clean",
-				"package",
-				"-q"
-			],
-			"problemMatcher": [
-				"$javac"
-			],
-			"group": "build"
-		},
-		{
-			"label": "Build BoatRacing",
-			"type": "shell",
-			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
-			"args": [
-				"clean",
-				"package",
-				"-q"
-			],
-			"problemMatcher": [
-				"$javac"
-			],
-			"group": "build"
-		},
-		{
-			"label": "Build BoatRacing",
-			"type": "shell",
-			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
-			"args": [
-				"clean",
-				"package",
-				"-q"
-			],
-			"problemMatcher": [
-				"$javac"
-			],
+			"options": {
+				"shell": {
+					"executable": "cmd.exe",
+					"args": [
+						"/d",
+						"/c"
+					]
+				}
+			},
+			"problemMatcher": [],
 			"group": "build"
 		}
 	]

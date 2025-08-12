@@ -33,7 +33,7 @@ import java.util.List;
 import java.util.UUID;
 
 public class TeamGUI implements Listener {
-    private static final String BLANK = " "; // single space to keep anvil preview blank without symbols
+    private static final String BLANK = " ";
     private static final Component TITLE = Text.title("Teams");
     private static final Component TITLE_TEAM = Text.title("Team");
     private static final String TEAM_TITLE_PREFIX = "Team • ";
@@ -42,12 +42,9 @@ public class TeamGUI implements Listener {
     private static final Component TITLE_BOAT_PICKER = Text.title("Choose your boat");
     private static final Component TITLE_DISBAND_CONFIRM = Text.title("Disband team?");
     private static final Component TITLE_LEAVE_CONFIRM = Text.title("Leave team?");
-    private static final Component TITLE_MEMBER_ACTIONS = Text.title("Member actions");
-    private static final Component TITLE_TRANSFER_CONFIRM = Text.title("Transfer leadership?");
-    private static final Component TITLE_KICK_CONFIRM = Text.title("Kick member?");
-    // Allowed boats (normal boats first, then chest variants)
+    
+    
     private static final Material[] ALLOWED_BOATS = new Material[] {
-        // Normales
         Material.OAK_BOAT,
         Material.SPRUCE_BOAT,
         Material.BIRCH_BOAT,
@@ -57,7 +54,6 @@ public class TeamGUI implements Listener {
         Material.MANGROVE_BOAT,
         Material.CHERRY_BOAT,
         Material.PALE_OAK_BOAT,
-        // Con cofre
         Material.OAK_CHEST_BOAT,
         Material.SPRUCE_CHEST_BOAT,
         Material.BIRCH_CHEST_BOAT,
@@ -71,7 +67,7 @@ public class TeamGUI implements Listener {
     private final BoatRacingPlugin plugin;
     private final NamespacedKey KEY_TEAM_ID;
     private final NamespacedKey KEY_TARGET_ID;
-    // Text input handled via AnvilGUI
+    
 
     public TeamGUI(BoatRacingPlugin plugin) {
         this.plugin = plugin;
@@ -113,12 +109,19 @@ public class TeamGUI implements Listener {
             inv.setItem(slot++, item);
             if (slot >= size - 9) break;
         }
-
-    int base = size - 9;
-    // Decorate footer with light gray panes
-    fillRow(inv, base, pane(Material.LIGHT_GRAY_STAINED_GLASS_PANE));
-    inv.setItem(base + 4, button(Material.ANVIL, Text.item("&a&lCreate team")));
-    inv.setItem(base + 8, button(Material.BARRIER, Text.item("&c&lClose")));
+        
+        int base = size - 9;
+        fillRow(inv, base, pane(Material.GRAY_STAINED_GLASS_PANE));
+        boolean allowCreate = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
+        if (allowCreate) inv.setItem(base + 4, button(Material.ANVIL, Text.item("&a&lCreate team")));
+        // Admin quick access
+        if (p.hasPermission("boatracing.admin")) {
+            java.util.List<String> lore = java.util.Arrays.asList("&7Open the admin management panel.");
+            inv.setItem(base, buttonWithLore(Material.NETHER_STAR, Text.item("&d&lAdmin panel"), lore));
+        }
+        // Refresh list
+        inv.setItem(base + 7, buttonWithLore(Material.CLOCK, Text.item("&e&lRefresh"), java.util.Arrays.asList("&7Reload this view and update the list.")));
+        inv.setItem(base + 8, button(Material.BARRIER, Text.item("&c&lClose")));
 
     p.openInventory(inv);
     p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
@@ -129,6 +132,20 @@ public class TeamGUI implements Listener {
         ItemMeta im = it.getItemMeta();
         if (im != null) {
             im.displayName(name);
+            im.addItemFlags(ItemFlag.values());
+            it.setItemMeta(im);
+        }
+        return it;
+    }
+
+    private static ItemStack buttonWithLore(Material mat, Component name, java.util.List<String> loreLines) {
+        ItemStack it = new ItemStack(mat);
+        ItemMeta im = it.getItemMeta();
+        if (im != null) {
+            im.displayName(name);
+            if (loreLines != null && !loreLines.isEmpty()) {
+                im.lore(Text.lore(loreLines));
+            }
             im.addItemFlags(ItemFlag.values());
             it.setItemMeta(im);
         }
@@ -194,10 +211,10 @@ public class TeamGUI implements Listener {
     boolean inBoatPicker = plainTitle.equals(Text.plain(TITLE_BOAT_PICKER));
     boolean inDisbandConfirm = plainTitle.equals(Text.plain(TITLE_DISBAND_CONFIRM));
     boolean inLeaveConfirm = plainTitle.equals(Text.plain(TITLE_LEAVE_CONFIRM));
-    boolean inMemberActions = plainTitle.equals(Text.plain(TITLE_MEMBER_ACTIONS));
-    boolean inTransferConfirm = plainTitle.equals(Text.plain(TITLE_TRANSFER_CONFIRM));
-    boolean inKickConfirm = plainTitle.equals(Text.plain(TITLE_KICK_CONFIRM));
-    if (!inMain && !inTeam && !inMember && !inColorPicker && !inBoatPicker && !inDisbandConfirm && !inLeaveConfirm && !inMemberActions && !inTransferConfirm && !inKickConfirm) return;
+    boolean inMemberActions = false;
+    boolean inTransferConfirm = false;
+    boolean inKickConfirm = false;
+    if (!inMain && !inTeam && !inMember && !inColorPicker && !inBoatPicker && !inDisbandConfirm && !inLeaveConfirm) return;
         // Cancel clicks in both top and bottom to prevent item pickup/moves while GUI is open
         e.setCancelled(true);
         // Only handle interactions from the top inventory GUI
@@ -214,7 +231,25 @@ public class TeamGUI implements Listener {
             p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 0.9f);
             return;
         }
+        // Admin panel shortcut
+        if (inMain && slot == base && p.hasPermission("boatracing.admin")) {
+            es.jaie55.boatracing.BoatRacingPlugin.getInstance().getAdminGUI().openMain(p);
+            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+            return;
+        }
+        // Refresh list
+        if (inMain && slot == base + 7) {
+            openMain(p);
+            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+            return;
+        }
     if (inMain && slot == base + 4) {
+            boolean allowCreate2 = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
+            if (!allowCreate2) {
+                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team creation. Only an administrator can create teams."));
+                p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                return;
+            }
             TeamManager tm = plugin.getTeamManager();
             if (tm.getTeamByMember(p.getUniqueId()).isPresent()) {
                 p.sendMessage(Text.colorize(plugin.pref() + "&cYou are already in a team."));
@@ -270,18 +305,20 @@ public class TeamGUI implements Listener {
 
             // Identify buttons by material
             if (it.getType() == Material.PAPER) {
-                // Rename team (leader only)
-                if (!team.isLeader(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can rename the team."));
+                // Rename team (admin only in no-leader mode)
+                boolean allowRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
+                if (!allowRename && !p.hasPermission("boatracing.admin")) {
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team renaming. Only an administrator can rename teams."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 openAnvilForName(p, team);
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.25f);
             } else if (isDye(it.getType())) {
-                // Open color picker (leader only)
-                if (!team.isLeader(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can change the color."));
+                // Open color picker (admin only in no-leader mode)
+                boolean allowColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
+                if (!allowColor && !p.hasPermission("boatracing.admin")) {
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team colors. Only an administrator can change team colors."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -315,11 +352,7 @@ public class TeamGUI implements Listener {
             } else if (it.getType() == Material.RED_CONCRETE) {
                 // Leave team (non-leader) -> open confirmation menu instead of immediate leave
                 if (!team.isMember(p.getUniqueId())) return;
-                if (team.isLeader(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cLeaders cannot leave here. Transfer leadership first."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
+                // No leader restriction anymore
                 if (team.getMembers().size() <= 1) {
                     p.sendMessage(Text.colorize(plugin.pref() + "&cYou can't leave if the team would be empty."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
@@ -328,7 +361,7 @@ public class TeamGUI implements Listener {
                 openLeaveConfirm(p, team);
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
             } else if (it.getType() == Material.PLAYER_HEAD) {
-                // Player head: own profile; or member actions if leader clicking someone else
+                // Player head: own profile; other members require admin via commands/GUI
                 if (im instanceof SkullMeta) {
                     SkullMeta sm = (SkullMeta) im;
                     if (sm.getOwningPlayer() != null) {
@@ -336,16 +369,17 @@ public class TeamGUI implements Listener {
                         if (memberId.equals(p.getUniqueId())) {
                             openMemberProfile(p, team);
                             p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
-                        } else if (team.isLeader(p.getUniqueId())) {
-                            openMemberActions(p, team, memberId);
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+                        } else {
+                            p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can manage other members."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                         }
                     }
                 }
             } else if (it.getType() == Material.TNT) {
                 // Open disband confirmation (leader only)
-                if (!team.isLeader(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can disband the team."));
+                // Only admins can disband teams
+                if (!p.hasPermission("boatracing.admin")) {
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can disband teams."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -380,7 +414,18 @@ public class TeamGUI implements Listener {
             if (it == null) return;
             // Back arrow handling
             if (slot == e.getInventory().getSize() - 9 || it.getType() == Material.ARROW) {
-                Team backTeam = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
+                // Prefer the team id embedded in the back arrow; fallback to player's team
+                ItemMeta backMeta = it.getItemMeta();
+                Team backTeam = null;
+                if (backMeta != null) {
+                    String backTid = backMeta.getPersistentDataContainer().get(KEY_TEAM_ID, PersistentDataType.STRING);
+                    if (backTid != null) {
+                        backTeam = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(backTid)).findFirst().orElse(null);
+                    }
+                }
+                if (backTeam == null) {
+                    backTeam = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
+                }
                 if (backTeam != null) openTeamView(p, backTeam);
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                 return;
@@ -391,8 +436,9 @@ public class TeamGUI implements Listener {
             if (tid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) { p.closeInventory(); return; }
-            if (!team.isLeader(p.getUniqueId())) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can change the color."));
+            boolean allowColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
+            if (!allowColor && !p.hasPermission("boatracing.admin")) {
+                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team colors. Only an administrator can change team colors."));
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return;
             }
@@ -422,6 +468,12 @@ public class TeamGUI implements Listener {
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) { p.closeInventory(); return; }
             Material chosen = it.getType();
+            boolean allowBoat = plugin.getConfig().getBoolean("player-actions.allow-set-boat", true);
+            if (!allowBoat) {
+                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted boat changes. Only an administrator can set your boat."));
+                p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                return;
+            }
             if (!isBoatItem(chosen)) return;
             team.setBoatType(p.getUniqueId(), chosen.name());
             plugin.getTeamManager().save();
@@ -446,21 +498,16 @@ public class TeamGUI implements Listener {
                 return;
             }
             if (it.getType() == Material.RED_CONCRETE && team != null) {
-                // Disband if leader
-                if (!team.isLeader(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can disband the team."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
-                // Notify all members (except leader) and remove team
+                // Disband (admin only)
+                if (!p.hasPermission("boatracing.admin")) { p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can disband teams.")); p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f); return; }
+                // Notify all members
                 java.util.Set<java.util.UUID> members = new java.util.HashSet<>(team.getMembers());
-                members.remove(p.getUniqueId());
                 for (java.util.UUID m : members) {
                     org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                     if (op.isOnline()) {
                         Player mp = op.getPlayer();
                         if (mp != null) {
-                            mp.sendMessage(Text.colorize(plugin.pref() + "&eYour team was disbanded by the leader."));
+                            mp.sendMessage(Text.colorize(plugin.pref() + "&eYour team was disbanded."));
                             mp.playSound(mp.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.8f, 0.8f);
                         }
                     }
@@ -484,24 +531,19 @@ public class TeamGUI implements Listener {
             if (it.getType() == Material.RED_CONCRETE) {
                 Team team = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
                 if (team == null) { p.closeInventory(); return; }
-                if (team.isLeader(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cLeaders cannot leave here. Transfer leadership first."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
-                if (team.getMembers().size() <= 1) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cYou can't leave if the team would be empty."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
                 team.removeMember(p.getUniqueId());
-                plugin.getTeamManager().save();
-                p.sendMessage(Text.colorize(plugin.pref() + "&aYou left the team."));
-                // Notify remaining members
-                for (java.util.UUID m : team.getMembers()) {
-                    org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
-                    if (op.isOnline() && op.getPlayer() != null) {
-                        op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " left the team."));
+                if (team.getMembers().isEmpty()) {
+                    plugin.getTeamManager().deleteTeam(team);
+                    p.sendMessage(Text.colorize(plugin.pref() + "&aYou left and your team was deleted (no members left)."));
+                } else {
+                    plugin.getTeamManager().save();
+                    p.sendMessage(Text.colorize(plugin.pref() + "&aYou left the team."));
+                    // Notify remaining members
+                    for (java.util.UUID m : team.getMembers()) {
+                        org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
+                        if (op.isOnline() && op.getPlayer() != null) {
+                            op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " left the team."));
+                        }
                     }
                 }
                 p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
@@ -522,19 +564,11 @@ public class TeamGUI implements Listener {
             if (tid == null || mid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
-            UUID memberId; try { memberId = UUID.fromString(mid); } catch (Exception ex) { return; }
-            if (!team.isLeader(p.getUniqueId())) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can manage members."));
-                p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                return;
-            }
-            if (it.getType() == Material.GOLDEN_HELMET) {
-                openTransferConfirm(p, team, memberId);
-                p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-            } else if (it.getType() == Material.BARRIER) {
-                openKickConfirm(p, team, memberId);
-                p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-            }
+            try { java.util.UUID.fromString(mid); } catch (Exception ex) { return; }
+            p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can manage members. Use /boatracing admin team remove <team> <player>."));
+            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+            return;
+            // Disabled buttons in no-leader mode
         } else if (inTransferConfirm) {
             ItemStack it = e.getCurrentItem(); if (it == null) return;
             // Back
@@ -550,44 +584,10 @@ public class TeamGUI implements Listener {
             if (tid == null || mid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
-            UUID newLeader; try { newLeader = UUID.fromString(mid); } catch (Exception ex) { return; }
-            if (!team.isLeader(p.getUniqueId())) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can transfer the leadership."));
-                p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                return;
-            }
-            if (it.getType() == Material.RED_CONCRETE) {
-                if (!team.isMember(newLeader)) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cTarget is not a member of the team."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
-                if (p.getUniqueId().equals(newLeader)) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cYou are already the leader."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
-                UUID oldLeader = team.getLeader();
-                team.setLeader(newLeader);
-                plugin.getTeamManager().save();
-                org.bukkit.OfflinePlayer np = Bukkit.getOfflinePlayer(newLeader);
-                String newName = np.getName() != null ? np.getName() : newLeader.toString().substring(0,8);
-                p.sendMessage(Text.colorize(plugin.pref() + "&aYou transferred the leadership to &e" + newName + "&a."));
-                p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.2f);
-                if (np.isOnline() && np.getPlayer() != null) {
-                    np.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&aYou are now the team leader."));
-                    np.getPlayer().playSound(np.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.4f);
-                }
-                for (java.util.UUID m : team.getMembers()) {
-                    if (m.equals(oldLeader) || m.equals(newLeader)) continue;
-                    org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
-                    if (op.isOnline() && op.getPlayer() != null) {
-                        String oldName = Bukkit.getOfflinePlayer(oldLeader).getName();
-                        op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + (oldName != null ? oldName : oldLeader.toString().substring(0,8)) + " transferred the leadership to " + newName + "."));
-                    }
-                }
-                openTeamView(p, team);
-            }
+            p.sendMessage(Text.colorize(plugin.pref() + "&cLeader system has been removed."));
+            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+            Team teamBack = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
+            if (teamBack != null) openTeamView(p, teamBack);
         } else if (inKickConfirm) {
             ItemStack it = e.getCurrentItem(); if (it == null) return;
             // Back
@@ -603,72 +603,13 @@ public class TeamGUI implements Listener {
             if (tid == null || mid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
-            UUID targetId; try { targetId = UUID.fromString(mid); } catch (Exception ex) { return; }
-            if (!team.isLeader(p.getUniqueId())) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can kick members."));
-                p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                return;
-            }
-            if (it.getType() == Material.RED_CONCRETE) {
-                if (!team.isMember(targetId)) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cTarget is not a member of the team."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
-                if (team.isLeader(targetId)) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cYou cannot kick the leader."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
-                boolean removed = team.removeMember(targetId);
-                if (removed) {
-                    plugin.getTeamManager().save();
-                    org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(targetId);
-                    if (op.isOnline() && op.getPlayer() != null) {
-                        op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&cYou have been kicked from " + team.getName() + " by the leader."));
-                    }
-                    for (java.util.UUID m : team.getMembers()) {
-                        if (m.equals(targetId)) continue;
-                        org.bukkit.OfflinePlayer mp = Bukkit.getOfflinePlayer(m);
-                        if (mp.isOnline() && mp.getPlayer() != null) {
-                            mp.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + (op.getName() != null ? op.getName() : targetId.toString().substring(0,8)) + " was kicked from the team."));
-                        }
-                    }
-                    p.sendMessage(Text.colorize(plugin.pref() + "&aYou kicked &e" + (op.getName() != null ? op.getName() : targetId.toString().substring(0,8)) + "&a."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.8f, 1.2f);
-                    openTeamView(p, team);
-                }
-            }
+            p.sendMessage(Text.colorize(plugin.pref() + "&cThis action is admin-only. Use /boatracing admin team remove <team> <player>."));
+            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+            Team tb = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
+            if (tb != null) openTeamView(p, tb);
         }
     }
 
-    private void openKickConfirm(Player p, Team team, UUID memberId) {
-        int size = 27;
-        Inventory inv = Bukkit.createInventory(null, size, TITLE_KICK_CONFIRM);
-
-        // Confirm button
-        ItemStack confirm = new ItemStack(Material.RED_CONCRETE);
-        ItemMeta cm = confirm.getItemMeta();
-        if (cm != null) {
-            cm.displayName(Text.item("&c&lKick now"));
-            List<String> lore = new ArrayList<>();
-            lore.add("&7This will remove the player from the team.");
-            cm.lore(Text.lore(lore));
-            cm.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
-            cm.getPersistentDataContainer().set(KEY_TARGET_ID, PersistentDataType.STRING, memberId.toString());
-            confirm.setItemMeta(cm);
-        }
-        inv.setItem(13, confirm);
-
-        // Back
-        ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
-        inv.setItem(size - 9, back);
-
-        // Background
-        fillEmptyWith(inv, pane(paneForColor(team.getColor())));
-
-        p.openInventory(inv);
-    }
 
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onClose(InventoryCloseEvent e) {
@@ -686,10 +627,7 @@ public class TeamGUI implements Listener {
             // Team name in bold with team color
             bm.displayName(Text.item("&l" + team.getName()));
             List<String> lore = new ArrayList<>();
-            String leaderName = Bukkit.getOfflinePlayer(team.getLeader()).getName();
-            int leaderNum = team.getRacerNumber(team.getLeader());
-            String tag = leaderNum > 0 ? ("[#" + leaderNum + "]") : "[#?]";
-            lore.add(Text.colorize("&7Leader: &f" + (leaderName != null ? leaderName : team.getLeader().toString().substring(0, 8)) + " &7" + tag));
+            // Leader info removed in no-leader mode
             lore.add(Text.colorize("&7Members: &f" + team.getMembers().size() + "/" + plugin.getTeamManager().getMaxMembers()));
             // Members list similar to main menu
             lore.add(" ");
@@ -708,7 +646,7 @@ public class TeamGUI implements Listener {
     inv.setItem(4, header);
 
     // Member heads with number in lore
-    int[] memberSlots = {10, 12, 14, 16}; // fila superior central
+    int[] memberSlots = {10, 12, 14, 16};
         int idx = 0;
         for (UUID m : team.getMembers()) {
             if (idx >= memberSlots.length) break;
@@ -741,14 +679,14 @@ public class TeamGUI implements Listener {
             inv.setItem(base, back);
 
     boolean isMember = team.isMember(p.getUniqueId());
-    boolean isLeader = team.isLeader(p.getUniqueId());
-    if (isLeader) {
+    boolean isAdmin = p.hasPermission("boatracing.admin");
+    if (isAdmin) {
             ItemStack rename = new ItemStack(Material.PAPER);
             ItemMeta rim = rename.getItemMeta();
             if (rim != null) {
                 rim.displayName(Text.item("&e&lRename team"));
                 List<String> rl = new ArrayList<>();
-                rl.add(Text.colorize("&8Leader only"));
+                rl.add(Text.colorize("&8Admin only"));
                 rim.lore(Text.lore(rl));
                 rim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 rename.setItemMeta(rim);
@@ -760,7 +698,7 @@ public class TeamGUI implements Listener {
             if (cim != null) {
                 cim.displayName(Text.item("&b&lChange color"));
                 List<String> cl = new ArrayList<>();
-                cl.add(Text.colorize("&8Leader only"));
+                cl.add(Text.colorize("&8Admin only"));
                 cim.lore(Text.lore(cl));
                 cim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 color.setItemMeta(cim);
@@ -793,8 +731,8 @@ public class TeamGUI implements Listener {
             inv.setItem((size - 9) + 6, join); // base+6
         }
 
-    // Leave button (if member and not leader)
-    if (isMember && !isLeader) {
+    // Leave button (if member)
+    if (isMember) {
             ItemStack leave = new ItemStack(Material.RED_CONCRETE);
             ItemMeta lim = leave.getItemMeta();
             if (lim != null) {
@@ -904,7 +842,7 @@ public class TeamGUI implements Listener {
             inv.setItem(slot++, banner);
         }
     // Footer decoration neutral
-    fillRow(inv, size - 9, pane(Material.LIGHT_GRAY_STAINED_GLASS_PANE));
+    fillRow(inv, size - 9, pane(Material.GRAY_STAINED_GLASS_PANE));
     ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
         ItemMeta bm = back.getItemMeta();
         if (bm != null) {
@@ -936,7 +874,7 @@ public class TeamGUI implements Listener {
             inv.setItem(slot++, it);
         }
     // Footer decoration neutral
-    fillRow(inv, size - 9, pane(Material.LIGHT_GRAY_STAINED_GLASS_PANE));
+    fillRow(inv, size - 9, pane(Material.GRAY_STAINED_GLASS_PANE));
     ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
         ItemMeta bm = back.getItemMeta();
         if (bm != null) {
@@ -1057,7 +995,7 @@ public class TeamGUI implements Listener {
         if ("name".equals(action)) {
             Team team = getTeam(teamId);
             if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cTeam not found.")); return java.util.Collections.emptyList(); }
-            if (!team.isLeader(p.getUniqueId())) { p.sendMessage(Text.colorize(plugin.pref() + "&cOnly the team leader can rename.")); return java.util.Collections.emptyList(); }
+            if (!p.hasPermission("boatracing.admin")) { p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can rename teams.")); return java.util.Collections.emptyList(); }
             String err = validateNameMessage(input);
             if (err != null) {
                 p.sendMessage(Text.colorize(plugin.pref() + "&c" + err));
@@ -1082,6 +1020,11 @@ public class TeamGUI implements Listener {
         } else if ("racer".equals(action)) {
             Team team = getTeam(teamId);
             if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cTeam not found.")); return java.util.Collections.emptyList(); }
+            boolean allowNumber = plugin.getConfig().getBoolean("player-actions.allow-set-number", true);
+            if (!allowNumber) {
+                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted racer numbers. Only an administrator can set your racer number."));
+                return java.util.Collections.emptyList();
+            }
             String err = validateNumberFormatRange(input);
             if (err != null) { 
                 p.sendMessage(Text.colorize(plugin.pref() + "&c" + err));
@@ -1101,6 +1044,11 @@ public class TeamGUI implements Listener {
             if (plugin.getTeamManager().getTeamByMember(p.getUniqueId()).isPresent()) { 
                 p.sendMessage(Text.colorize(plugin.pref() + "&cYou are already in a team. Leave it first.")); 
                 return null; 
+            }
+            boolean allowCreate = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
+            if (!allowCreate) {
+                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team creation. Only an administrator can create teams."));
+                return java.util.Collections.emptyList();
             }
             String err = validateNameMessage(input);
             if (err != null) { 
@@ -1172,9 +1120,7 @@ public class TeamGUI implements Listener {
             || plain.equals(Text.plain(TITLE_COLOR_PICKER))
             || plain.equals(Text.plain(TITLE_BOAT_PICKER))
             || plain.equals(Text.plain(TITLE_DISBAND_CONFIRM))
-            || plain.equals(Text.plain(TITLE_LEAVE_CONFIRM))
-            || plain.equals(Text.plain(TITLE_MEMBER_ACTIONS))
-            || plain.equals(Text.plain(TITLE_TRANSFER_CONFIRM));
+            || plain.equals(Text.plain(TITLE_LEAVE_CONFIRM));
         if (block) {
             e.setCancelled(true);
         }
@@ -1186,77 +1132,7 @@ public class TeamGUI implements Listener {
         return s;
     }
 
-    // Member actions menu (leader managing another member)
-    private void openMemberActions(Player p, Team team, UUID memberId) {
-        int size = 27;
-        Inventory inv = Bukkit.createInventory(null, size, TITLE_MEMBER_ACTIONS);
-
-        // Transfer leadership button
-        ItemStack transfer = new ItemStack(Material.GOLDEN_HELMET);
-        ItemMeta tm = transfer.getItemMeta();
-        if (tm != null) {
-            tm.displayName(Text.item("&e&lTransfer leadership"));
-            List<String> lore = new ArrayList<>();
-            lore.add("&7Give the leader role to this player.");
-            tm.lore(Text.lore(lore));
-            tm.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
-            tm.getPersistentDataContainer().set(KEY_TARGET_ID, PersistentDataType.STRING, memberId.toString());
-            transfer.setItemMeta(tm);
-        }
-        inv.setItem(12, transfer);
-
-        // Kick member button
-        ItemStack kick = new ItemStack(Material.BARRIER);
-        ItemMeta km = kick.getItemMeta();
-        if (km != null) {
-            km.displayName(Text.item("&c&lKick member"));
-            List<String> lore = new ArrayList<>();
-            lore.add("&7Remove this player from the team.");
-            km.lore(Text.lore(lore));
-            km.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
-            km.getPersistentDataContainer().set(KEY_TARGET_ID, PersistentDataType.STRING, memberId.toString());
-            kick.setItemMeta(km);
-        }
-        inv.setItem(14, kick);
-
-        // Back
-        ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
-        inv.setItem(size - 9, back);
-
-        // Fill background with team color accent
-        fillEmptyWith(inv, pane(paneForColor(team.getColor())));
-
-        p.openInventory(inv);
-    }
-
-    // Transfer confirmation menu
-    private void openTransferConfirm(Player p, Team team, UUID memberId) {
-        int size = 27;
-        Inventory inv = Bukkit.createInventory(null, size, TITLE_TRANSFER_CONFIRM);
-
-        // Confirm button
-        ItemStack confirm = new ItemStack(Material.RED_CONCRETE);
-        ItemMeta cm = confirm.getItemMeta();
-        if (cm != null) {
-            cm.displayName(Text.item("&c&lTransfer now"));
-            List<String> lore = new ArrayList<>();
-            lore.add("&7This will make that player the team leader.");
-            cm.lore(Text.lore(lore));
-            cm.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
-            cm.getPersistentDataContainer().set(KEY_TARGET_ID, PersistentDataType.STRING, memberId.toString());
-            confirm.setItemMeta(cm);
-        }
-        inv.setItem(13, confirm);
-
-        // Back
-        ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
-        inv.setItem(size - 9, back);
-
-        // Background
-        fillEmptyWith(inv, pane(paneForColor(team.getColor())));
-
-        p.openInventory(inv);
-    }
+    // Leader-based subviews removed in leaderless model
 
     public static String validateNameMessage(String raw) {
         String s = raw == null ? "" : raw.trim();

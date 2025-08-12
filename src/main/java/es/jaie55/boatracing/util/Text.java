@@ -1,6 +1,8 @@
 package es.jaie55.boatracing.util;
 
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -45,5 +47,15 @@ public final class Text {
     public static Component item(String text) {
         if (text == null) text = "";
         return c("&r" + text).decoration(TextDecoration.ITALIC, false);
+    }
+
+    // Clickable command helper: blue label, suggest command on click, hover shows the command
+    public static Component cmd(String labelLegacy, String command) {
+        if (labelLegacy == null) labelLegacy = "";
+        if (command == null) command = "";
+        Component base = c(labelLegacy).decoration(TextDecoration.ITALIC, false);
+        return base
+            .clickEvent(ClickEvent.suggestCommand(command))
+            .hoverEvent(HoverEvent.showText(c("&7Click to paste: &b" + command)));
     }
 }
