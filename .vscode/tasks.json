@@ -45,6 +45,36 @@
 			},
 			"problemMatcher": [],
 			"group": "build"
+		},
+		{
+			"label": "Build BoatRacing (one-off)",
+			"type": "shell",
+			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
+			"args": [
+				"clean",
+				"package",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$maven"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Build BoatRacing (one-off)",
+			"type": "shell",
+			"command": "D:\\w11\\DESARROLLO\\BoatRacing\\mvnw.cmd",
+			"args": [
+				"clean",
+				"package",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [
+				"$maven"
+			],
+			"group": "build"
 		}
 	]
 }

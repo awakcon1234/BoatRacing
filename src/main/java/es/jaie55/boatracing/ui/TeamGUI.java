@@ -305,20 +305,32 @@ public class TeamGUI implements Listener {
 
             // Identify buttons by material
             if (it.getType() == Material.PAPER) {
-                // Rename team (admin only in no-leader mode)
+                // Rename team (allowed for admins, or members when enabled in config)
                 boolean allowRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
-                if (!allowRename && !p.hasPermission("boatracing.admin")) {
+                boolean isAdmin = p.hasPermission("boatracing.admin");
+                if (!allowRename && !isAdmin) {
                     p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team renaming. Only an administrator can rename teams."));
+                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                    return;
+                }
+                if (!isAdmin && !team.isMember(p.getUniqueId())) {
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly team members can rename their team."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 openAnvilForName(p, team);
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.25f);
             } else if (isDye(it.getType())) {
-                // Open color picker (admin only in no-leader mode)
+                // Open color picker (allowed for admins, or members when enabled in config)
                 boolean allowColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
-                if (!allowColor && !p.hasPermission("boatracing.admin")) {
+                boolean isAdmin = p.hasPermission("boatracing.admin");
+                if (!allowColor && !isAdmin) {
                     p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team colors. Only an administrator can change team colors."));
+                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                    return;
+                }
+                if (!isAdmin && !team.isMember(p.getUniqueId())) {
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly team members can change their team color."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -350,14 +362,8 @@ public class TeamGUI implements Listener {
                 p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
                 openTeamView(p, team);
             } else if (it.getType() == Material.RED_CONCRETE) {
-                // Leave team (non-leader) -> open confirmation menu instead of immediate leave
+                // Leave team (member): always open confirmation; if last member, warn about deletion
                 if (!team.isMember(p.getUniqueId())) return;
-                // No leader restriction anymore
-                if (team.getMembers().size() <= 1) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cYou can't leave if the team would be empty."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return;
-                }
                 openLeaveConfirm(p, team);
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
             } else if (it.getType() == Material.PLAYER_HEAD) {
@@ -376,10 +382,11 @@ public class TeamGUI implements Listener {
                     }
                 }
             } else if (it.getType() == Material.TNT) {
-                // Open disband confirmation (leader only)
-                // Only admins can disband teams
-                if (!p.hasPermission("boatracing.admin")) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can disband teams."));
+                // Open disband confirmation (admin, or member if enabled in config)
+                boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
+                boolean isAdmin = p.hasPermission("boatracing.admin");
+                if (!(isAdmin || (cfgDisband && team.isMember(p.getUniqueId())))) {
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team disband. Only an administrator can disband teams."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -448,6 +455,14 @@ public class TeamGUI implements Listener {
             team.setColor(chosen);
             plugin.getTeamManager().save();
             p.sendMessage(Text.colorize(plugin.pref() + "&aTeam color set to " + chosen.name() + "."));
+            // Notify other team members
+            for (java.util.UUID m : team.getMembers()) {
+                if (m.equals(p.getUniqueId())) continue;
+                org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
+                if (op.isOnline() && op.getPlayer() != null) {
+                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " changed the team color to " + chosen.name() + "."));
+                }
+            }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
             openTeamView(p, team);
     } else if (inBoatPicker) {
@@ -498,8 +513,14 @@ public class TeamGUI implements Listener {
                 return;
             }
             if (it.getType() == Material.RED_CONCRETE && team != null) {
-                // Disband (admin only)
-                if (!p.hasPermission("boatracing.admin")) { p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can disband teams.")); p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f); return; }
+                // Disband (admin, or member if enabled in config)
+                boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
+                boolean allowed = p.hasPermission("boatracing.admin") || (cfgDisband && team.isMember(p.getUniqueId()));
+                if (!allowed) { 
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team disband. Only an administrator can disband teams.")); 
+                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f); 
+                    return; 
+                }
                 // Notify all members
                 java.util.Set<java.util.UUID> members = new java.util.HashSet<>(team.getMembers());
                 for (java.util.UUID m : members) {
@@ -680,13 +701,18 @@ public class TeamGUI implements Listener {
 
     boolean isMember = team.isMember(p.getUniqueId());
     boolean isAdmin = p.hasPermission("boatracing.admin");
-    if (isAdmin) {
+    boolean cfgRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
+    boolean cfgColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
+    boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
+    if (isAdmin || (cfgRename || cfgColor || cfgDisband)) {
             ItemStack rename = new ItemStack(Material.PAPER);
             ItemMeta rim = rename.getItemMeta();
             if (rim != null) {
                 rim.displayName(Text.item("&e&lRename team"));
                 List<String> rl = new ArrayList<>();
-                rl.add(Text.colorize("&8Admin only"));
+                if (isAdmin) rl.add(Text.colorize("&8Admin only"));
+                else if (cfgRename && isMember) rl.add(Text.colorize("&7Members can rename (config)"));
+                else rl.add(Text.colorize("&8Locked"));
                 rim.lore(Text.lore(rl));
                 rim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 rename.setItemMeta(rim);
@@ -698,25 +724,29 @@ public class TeamGUI implements Listener {
             if (cim != null) {
                 cim.displayName(Text.item("&b&lChange color"));
                 List<String> cl = new ArrayList<>();
-                cl.add(Text.colorize("&8Admin only"));
+                if (isAdmin) cl.add(Text.colorize("&8Admin only"));
+                else if (cfgColor && isMember) cl.add(Text.colorize("&7Members can change (config)"));
+                else cl.add(Text.colorize("&8Locked"));
                 cim.lore(Text.lore(cl));
                 cim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 color.setItemMeta(cim);
             }
             inv.setItem((size - 9) + 4, color); // base+4
 
-            // Disband button (leader only)
-            ItemStack disband = new ItemStack(Material.TNT);
-            ItemMeta dim = disband.getItemMeta();
-            if (dim != null) {
-                dim.displayName(Text.item("&c&lDisband team"));
-                List<String> dl = new ArrayList<>();
-                dl.add(Text.colorize("&cThis cannot be undone"));
-                dim.lore(Text.lore(dl));
-                dim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
-                disband.setItemMeta(dim);
+            // Disband button (only if allowed)
+            if (isAdmin || (cfgDisband && isMember)) {
+                ItemStack disband = new ItemStack(Material.TNT);
+                ItemMeta dim = disband.getItemMeta();
+                if (dim != null) {
+                    dim.displayName(Text.item("&c&lDisband team"));
+                    List<String> dl = new ArrayList<>();
+                    dl.add(Text.colorize("&cThis cannot be undone"));
+                    dim.lore(Text.lore(dl));
+                    dim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
+                    disband.setItemMeta(dim);
+                }
+                inv.setItem((size - 9) + 8, disband); // base+8
             }
-            inv.setItem((size - 9) + 8, disband); // base+8
         }
 
         // Join button (if not member and not full)
@@ -937,7 +967,11 @@ public class TeamGUI implements Listener {
             wim.displayName(Text.item("&c&lConfirm leave"));
             java.util.List<String> lore = new java.util.ArrayList<>();
             lore.add(Text.colorize("&7You will leave your team."));
-            lore.add(Text.colorize("&7You can join again if there is a slot."));
+            if (team.getMembers().size() <= 1) {
+                lore.add(Text.colorize("&cIf you are the last member, the team will be deleted."));
+            } else {
+                lore.add(Text.colorize("&7You can join again if there is a slot."));
+            }
             wim.lore(Text.lore(lore));
             warn.setItemMeta(wim);
         }
@@ -995,7 +1029,16 @@ public class TeamGUI implements Listener {
         if ("name".equals(action)) {
             Team team = getTeam(teamId);
             if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cTeam not found.")); return java.util.Collections.emptyList(); }
-            if (!p.hasPermission("boatracing.admin")) { p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can rename teams.")); return java.util.Collections.emptyList(); }
+            boolean allowRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
+            boolean isAdmin = p.hasPermission("boatracing.admin");
+            if (!allowRename && !isAdmin) {
+                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team renaming. Only an administrator can rename teams."));
+                return java.util.Collections.emptyList();
+            }
+            if (!isAdmin && !team.isMember(p.getUniqueId())) {
+                p.sendMessage(Text.colorize(plugin.pref() + "&cOnly team members can rename their team."));
+                return java.util.Collections.emptyList();
+            }
             String err = validateNameMessage(input);
             if (err != null) {
                 p.sendMessage(Text.colorize(plugin.pref() + "&c" + err));
@@ -1012,6 +1055,14 @@ public class TeamGUI implements Listener {
             }
             team.setName(sanitizeName(input)); plugin.getTeamManager().save();
             p.sendMessage(Text.colorize(plugin.pref() + "&aTeam renamed to &e" + input + "&a."));
+            // Notify other team members
+            for (java.util.UUID m : team.getMembers()) {
+                if (m.equals(p.getUniqueId())) continue;
+                org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
+                if (op.isOnline() && op.getPlayer() != null) {
+                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " renamed the team to &e" + input + "&e."));
+                }
+            }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.4f);
             return java.util.Arrays.asList(
                 AnvilGUI.ResponseAction.close(),

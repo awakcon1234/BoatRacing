@@ -5,6 +5,7 @@ player-actions:
   allow-team-create: true
   allow-team-rename: false
   allow-team-color: false
+  allow-team-disband: false
   allow-set-boat: true
   allow-set-number: true
 bstats:
@@ -20,3 +21,9 @@ racing:
   laps: 3
   pit-penalty-seconds: 5.0
   registration-seconds: 300
+  # Time penalty applied if a racer moves forward before the countdown ends (in seconds)
+  false-start-penalty-seconds: 3.0
+  # Enable/disable time penalty when entering the pit area during the race
+  enable-pit-penalty: true
+  # Enable/disable false start penalty during the light countdown
+  enable-false-start-penalty: true

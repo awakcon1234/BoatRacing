@@ -16,6 +16,9 @@ permissions:
     children:
       boatracing.teams: true
       boatracing.version: true
+      boatracing.race.join: true
+      boatracing.race.leave: true
+      boatracing.race.status: true
   boatracing.teams:
     description: Use /boatracing teams
     default: true
@@ -33,4 +36,16 @@ permissions:
     default: op
   boatracing.admin:
     description: Administer teams and players (create/rename teams, assign members, set numbers/boats)
+    default: op
+  boatracing.race.join:
+    description: Join a race registration
+    default: true
+  boatracing.race.leave:
+    description: Leave a race registration
+    default: true
+  boatracing.race.status:
+    description: View race status for a track
+    default: true
+  boatracing.race.admin:
+    description: Manage races (open/start/force/stop)
     default: op

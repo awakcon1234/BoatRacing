@@ -27,6 +27,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     private TeamManager teamManager;
     private TeamGUI teamGUI;
     private es.jaie55.boatracing.ui.AdminGUI adminGUI;
+    private es.jaie55.boatracing.ui.AdminRaceGUI adminRaceGUI;
     private String prefix;
     private UpdateChecker updateChecker;
     private TrackConfig trackConfig;
@@ -43,6 +44,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     public TeamManager getTeamManager() { return teamManager; }
     public String pref() { return prefix; }
     public es.jaie55.boatracing.ui.AdminGUI getAdminGUI() { return adminGUI; }
+    public es.jaie55.boatracing.ui.AdminRaceGUI getAdminRaceGUI() { return adminRaceGUI; }
     public es.jaie55.boatracing.ui.TeamGUI getTeamGUI() { return teamGUI; }
     public RaceManager getRaceManager() { return raceManager; }
     public TrackConfig getTrackConfig() { return trackConfig; }
@@ -58,6 +60,7 @@ public class BoatRacingPlugin extends JavaPlugin {
         this.teamManager = new TeamManager(this);
     this.teamGUI = new TeamGUI(this);
     this.adminGUI = new es.jaie55.boatracing.ui.AdminGUI(this);
+    this.adminRaceGUI = new es.jaie55.boatracing.ui.AdminRaceGUI(this);
     this.trackConfig = new TrackConfig(getDataFolder());
     this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
     this.raceManager = new RaceManager(this, trackConfig);
@@ -66,6 +69,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     Bukkit.getPluginManager().registerEvents(teamGUI, this);
     Bukkit.getPluginManager().registerEvents(adminGUI, this);
     Bukkit.getPluginManager().registerEvents(tracksGUI, this);
+    Bukkit.getPluginManager().registerEvents(adminRaceGUI, this);
     
     es.jaie55.boatracing.track.SelectionManager.init(this);
     Bukkit.getPluginManager().registerEvents(new es.jaie55.boatracing.track.WandListener(this), this);
@@ -202,36 +206,47 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             // /boatracing race
             if (args[0].equalsIgnoreCase("race")) {
-                if (!p.hasPermission("boatracing.setup")) {
-                    p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return true;
-                }
                 if (args.length == 1 || args[1].equalsIgnoreCase("help")) {
                     p.sendMessage(Text.colorize(prefix + "&eRace commands:"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race open [laps] &7(Open registration and broadcast)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race join &7(Join the registration; team required)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race leave &7(Leave the registration)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race force &7(Force start immediately with registered)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race start [laps] &7(Start now with registered players; if none, all online players in a team)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race stop &7(Stop and announce results)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race status &7(Show race status)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race join <track> &7(Join the registration on that track; team required)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race leave <track> &7(Leave the registration on that track)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race status <track> &7(Show race status for the track)"));
+                    if (p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup")) {
+                        p.sendMessage(Text.colorize("&8Admin:&7 /" + label + " race open|start|force|stop <track>"));
+                    }
                     return true;
                 }
                 switch (args[1].toLowerCase()) {
                     case "open" -> {
+                        if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race open <track>")); return true; }
+                        String tname = args[2];
+                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
+                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
                         if (!trackConfig.isReady()) {
                             p.sendMessage(Text.colorize(prefix + "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements())));
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
                         int laps = raceManager.getTotalLaps();
-                        if (args.length >= 3 && args[2].matches("\\d+")) laps = Math.max(1, Integer.parseInt(args[2]));
                         boolean ok = raceManager.openRegistration(laps, null);
                         if (!ok) p.sendMessage(Text.colorize(prefix + "&cCannot open registration right now."));
                         return true;
                     }
                     case "join" -> {
+                        if (!p.hasPermission("boatracing.race.join")) {
+                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race join <track>")); return true; }
+                        String tname = args[2];
+                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
+                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
                         if (!trackConfig.isReady()) {
                             p.sendMessage(Text.colorize(prefix + "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements())));
                             return true;
@@ -247,47 +262,130 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         return true;
                     }
-                    case "leave" -> { raceManager.leave(p); return true; }
-                    case "force" -> { raceManager.forceStart(); return true; }
+                    case "leave" -> {
+                        if (!p.hasPermission("boatracing.race.leave")) {
+                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race leave <track>")); return true; }
+                        String tname = args[2];
+                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
+                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        raceManager.leave(p);
+                        return true;
+                    }
+                    case "force" -> {
+                        if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race force <track>")); return true; }
+                        String tname = args[2];
+                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
+                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (raceManager.getRegistered().isEmpty()) {
+                            p.sendMessage(Text.colorize(prefix + "&cNo registered participants. &7Open registration first: &f/" + label + " race open"));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        raceManager.forceStart();
+                        return true;
+                    }
                     case "start" -> {
+                        if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race start <track>")); return true; }
+                        String tname = args[2];
+                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
+                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
                         if (!trackConfig.isReady()) {
                             p.sendMessage(Text.colorize(prefix + "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements())));
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
                         if (raceManager.isRunning()) { p.sendMessage(Text.colorize(prefix + "&cRace already running.")); return true; }
-                        int laps = raceManager.getTotalLaps();
-                        if (args.length >= 3 && args[2].matches("\\d+")) {
-                            laps = Math.max(1, Integer.parseInt(args[2]));
-                            raceManager.setTotalLaps(laps);
-                        }
-                        // Build participants: prefer registered; otherwise only players who are in a team
+                        // Build participants: strictly registered participants only
                         java.util.List<org.bukkit.entity.Player> participants = new java.util.ArrayList<>();
                         java.util.Set<java.util.UUID> regs = new java.util.LinkedHashSet<>(raceManager.getRegistered());
-                        if (!regs.isEmpty()) {
-                            for (java.util.UUID id : regs) {
-                                org.bukkit.entity.Player rp = Bukkit.getPlayer(id);
-                                if (rp != null && rp.isOnline()) participants.add(rp);
-                            }
-                        } else {
-                            for (org.bukkit.entity.Player online : Bukkit.getOnlinePlayers()) {
-                                if (teamManager.getTeamByMember(online.getUniqueId()).isPresent()) participants.add(online);
-                            }
+                        for (java.util.UUID id : regs) {
+                            org.bukkit.entity.Player rp = Bukkit.getPlayer(id);
+                            if (rp != null && rp.isOnline()) participants.add(rp);
                         }
                         if (participants.isEmpty()) {
-                            p.sendMessage(Text.colorize(prefix + "&cNo eligible participants. &7Ask players to join a team or register."));
+                            p.sendMessage(Text.colorize(prefix + "&cNo registered participants. &7Use &f/" + label + " race open &7to start registration."));
                             return true;
                         }
                         // Place with boats and start
-                        raceManager.placeAtStartsWithBoats(participants);
-                        raceManager.startRace(participants);
+                        java.util.List<org.bukkit.entity.Player> placed = raceManager.placeAtStartsWithBoats(participants);
+                        if (placed.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cNo free start slots on this track.")); return true; }
+                        if (placed.size() < participants.size()) { p.sendMessage(Text.colorize(prefix + "&7Some registered players could not be placed due to lack of start slots.")); }
+                        // Use start lights countdown if configured
+                        raceManager.startRaceWithCountdown(placed);
                         return true;
                     }
-                    case "stop" -> { raceManager.stopRace(true); return true; }
+                    case "stop" -> {
+                        if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race stop <track>")); return true; }
+                        String tname = args[2];
+                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
+                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        boolean any = false;
+                        if (raceManager.isRegistering()) {
+                            any |= raceManager.cancelRegistration(true);
+                        }
+                        if (raceManager.isRunning()) {
+                            any |= raceManager.cancelRace();
+                        }
+                        if (!any) {
+                            p.sendMessage(Text.colorize(prefix + "&7Nothing to stop."));
+                        }
+                        return true;
+                    }
                     case "status" -> {
-                        String tname = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
-                        p.sendMessage(Text.colorize(prefix + (raceManager.isRunning()?"&aRace running.":"&7No race running.")));
-                        p.sendMessage(Text.colorize("&7Track: &f" + tname));
+                        if (!p.hasPermission("boatracing.race.status")) {
+                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race status <track>")); return true; }
+                        String tname = args[2];
+                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
+                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        String cur = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
+                        boolean running = raceManager.isRunning();
+                        boolean registering = raceManager.isRegistering();
+                        int regs = raceManager.getRegistered().size();
+                        int laps = raceManager.getTotalLaps();
+                        int participants = running ? raceManager.getParticipants().size() : 0;
+                        int starts = trackConfig.getStarts().size();
+                        int lights = trackConfig.getLights().size();
+                        int cps = trackConfig.getCheckpoints().size();
+                        boolean hasFinish = trackConfig.getFinish() != null;
+                        boolean hasPit = trackConfig.getPitlane() != null;
+                        boolean ready = trackConfig.isReady();
+                        java.util.List<String> missing = ready ? java.util.Collections.emptyList() : trackConfig.missingRequirements();
+
+                        p.sendMessage(Text.colorize(prefix + "&eRace status:"));
+                        p.sendMessage(Text.colorize("&7Track: &f" + cur));
+                        p.sendMessage(Text.colorize(running ? "&aRace running &7(Participants: &f" + participants + "&7)" : "&7No race running."));
+                        p.sendMessage(Text.colorize(registering ? "&eRegistration open &7(Registered: &f" + regs + "&7)" : "&7Registration closed."));
+                        p.sendMessage(Text.colorize("&7Laps: &f" + laps));
+                        p.sendMessage(Text.colorize("&7Starts: &f" + starts + " &8• &7Start lights: &f" + lights + "/5 &8• &7Finish: &f" + (hasFinish?"yes":"no") + " &8• &7Pit area: &f" + (hasPit?"yes":"no")));
+                        p.sendMessage(Text.colorize("&7Checkpoints: &f" + cps));
+                        if (ready) {
+                            p.sendMessage(Text.colorize("&aTrack is ready."));
+                        } else {
+                            p.sendMessage(Text.colorize("&cTrack is not ready: &7" + String.join(", ", missing)));
+                        }
                         return true;
                     }
                     default -> { p.sendMessage(Text.colorize(prefix + "&cUnknown race subcommand. Use /" + label + " race help")); return true; }
@@ -302,16 +400,19 @@ public class BoatRacingPlugin extends JavaPlugin {
                 }
                 if (args.length == 1 || args[1].equalsIgnoreCase("help")) {
                     p.sendMessage(Text.colorize(prefix + "&eSetup commands:"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addstart &7(Add your current position as a start slot)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addstart &7(Add your current position as a start slot; repeat to add multiple)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearstarts &7(Remove all start slots)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setfinish &7(Use your BoatRacing selection for the finish line region)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpit &7(Use your BoatRacing selection for the pit lane region)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addcheckpoint &7(Add a checkpoint from your selection; order matters)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpit &7(Use your selection for the pit area; Corner A at entry, Corner B at exit)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addcheckpoint &7(Add a checkpoint from your selection; you can add multiple. Order matters)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addlight &7(Add the redstone lamp you're looking at as a start light; max 5, left-to-right order)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearlights &7(Remove all configured start lights)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setlaps <n> &7(Set the number of laps for the race)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearcheckpoints &7(Remove all checkpoints)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup show &7(Summary of current track config)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup selinfo &7(Selection debug: current BoatRacing selection)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup wand &7(Give the BoatRacing selection tool)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup wizard start &7(Launch guided setup assistant)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup wizard &7(Launch guided setup assistant)"));
                     return true;
                 }
                 String sub = args[1].toLowerCase();
@@ -323,26 +424,30 @@ public class BoatRacingPlugin extends JavaPlugin {
                         return true;
                     }
                     case "wizard" -> {
-                        if (args.length < 3) {
-                            p.sendMessage(Text.colorize(prefix + "&eSetup Wizard:"));
-                            p.sendMessage(Text.colorize("&7Use &f/" + label + " setup wizard &7<start|back|status|cancel>"));
-                            p.sendMessage(Text.colorize("&7The wizard auto-advances when each step is completed."));
-                            return true;
+                        // Guided setup assistant with simple sub-actions
+                        if (args.length >= 3) {
+                            String action = args[2].toLowerCase();
+                            switch (action) {
+                                case "finish" -> setupWizard.finish(p);
+                                case "back" -> setupWizard.back(p);
+                                case "status" -> setupWizard.status(p);
+                                case "cancel" -> setupWizard.cancel(p);
+                                case "skip" -> setupWizard.skip(p); // only works on optional steps
+                                case "next" -> setupWizard.next(p);
+                                default -> setupWizard.start(p);
+                            }
+                        } else if (setupWizard.isActive(p)) {
+                            setupWizard.status(p);
+                        } else {
+                            setupWizard.start(p);
                         }
-                        String wop = args[2].toLowerCase();
-                        switch (wop) {
-                            case "start" -> { setupWizard.start(p); return true; }
-                            case "next" -> { setupWizard.next(p); return true; }
-                            case "back" -> { setupWizard.back(p); return true; }
-                            case "status" -> { setupWizard.status(p); return true; }
-                            case "cancel" -> { setupWizard.cancel(p); return true; }
-                            default -> { p.sendMessage(Text.colorize(prefix + "&cUnknown wizard action. Use start|next|back|status|cancel")); return true; }
-                        }
+                        return true;
                     }
                     case "addstart" -> {
                         org.bukkit.Location loc = p.getLocation();
                         trackConfig.addStart(loc);
                         p.sendMessage(Text.colorize(prefix + "&aAdded start slot at &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ() + " &7(" + loc.getWorld().getName() + ")"));
+                        p.sendMessage(Text.colorize("&7Tip: You can add multiple start slots. Run the command again to add more."));
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
@@ -374,7 +479,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         Region r = new Region(sel.worldName, sel.box);
                         trackConfig.setPitlane(r);
-                        p.sendMessage(Text.colorize(prefix + "&aPit lane region set (" + fmtBox(sel.box) + ")"));
+                        p.sendMessage(Text.colorize(prefix + "&aPit area region set (" + fmtBox(sel.box) + ")"));
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
@@ -388,8 +493,44 @@ public class BoatRacingPlugin extends JavaPlugin {
                         Region r = new Region(sel.worldName, sel.box);
                         trackConfig.addCheckpoint(r);
                         p.sendMessage(Text.colorize(prefix + "&aAdded checkpoint #&f" + trackConfig.getCheckpoints().size() + " &7(" + fmtBox(sel.box) + ")"));
+                        p.sendMessage(Text.colorize("&7Tip: You can add multiple checkpoints. Order matters."));
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
+                    }
+                    case "addlight" -> {
+                        org.bukkit.block.Block target = p.getTargetBlockExact(6);
+                        if (target == null) {
+                            p.sendMessage(Text.colorize(prefix + "&cLook at a Redstone Lamp within 6 blocks."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        boolean ok = trackConfig.addLight(target);
+                        if (!ok) {
+                            p.sendMessage(Text.colorize(prefix + "&cCould not add light. Use a Redstone Lamp, avoid duplicates, and max 5."));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        p.sendMessage(Text.colorize(prefix + "&aAdded start light &7(" + target.getX() + ", " + target.getY() + ", " + target.getZ() + ")"));
+                        p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
+                        if (setupWizard != null) setupWizard.afterAction(p);
+                    }
+                    case "clearlights" -> {
+                        trackConfig.clearLights();
+                        p.sendMessage(Text.colorize(prefix + "&aCleared all start lights."));
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
+                        if (setupWizard != null) setupWizard.afterAction(p);
+                    }
+                    case "setlaps" -> {
+                        if (args.length < 3 || !args[2].matches("\\d+")) {
+                            p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " setup setlaps <number>"));
+                            return true;
+                        }
+                        int laps = Math.max(1, Integer.parseInt(args[2]));
+                        raceManager.setTotalLaps(laps);
+                        p.sendMessage(Text.colorize(prefix + "&aLaps set to &f" + laps));
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+                        if (setupWizard != null) setupWizard.afterAction(p);
+                        return true;
                     }
                     case "clearcheckpoints" -> {
                         trackConfig.clearCheckpoints();
@@ -399,6 +540,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                     }
                     case "show" -> {
                         int starts = trackConfig.getStarts().size();
+                        int lights = trackConfig.getLights().size();
                         int cps = trackConfig.getCheckpoints().size();
                         boolean hasFinish = trackConfig.getFinish() != null;
                         boolean hasPit = trackConfig.getPitlane() != null;
@@ -406,8 +548,9 @@ public class BoatRacingPlugin extends JavaPlugin {
                         String tname = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
                         p.sendMessage(Text.colorize("&7 - &fTrack: &e" + tname));
                         p.sendMessage(Text.colorize("&7 - &fStarts: &e" + starts));
+                        p.sendMessage(Text.colorize("&7 - &fStart lights: &e" + lights + "/5"));
                         p.sendMessage(Text.colorize("&7 - &fFinish: &e" + (hasFinish ? "yes" : "no")));
-                        p.sendMessage(Text.colorize("&7 - &fPit lane: &e" + (hasPit ? "yes" : "no")));
+                        p.sendMessage(Text.colorize("&7 - &fPit area: &e" + (hasPit ? "yes" : "no")));
                         p.sendMessage(Text.colorize("&7 - &fCheckpoints: &e" + cps));
                     }
                     case "selinfo" -> {
@@ -750,24 +893,24 @@ public class BoatRacingPlugin extends JavaPlugin {
                 }
                 return true;
             }
-            // /boatracing teams leave
+            // /boatracing teams leave (with confirm if team would be empty)
             if (args.length >= 2 && args[1].equalsIgnoreCase("leave")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
                 if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
                 es.jaie55.boatracing.team.Team t = ot.get();
-                // Allow leaving even if last member; delete team if it becomes empty
+                if (t.getMembers().size() <= 1) {
+                    pendingDisband.add(p.getUniqueId());
+                    p.sendMessage(Text.colorize(prefix + "&eYou are the last member. Leaving will delete the team."));
+                    p.sendMessage(Text.colorize(prefix + "&7Type &b/"+label+" teams confirm &7to proceed or &b/"+label+" teams cancel &7to abort."));
+                    return true;
+                }
                 t.removeMember(p.getUniqueId());
-                if (t.getMembers().isEmpty()) {
-                    teamManager.deleteTeam(t);
-                    p.sendMessage(Text.colorize(prefix + "&aYou left and your team was deleted (no members left)."));
-                } else {
-                    teamManager.save();
-                    p.sendMessage(Text.colorize(prefix + "&aYou left the team."));
-                    for (java.util.UUID m : t.getMembers()) {
-                        org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
-                        if (op.isOnline() && op.getPlayer() != null) {
-                            op.getPlayer().sendMessage(Text.colorize(prefix + "&e" + p.getName() + " left the team."));
-                        }
+                teamManager.save();
+                p.sendMessage(Text.colorize(prefix + "&aYou left the team."));
+                for (java.util.UUID m : t.getMembers()) {
+                    org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
+                    if (op.isOnline() && op.getPlayer() != null) {
+                        op.getPlayer().sendMessage(Text.colorize(prefix + "&e" + p.getName() + " left the team."));
                     }
                 }
                 return true;
@@ -828,6 +971,17 @@ public class BoatRacingPlugin extends JavaPlugin {
                 return true;
             }
             if (args.length >= 2 && args[1].equalsIgnoreCase("confirm")) {
+                // Confirm pending dangerous actions (last-member leave -> disband)
+                if (pendingDisband.remove(p.getUniqueId())) {
+                    java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
+                    if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
+                    es.jaie55.boatracing.team.Team t = ot.get();
+                    // Proceed: remove member (self) and delete team since no members left
+                    t.removeMember(p.getUniqueId());
+                    teamManager.deleteTeam(t);
+                    p.sendMessage(Text.colorize(prefix + "&aYou left and the team was deleted (no members left)."));
+                    return true;
+                }
                 p.sendMessage(Text.colorize(prefix + "&cNothing to confirm."));
                 return true;
             }
@@ -886,13 +1040,21 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (args.length >= 2 && args[0].equalsIgnoreCase("race")) {
                 if (!sender.hasPermission("boatracing.setup")) return java.util.Collections.emptyList();
                 if (args.length == 2) return java.util.Arrays.asList("help","open","join","leave","force","start","stop","status");
-                if (args.length == 3 && (args[1].equalsIgnoreCase("open") || args[1].equalsIgnoreCase("start"))) return java.util.Collections.singletonList("3");
+                // For subcommands that take <track>, suggest track names from library
+                if (args.length == 3 && java.util.Arrays.asList("open","join","leave","force","start","stop","status").contains(args[1].toLowerCase())) {
+                    String prefix = args[2] == null ? "" : args[2].toLowerCase();
+                    java.util.List<String> names = new java.util.ArrayList<>();
+                    if (trackLibrary != null) {
+                        for (String n : trackLibrary.list()) if (n.toLowerCase().startsWith(prefix)) names.add(n);
+                    }
+                    return names;
+                }
                 return java.util.Collections.emptyList();
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","setpit","addcheckpoint","clearcheckpoints","show","selinfo","wand","wizard");
-                if (args.length == 3 && args[1].equalsIgnoreCase("wizard")) return Arrays.asList("start","next","back","status","cancel");
+                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","setpit","addcheckpoint","clearcheckpoints","addlight","clearlights","show","selinfo","wand","wizard");
+                // Do not expose wizard subcommands in tab-completion; single entrypoint UX
                 return Collections.emptyList();
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("teams")) {
