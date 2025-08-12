@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [Unreleased]
+### Added
+- Live scoreboard: per-player sidebar showing Lap, Checkpoints, and Elapsed Time with periodic updates; created on race start and cleared on stop/reset/cancel.
+
+### Fixed
+- Pitstop as finish: crossing the configured pit area now counts as finish for lap progression once all checkpoints for the lap have been collected (pit time penalty still applies when enabled).
+
+### Añadido (ES)
+- Marcador en vivo: panel lateral por jugador con Vuelta, Checkpoints y Tiempo transcurrido, con actualizaciones periódicas; se crea al iniciar la carrera y se limpia al parar/reiniciar/cancelar.
+
+### Corregido (ES)
+- “Pit como meta”: cruzar por el área de boxes ahora cuenta como línea de meta para la progresión de vuelta cuando se han completado los checkpoints de esa vuelta (la penalización de boxes se mantiene si está habilitada).
+
 ## [1.0.3]
 ### Added
 - Admin Tracks GUI: create, select, save as, delete named tracks (with confirmation). Requires `boatracing.setup`.
@@ -25,6 +38,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
  - False start penalties: moving forward during the start-light countdown applies a configurable time penalty (`racing.false-start-penalty-seconds`, default 3.0). Messages are in English.
  - New config flags: `racing.enable-pit-penalty` and `racing.enable-false-start-penalty` to toggle pit and false-start penalties.
  - Race permissions split: default-true for `boatracing.race.join`, `boatracing.race.leave`, and `boatracing.race.status`; admin actions require `boatracing.race.admin` (or `boatracing.setup`).
+ - Live scoreboard: per-player sidebar showing Lap, Checkpoints, and Elapsed Time with periodic updates; created on race start and cleared on stop/reset/cancel.
+ - Pitstop as finish: crossing the configured pit area now counts as finish for lap progression once all checkpoints for the lap have been collected (pit time penalty still applies when enabled).
 
 ### Changed
 - Footer fillers switched from LIGHT_GRAY_STAINED_GLASS_PANE to GRAY_STAINED_GLASS_PANE for a darker look.

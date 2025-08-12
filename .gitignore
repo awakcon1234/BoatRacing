@@ -19,7 +19,6 @@
 !/.github/**
 
 # Explicit excludes (redundant with the allowlist but documented)
-/CHECKLIST.md
 /mvnw
 /mvnw.cmd
 /target/
@@ -29,3 +28,6 @@
 /.settings/
 /.vscode/
 /.project
+ 
+# Allow QA checklist to be committed
+!/CHECKLIST.md
