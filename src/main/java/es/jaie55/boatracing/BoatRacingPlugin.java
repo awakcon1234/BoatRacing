@@ -134,6 +134,25 @@ public class BoatRacingPlugin extends JavaPlugin {
     getLogger().info("BoatRacing enabled");
     }
 
+    // Resolve an OfflinePlayer without remote lookups: prefer online, then cache, or UUID literal
+    private org.bukkit.OfflinePlayer resolveOffline(String token) {
+        if (token == null || token.isEmpty()) return null;
+        // 1) Exact online match
+        org.bukkit.entity.Player online = Bukkit.getPlayerExact(token);
+        if (online != null) return online;
+        // 2) Try UUID literal
+        try {
+            java.util.UUID uid = java.util.UUID.fromString(token);
+            return Bukkit.getOfflinePlayer(uid);
+        } catch (IllegalArgumentException ignored) {}
+        // 3) Try offline cache entries by name (case-insensitive)
+        for (org.bukkit.OfflinePlayer op : Bukkit.getOfflinePlayers()) {
+            if (op.getName() != null && op.getName().equalsIgnoreCase(token)) return op;
+        }
+        // Not found locally
+        return null;
+    }
+
     @Override
     public void onDisable() {
         if (teamManager != null) teamManager.save();
@@ -238,11 +257,6 @@ public class BoatRacingPlugin extends JavaPlugin {
                         return true;
                     }
                     case "join" -> {
-                        if (!p.hasPermission("boatracing.race.join")) {
-                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
-                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                            return true;
-                        }
                         if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race join <track>")); return true; }
                         String tname = args[2];
                         if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
@@ -263,11 +277,6 @@ public class BoatRacingPlugin extends JavaPlugin {
                         return true;
                     }
                     case "leave" -> {
-                        if (!p.hasPermission("boatracing.race.leave")) {
-                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
-                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                            return true;
-                        }
                         if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race leave <track>")); return true; }
                         String tname = args[2];
                         if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
@@ -403,11 +412,13 @@ public class BoatRacingPlugin extends JavaPlugin {
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addstart &7(Add your current position as a start slot; repeat to add multiple)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearstarts &7(Remove all start slots)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setfinish &7(Use your BoatRacing selection for the finish line region)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpit &7(Use your selection for the pit area; Corner A at entry, Corner B at exit)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpit [team] &7(Set default pit from your selection, or team-specific pit if a team is provided)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addcheckpoint &7(Add a checkpoint from your selection; you can add multiple. Order matters)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addlight &7(Add the redstone lamp you're looking at as a start light; max 5, left-to-right order)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearlights &7(Remove all configured start lights)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setlaps <n> &7(Set the number of laps for the race)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpos <player> <slot|auto> &7(Bind a player to a specific start slot, 1-based; auto removes binding)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearpos <player> &7(Remove a player's custom start slot)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearcheckpoints &7(Remove all checkpoints)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup show &7(Summary of current track config)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup selinfo &7(Selection debug: current BoatRacing selection)"));
@@ -478,10 +489,19 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         Region r = new Region(sel.worldName, sel.box);
-                        trackConfig.setPitlane(r);
-                        p.sendMessage(Text.colorize(prefix + "&aPit area region set (" + fmtBox(sel.box) + ")"));
+                        if (args.length >= 3) {
+                            String teamName = args[2];
+                            var ot = teamManager.findByName(teamName);
+                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
+                            trackConfig.setTeamPit(ot.get().getId(), r);
+                            p.sendMessage(Text.colorize(prefix + "&aSet pit area for team &f" + ot.get().getName() + " &7(" + fmtBox(sel.box) + ")"));
+                        } else {
+                            trackConfig.setPitlane(r);
+                            p.sendMessage(Text.colorize(prefix + "&aDefault pit area set (" + fmtBox(sel.box) + ")"));
+                        }
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
+                        return true;
                     }
                     case "addcheckpoint" -> {
                         var sel = SelectionUtils.getSelectionDetailed(p);
@@ -532,6 +552,32 @@ public class BoatRacingPlugin extends JavaPlugin {
                         if (setupWizard != null) setupWizard.afterAction(p);
                         return true;
                     }
+                    case "setpos" -> {
+                        if (args.length < 4) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " setup setpos <player> <slot|auto>")); return true; }
+                        org.bukkit.OfflinePlayer off = resolveOffline(args[2]);
+                        if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
+                        String slotArg = args[3];
+                        if (slotArg.equalsIgnoreCase("auto")) {
+                            trackConfig.clearCustomStartSlot(off.getUniqueId());
+                            p.sendMessage(Text.colorize(prefix + "&aRemoved custom start position for &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString())));
+                        } else if (slotArg.matches("\\d+")) {
+                            int oneBased = Integer.parseInt(slotArg);
+                            if (oneBased < 1 || oneBased > trackConfig.getStarts().size()) { p.sendMessage(Text.colorize(prefix + "&cInvalid slot. Range: 1-" + trackConfig.getStarts().size())); return true; }
+                            trackConfig.setCustomStartSlot(off.getUniqueId(), oneBased - 1);
+                            p.sendMessage(Text.colorize(prefix + "&aSet custom start position for &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString()) + " &7to slot &f#" + oneBased));
+                        } else {
+                            p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " setup setpos <player> <slot|auto>"));
+                        }
+                        return true;
+                    }
+                    case "clearpos" -> {
+                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " setup clearpos <player>")); return true; }
+                        org.bukkit.OfflinePlayer off = resolveOffline(args[2]);
+                        if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
+                        trackConfig.clearCustomStartSlot(off.getUniqueId());
+                        p.sendMessage(Text.colorize(prefix + "&aRemoved custom start position for &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString())));
+                        return true;
+                    }
                     case "clearcheckpoints" -> {
                         trackConfig.clearCheckpoints();
                         p.sendMessage(Text.colorize(prefix + "&aCleared all checkpoints."));
@@ -544,13 +590,17 @@ public class BoatRacingPlugin extends JavaPlugin {
                         int cps = trackConfig.getCheckpoints().size();
                         boolean hasFinish = trackConfig.getFinish() != null;
                         boolean hasPit = trackConfig.getPitlane() != null;
+                        int teamPitCount = trackConfig.getTeamPits().size();
+                        int customStarts = trackConfig.getCustomStartSlots().size();
                         p.sendMessage(Text.colorize(prefix + "&eTrack config:"));
                         String tname = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
                         p.sendMessage(Text.colorize("&7 - &fTrack: &e" + tname));
                         p.sendMessage(Text.colorize("&7 - &fStarts: &e" + starts));
                         p.sendMessage(Text.colorize("&7 - &fStart lights: &e" + lights + "/5"));
                         p.sendMessage(Text.colorize("&7 - &fFinish: &e" + (hasFinish ? "yes" : "no")));
-                        p.sendMessage(Text.colorize("&7 - &fPit area: &e" + (hasPit ? "yes" : "no")));
+                        p.sendMessage(Text.colorize("&7 - &fPit area (default): &e" + (hasPit ? "yes" : "no")));
+                        p.sendMessage(Text.colorize("&7 - &fTeam-specific pits: &e" + (teamPitCount > 0 ? (teamPitCount + " configured") : "none")));
+                        p.sendMessage(Text.colorize("&7 - &fCustom start positions: &e" + (customStarts > 0 ? (customStarts + " player(s)") : "none")));
                         p.sendMessage(Text.colorize("&7 - &fCheckpoints: &e" + cps));
                     }
                     case "selinfo" -> {
@@ -677,7 +727,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                             var ot = teamManager.findByName(args[3]);
                             if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
                             org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[4]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
+                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found locally. Use UUID or ask the player to join once.")); return true; }
                             // remove from previous team if any
                             teamManager.getTeamByMember(off.getUniqueId()).ifPresent(prev -> { prev.removeMember(off.getUniqueId()); });
                             boolean ok = teamManager.addMember(ot.get(), off.getUniqueId());
@@ -696,7 +746,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                             var ot = teamManager.findByName(args[3]);
                             if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
                             org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[4]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
+                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found locally. Use UUID or ask the player to join once.")); return true; }
                             boolean ok = teamManager.removeMember(ot.get(), off.getUniqueId());
                             if (!ok) { p.sendMessage(Text.colorize(prefix + "&cPlayer is not a member of that team.")); return true; }
                             p.sendMessage(Text.colorize(prefix + "&aRemoved &f" + off.getName() + " &afrom team &f" + ot.get().getName()));
@@ -718,8 +768,8 @@ public class BoatRacingPlugin extends JavaPlugin {
                     switch (op) {
                         case "setteam" -> {
                             if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cUsage: /"+label+" admin player setteam <player> <team|none>")); return true; }
-                            org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[3]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
+                            org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
+                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found locally. Use UUID or ask the player to join once.")); return true; }
                             String teamName = args[4];
                             teamManager.getTeamByMember(off.getUniqueId()).ifPresent(prev -> prev.removeMember(off.getUniqueId()));
                             if (!teamName.equalsIgnoreCase("none")) {
@@ -743,7 +793,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         case "setnumber" -> {
                             if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cUsage: /"+label+" admin player setnumber <player> <1-99>")); return true; }
-                            org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[3]);
+                            org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
                             if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
                             int num;
                             try { num = Integer.parseInt(args[4]); } catch (Exception ex) { p.sendMessage(Text.colorize(prefix + "&cInvalid number.")); return true; }
@@ -763,7 +813,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         case "setboat" -> {
                             if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cUsage: /"+label+" admin player setboat <player> <BoatType>")); return true; }
-                            org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[3]);
+                            org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
                             if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
                             String type = args[4].toUpperCase();
                             // Validate against allowed boats (vanilla boats and chest boats)
@@ -1053,7 +1103,38 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","setpit","addcheckpoint","clearcheckpoints","addlight","clearlights","show","selinfo","wand","wizard");
+                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","setpit","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
+                if (args.length == 3 && args[1].equalsIgnoreCase("setpit")) {
+                    String prefix = args[2] == null ? "" : args[2].toLowerCase();
+                    java.util.List<String> names = new java.util.ArrayList<>();
+                    for (es.jaie55.boatracing.team.Team t : teamManager.getTeams()) {
+                        String name = t.getName();
+                        if (name != null && name.toLowerCase().startsWith(prefix)) names.add(name);
+                    }
+                    return names;
+                }
+                if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
+                    // Suggest player names (online + known offline)
+                    String prefName = args[2] == null ? "" : args[2].toLowerCase();
+                    java.util.Set<String> names = new java.util.LinkedHashSet<>();
+                    for (org.bukkit.entity.Player op : org.bukkit.Bukkit.getOnlinePlayers()) {
+                        if (op.getName() != null && op.getName().toLowerCase().startsWith(prefName)) names.add(op.getName());
+                    }
+                    for (org.bukkit.OfflinePlayer op : org.bukkit.Bukkit.getOfflinePlayers()) {
+                        if (op.getName() != null && op.getName().toLowerCase().startsWith(prefName)) names.add(op.getName());
+                    }
+                    if (args.length == 3) return new java.util.ArrayList<>(names);
+                    if (args.length == 4 && args[1].equalsIgnoreCase("setpos")) {
+                        // Suggest slot numbers and keyword 'auto'
+                        java.util.List<String> opts = new java.util.ArrayList<>();
+                        opts.add("auto");
+                        int max = trackConfig.getStarts().size();
+                        for (int i = 1; i <= Math.min(max, 20); i++) opts.add(String.valueOf(i));
+                        String pref = args[3] == null ? "" : args[3].toLowerCase();
+                        return opts.stream().filter(s -> s.startsWith(pref)).toList();
+                    }
+                    return java.util.Collections.emptyList();
+                }
                 // Do not expose wizard subcommands in tab-completion; single entrypoint UX
                 return Collections.emptyList();
             }

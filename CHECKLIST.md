@@ -157,7 +157,7 @@ Recommended flow:
 
 ### Number and Boat
 - `/boatracing teams number <1-99>`; validation errors handled.
-- `/boatracing teams boat <MATERIAL>`; only `*_BOAT` types accepted; others rejected.
+ - `/boatracing teams boat <MATERIAL>`; only `*_BOAT` types accepted; others rejected. Chest variants are listed after normal boats.
 
 ### Protected actions (Admin only)
 - Rename/color/delete are Admin-only; via command use the `boatracing admin ...` namespace above.
@@ -168,6 +168,8 @@ Recommended flow:
 - `/boatracing teams` → `create`, `join`, `leave`, `boat`, `number` (and, when applicable, `rename`, `color` for admins only).
 - `/boatracing teams color` → list of dye colors.
 - `/boatracing teams boat` → list of allowed boats (normal and chest).
+- `/boatracing setup setpos` → suggests online player names; for the 2nd arg suggests `auto` and valid slot numbers (1-based).
+- `/boatracing setup clearpos` → suggests online player names.
 - `/boatracing admin team ...` and `/boatracing admin player ...` → subcommand/parameter completion (team/player names).
 
 ## Persistence and reload
@@ -228,7 +230,7 @@ Neutral phrasing:
 
 - Built-in BoatRacing selection tool (no WorldEdit/FAWE required).
 - In-game messaging is English-only. This checklist is now in English.
- - Penalties: disable via `racing.enable-pit-penalty` and/or `racing.enable-false-start-penalty`. False-start penalty seconds via `racing.false-start-penalty-seconds`.
+ - Penalties: disable via `racing.enable-pit-penalty` and/or `racing.enable-false-start-penalty`. False-start penalty seconds via `racing.false-start-penalty-seconds`. Mandatory pitstops via `racing.mandatory-pitstops` (0 = disabled).
 
 ## Track setup (built-in tool) and wizard
 
@@ -244,8 +246,9 @@ Goal: make a functional track with starts and finish (required). Pit and checkpo
 - Per-step navigation: clickable emojis ⟵ Back, ℹ Status, ✖ Cancel.
 Clickable verifications (all should paste the command to chat with hover “Click to paste: …”):
 - Starts: `[Add start]`, `[Clear starts]`
+ - Starts (optional custom positions): `[Set custom slot]` → `/boatracing setup setpos <player> <slot>`, `[Clear custom slot]` → `/boatracing setup clearpos <player>`, `[Auto assign]` → `/boatracing setup setpos <player> auto`. The wizard should also display “Custom slots configured: N”.
 - Finish: `[Set finish]`, `[Get wand]`
-- Pit area (optional): `[Set pit]`, `[Get wand]`
+- Pit area (optional): `[Set pit]` (default pit) or `[Set pit <team>]` for team-specific pits (tab‑complete), `[Get wand]`
 - Checkpoints (optional): `[Add checkpoint]`, `[Get wand]`
 - Laps: `[1]` `[3]` `[5]` and `[Finish]`
 - Done: `[Open registration]`, `[Setup show]` (no “Start now” from the wizard)
@@ -255,6 +258,7 @@ Clickable verifications (all should paste the command to chat with hover “Clic
 - After each `addstart`, the wizard returns to what’s next.
 - If you make a mistake, run `/boatracing setup clearstarts`.
  - Alternative: use `[Add start]` and `[Clear starts]` clickable buttons from the wizard message.
+ - Optional (custom per-player slots): `/boatracing setup setpos <player> <slot|auto>` to bind a player to a specific start slot (1-based) or remove binding with `auto`/`clearpos`. These bindings take priority at race start.
 
 4) Finish
 - Make a cuboid selection around the finish line and run `/boatracing setup setfinish`.
@@ -271,7 +275,7 @@ Clickable verifications (all should paste the command to chat with hover “Clic
  - Alternative: click `[Add checkpoint]`.
 
 7) Review
-- Run `/boatracing setup show` to see the summary (includes “Track: <name>` if saved/loaded from Admin Tracks GUI).
+- Run `/boatracing setup show` to see the summary (includes “Track: <name>` if saved/loaded from Admin Tracks GUI). It now also shows if there are team-specific pits and how many custom start positions exist.
 - Optional: use the Tracks GUI to create multiple tracks.
  - After creating a track in the Tracks GUI, a clickable tip should appear to paste `/boatracing setup wizard`.
 
@@ -287,6 +291,7 @@ Clickable verifications (all should paste the command to chat with hover “Clic
 	- Placed on a unique start.
 	- Facing forward (pitch 0).
 	- Mounted in their selected boat type.
+	- Grid priority respected: players with custom start slot bindings are placed on those slots first; remaining racers are ordered by best recorded time on that track (fastest first); racers without time are placed last.
 - Verify that with checkpoints configured, passing them in order and crossing finish counts laps; without checkpoints, crossing finish counts laps directly; race ends after configured laps.
 
 3) Pit penalty and pit-as-finish (optional)

@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.0.4] - 2025-08-13
+### Added
+- Team-specific pit areas via unified command `/boatracing setup setpit [team]` (tab‑completion for team names). Wizard updated accordingly.
+- Mandatory pitstops via config `racing.mandatory-pitstops` (default 0). Pitstops increment on pit exit and are required to finish when > 0.
+ - Per-player custom start slots with `/boatracing setup setpos <player> <slot|auto>` and `/boatracing setup clearpos <player>`; tab completion for player names, `auto`, and slot numbers. Slots are 1-based in the command and stored 0-based.
+ - Grid ordering by best recorded time per track (fastest first); racers without a time are placed after those with times.
+ - Setup show now includes the presence of team-specific pits and the number of custom start positions configured.
+ - Wizard (Starts): added optional clickable actions for custom start slots (setpos/clearpos/auto) and a counter of configured custom slots.
+
+### Changed
+- Permissions: players can use `join`, `leave`, and `status` by default; only `open|start|force|stop` remain admin‑only. Removed extra runtime permission checks for join/leave.
+
+### Fixed
+- Boats now spawn with the player’s selected wood type using a resilient enum mapping with safe fallback to OAK across API versions.
+
 ## [Unreleased]
 ### Added
 - Live scoreboard: per-player sidebar showing Lap, Checkpoints, and Elapsed Time with periodic updates; created on race start and cleared on stop/reset/cancel.
@@ -68,6 +83,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## [1.0.3] - 2025-08-12
 - Public release noted in README. Core gameplay, teams, GUIs, WE/FAWE setup, racing, and update checks.
 
-[Unreleased]: https://github.com/Jaie55/BoatRacing/compare/v1.0.3...HEAD
+[Unreleased]: https://github.com/Jaie55/BoatRacing/compare/v1.0.4...HEAD
+
+[1.0.4]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.4
 
 [1.0.3]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.3

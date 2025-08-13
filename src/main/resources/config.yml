@@ -19,6 +19,7 @@ updates:
   notify-admins: true
 racing:
   laps: 3
+  mandatory-pitstops: 0  # Number of mandatory pit stops per racer per race; 0 to disable
   pit-penalty-seconds: 5.0
   registration-seconds: 300
   # Time penalty applied if a racer moves forward before the countdown ends (in seconds)
