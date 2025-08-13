@@ -104,8 +104,7 @@ public class TeamManager {
             java.util.List<String> mems = t.getMembers().stream().map(UUID::toString).collect(Collectors.toList());
             teamsCfg.set(path + ".members", mems);
         }
-        // Write racers: per-player number and boat type
-        racersCfg.set("racers", null);
+    // Write racers: per-player number and boat type (do NOT clear the whole section to avoid accidental data loss)
         for (Team t : teams.values()) {
             for (UUID m : t.getMembers()) {
                 String base = "racers." + m;
@@ -141,7 +140,7 @@ public class TeamManager {
             Team t = new Team(id, name, color, leader);
                     java.util.List<String> mems = cfg.getStringList(path + ".members");
                     for (String s : mems) {
-                        try { t.addMember(UUID.fromString(s)); } catch (Exception ignored) {}
+                        try { t.addMemberUnchecked(UUID.fromString(s)); } catch (Exception ignored) {}
                     }
                     // Load per-member preferences from old structure
                     ConfigurationSection rs = cfg.getConfigurationSection(path + ".racerNumbers");
@@ -172,13 +171,14 @@ public class TeamManager {
             // New format: no leader; just members list
             Team t = new Team(id, name, color, null);
             java.util.List<String> mems = teamsCfg.getStringList(path + ".members");
-            for (String s : mems) {
-                try { t.addMember(UUID.fromString(s)); } catch (Exception ignored) {}
-            }
+                for (String s : mems) {
+                    try { t.addMemberUnchecked(UUID.fromString(s)); } catch (Exception ignored) {}
+                }
             teams.put(id, t);
         }
         // Load racers from racers.yml
         ConfigurationSection rs = racersCfg.getConfigurationSection("racers");
+        boolean hadRacers = false;
         if (rs != null) {
             for (String pid : rs.getKeys(false)) {
                 UUID uid;
@@ -191,6 +191,45 @@ public class TeamManager {
                     if (num > 0) ot.get().setRacerNumber(uid, num);
                     if (boat != null && !boat.isEmpty()) ot.get().setBoatType(uid, boat);
                 }
+                hadRacers = true;
+            }
+        }
+
+        // Migration: if racers.yml has no data but old config.yml contains per-player settings, import them
+        if (!hadRacers) {
+            FileConfiguration legacyCfg = plugin.getConfig();
+            ConfigurationSection legacyTeams = legacyCfg.getConfigurationSection("teams");
+            boolean migrated = false;
+            if (legacyTeams != null) {
+                for (Team t : teams.values()) {
+                    String tid = t.getId().toString();
+                    String base = "teams." + tid;
+                    ConfigurationSection legacyNums = legacyCfg.getConfigurationSection(base + ".racerNumbers");
+                    if (legacyNums != null) {
+                        for (String k : legacyNums.getKeys(false)) {
+                            try {
+                                UUID uid = UUID.fromString(k);
+                                int num = legacyNums.getInt(k, 0);
+                                if (num > 0 && t.isMember(uid)) { t.setRacerNumber(uid, num); migrated = true; }
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    ConfigurationSection legacyBoats = legacyCfg.getConfigurationSection(base + ".boatTypes");
+                    if (legacyBoats != null) {
+                        for (String k : legacyBoats.getKeys(false)) {
+                            try {
+                                UUID uid = UUID.fromString(k);
+                                String bt = legacyBoats.getString(k, null);
+                                if (bt != null && !bt.isEmpty() && t.isMember(uid)) { t.setBoatType(uid, bt); migrated = true; }
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                }
+            }
+            if (migrated) {
+                // Persist migrated data into racers.yml
+                save();
+                try { plugin.getLogger().info("Migrated racer numbers and boat types from old config.yml into racers.yml"); } catch (Throwable ignored) {}
             }
         }
     }

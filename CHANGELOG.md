@@ -4,10 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [1.0.5] - 2025-08-13
+### Fixed
+- Team member persistence: no members are lost after updates/reloads/startup; loader now restores members without enforcing capacity constraints.
+- Setup pit command: `/boatracing setup setpit [team]` now supports team names with spaces by quoting them (e.g., "/boatracing setup setpit \"Toast Peace\""); tab‑completion suggests quoted names when the input starts with a quote.
+- Config defaults: `config.yml` now merges new default keys on update/reload without overwriting user changes.
+- Boat/raft type: placed vehicles now match the racer’s selected wood variant (including chest variants); no longer always spawns OAK. Compatible across API versions with safe fallbacks.
+
+### Corregido (ES)
+- Persistencia de miembros: no se pierden miembros tras actualizar/recargar/arrancar; la carga restaura sin imponer límites de capacidad.
+- Setup pit: `/boatracing setup setpit [team]` admite nombres de equipo con espacios entre comillas (p. ej., "/boatracing setup setpit \"Toast Peace\""); el autocompletado sugiere nombres entrecomillados cuando el input empieza con comillas.
+- Defaults de config: `config.yml` fusiona nuevas claves por defecto al actualizar/recargar sin sobrescribir cambios del usuario.
+- Tipo de barco/raft: ahora coincide con la variante elegida por el jugador (incluidas variantes con cofre); ya no aparece siempre OAK. Compatible entre versiones con fallback seguro.
+
 ## [1.0.4] - 2025-08-13
 ### Added
 - Team-specific pit areas via unified command `/boatracing setup setpit [team]` (tab‑completion for team names). Wizard updated accordingly.
 - Mandatory pitstops via config `racing.mandatory-pitstops` (default 0). Pitstops increment on pit exit and are required to finish when > 0.
+ - Config defaults: `config.yml` now merges new default keys on update/reload without overwriting user changes.
+ - Boat/raft type: placed vehicles now match the racer’s selected wood variant (including chest variants); no longer always spawns OAK. Compatible across API versions with safe fallbacks.
  - Per-player custom start slots with `/boatracing setup setpos <player> <slot|auto>` and `/boatracing setup clearpos <player>`; tab completion for player names, `auto`, and slot numbers. Slots are 1-based in the command and stored 0-based.
  - Grid ordering by best recorded time per track (fastest first); racers without a time are placed after those with times.
  - Setup show now includes the presence of team-specific pits and the number of custom start positions configured.
@@ -83,7 +98,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## [1.0.3] - 2025-08-12
 - Public release noted in README. Core gameplay, teams, GUIs, WE/FAWE setup, racing, and update checks.
 
-[Unreleased]: https://github.com/Jaie55/BoatRacing/compare/v1.0.4...HEAD
+ [Unreleased]: https://github.com/Jaie55/BoatRacing/compare/v1.0.5...HEAD
+
+[1.0.5]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.5
 
 [1.0.4]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.4
 

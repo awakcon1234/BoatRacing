@@ -1,5 +1,17 @@
 README — BoatRacing QA checklist (teams, admin, tracks; two-player tests)
 
+## What to verify for 1.0.5 (quick bugfix validation)
+- Team persistence: after restart/update, no team members are lost; loading does not enforce capacity caps on existing teams.
+- Setup pit quoting: `/boatracing setup setpit "Team With Spaces"` works; tab‑completion suggests quoted names when starting with a quote.
+- Config defaults merge: delete/comment a known key (e.g., `racing.false-start-penalty-seconds`), then `/boatracing reload` — the key should reappear with default value, and existing custom values remain unchanged.
+- Boat/raft type: on start, racers are mounted in their selected wood variant (including chest variants). If RAFT types exist in your server build, they are respected; otherwise BOAT types apply. No forced OAK unless fallback is required.
+
+## Qué verificar para 1.0.5 (bugfix rápido)
+- Persistencia de equipos: tras reiniciar/actualizar, no se pierden miembros; la carga no aplica límites de capacidad a equipos existentes.
+- Comillas en pit de setup: funciona `/boatracing setup setpit "Equipo Con Espacios"`; el autocompletado sugiere nombres entrecomillados al empezar con comillas.
+- Fusión de defaults en config: borra/comenta una clave conocida (p. ej., `racing.false-start-penalty-seconds`), luego `/boatracing reload` — la clave debe reaparecer con su valor por defecto y tus valores personalizados deben mantenerse.
+- Tipo de barco/raft: al comenzar, los corredores se montan en su variante elegida (incluidas variantes con cofre). Si tu build soporta RAFT, se respeta; si no, se usan BOAT. No debe forzarse OAK salvo fallback.
+
 ## Prerequisites
 
 - Paper server 1.21.8, Java 21.
@@ -249,6 +261,7 @@ Clickable verifications (all should paste the command to chat with hover “Clic
  - Starts (optional custom positions): `[Set custom slot]` → `/boatracing setup setpos <player> <slot>`, `[Clear custom slot]` → `/boatracing setup clearpos <player>`, `[Auto assign]` → `/boatracing setup setpos <player> auto`. The wizard should also display “Custom slots configured: N”.
 - Finish: `[Set finish]`, `[Get wand]`
 - Pit area (optional): `[Set pit]` (default pit) or `[Set pit <team>]` for team-specific pits (tab‑complete), `[Get wand]`
+ - Quoted names: if a team name contains spaces, set a team-specific pit using quotes, e.g., `/boatracing setup setpit "Toast Peace"`. Tab‑completion should suggest quoted names when the input starts with a quote.
 - Checkpoints (optional): `[Add checkpoint]`, `[Get wand]`
 - Laps: `[1]` `[3]` `[5]` and `[Finish]`
 - Done: `[Open registration]`, `[Setup show]` (no “Start now” from the wizard)
@@ -291,7 +304,7 @@ Clickable verifications (all should paste the command to chat with hover “Clic
 - Verify on start each racer is:
 	- Placed on a unique start.
 	- Facing forward (pitch 0).
-	- Mounted in their selected boat type.
+	- Mounted in their selected boat/raft type (including chest variants). If RAFT types exist on your Paper build, they should be respected; otherwise BOAT types apply. No forced OAK unless fallback is required.
 	- Grid priority respected: players with custom start slot bindings are placed on those slots first; remaining racers are ordered by best recorded time on that track (fastest first); racers without time are placed last.
 - Verify that with checkpoints configured, passing them in order and crossing finish counts laps; without checkpoints, crossing finish counts laps directly; race ends after configured laps.
 

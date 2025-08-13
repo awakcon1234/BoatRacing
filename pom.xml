@@ -6,7 +6,7 @@
 
     <groupId>es.jaie55</groupId>
     <artifactId>boatracing</artifactId>
-    <version>1.0.4</version>
+    <version>1.0.5</version>
     <name>BoatRacing</name>
     <description>An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.</description>
 

@@ -37,6 +37,11 @@ public class Team {
         return members.add(uuid);
     }
 
+    // Unchecked add used only when loading from storage to preserve existing membership regardless of caps
+    boolean addMemberUnchecked(UUID uuid) {
+        return members.add(uuid);
+    }
+
     public boolean removeMember(UUID uuid) {
         return members.remove(uuid);
     }

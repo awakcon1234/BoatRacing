@@ -2,16 +2,25 @@
 
 An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 
-> Status: Public release (1.0.4)
+> Status: Public release (1.0.5)
 
 See the changelog in [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md).
 
 This is how to test the plugin to validate its behavior after each update: see the QA checklist in [CHECKLIST.md](CHECKLIST.md)
 
+## What’s new (1.0.5)
+Fixes and polish:
+- Team member persistence: no members are lost after updates/reloads/startup; loading restores members without enforcing capacity checks.
+- Setup pit command: `/boatracing setup setpit [team]` now supports team names with spaces by quoting them (e.g., "/boatracing setup setpit \"Toast Peace\""); tab‑completion suggests quoted names when the input starts with a quote.
+- Config defaults: on plugin update or `/boatracing reload`, new default keys are merged into your existing `config.yml` without overwriting your changes.
+- Boat/raft type: racers are mounted in their selected wood variant (including chest variants) instead of always OAK; compatible across API versions with safe fallbacks.
+
 ## What’s new (1.0.4)
 - Team-specific pit areas: new unified command `/boatracing setup setpit [team]` sets the default pit when no team is provided, or the pit for a specific team when a team name is given. Tab‑completion suggests team names.
 - Mandatory pitstops: new `racing.mandatory-pitstops` config (default 0). When > 0, racers must complete at least that many pit exits before they are allowed to finish; pitstops are counted on exiting the pit area and persist for the whole race.
 - Wizard: Pit step updated to mention default pit vs per‑team pits and to guide the flow with clickable tips.
+ - Config updates: on plugin updates/reloads, new `config.yml` keys are merged into your existing file without overwriting your changes.
+ - Boat type: racers are mounted in their selected boat/raft wood variant (including chest variants) instead of always OAK; works across API versions with a safe fallback.
 - Permissions: players can use `join`, `leave`, and `status` by default; only `open|start|force|stop` remain admin‑only. Removed extra runtime checks that could block players with permissive defaults.
 - Boats: spawned boats now respect the player’s selected wood type robustly across API versions; falls back to OAK if the enum value is not available.
 - Per‑player start slots and grid ordering: new setup commands `/boatracing setup setpos <player> <slot|auto>` and `/boatracing setup clearpos <player>`. On race start, players bound to a slot are placed there first; remaining racers are ordered by their best recorded race time on that track (fastest first), and racers without a time are placed last.
@@ -232,16 +241,25 @@ Distributed under the MIT License. See `LICENSE`.
 
 Un plugin de carreras de barcos sobre hielo con estilo F1 para Paper y una GUI limpia tipo vanilla. Gestiona equipos, configura circuitos con la herramienta de selección integrada de BoatRacing, lanza carreras cronometradas con checkpoints, penalizaciones por boxes (pit) y un asistente guiado de configuración.
 
-> Estado: Public release (1.0.4)
+> Estado: Public release (1.0.5)
 
 Consulta [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md) para ver los últimos cambios.
 
 Así es como se prueba el plugin para validar su funcionamiento en cada actualización: ver el checklist en [CHECKLIST.md](CHECKLIST.md)
 
+## Novedades (1.0.5)
+Correcciones y pulido:
+- Persistencia de miembros del equipo: tras actualizaciones/recargas/inicio no se pierden miembros; la carga restaura sin aplicar límites de capacidad.
+- Comando de pit en setup: `/boatracing setup setpit [team]` admite nombres de equipo con espacios usando comillas (p. ej., "/boatracing setup setpit \"Toast Peace\""); el autocompletado sugiere nombres entrecomillados cuando el input empieza con comillas.
+- Valores por defecto de config: al actualizar el plugin o usar `/boatracing reload`, las nuevas claves por defecto se fusionan en tu `config.yml` sin sobrescribir cambios.
+- Tipo de barco/raft: los corredores se montan en la variante de madera elegida (incluidas variantes con cofre) en lugar de OAK siempre; compatible entre versiones con fallback seguro.
+
 ## Novedades (1.0.4)
 - Pits por equipo: comando unificado `/boatracing setup setpit [team]` que fija el pit por defecto si no se indica equipo, o el pit para un equipo concreto si se indica nombre. Autocompleta nombres de equipo.
 - Paradas obligatorias: nueva config `racing.mandatory-pitstops` (por defecto 0). Si es > 0, los corredores deben completar al menos ese número de salidas de pit antes de poder finalizar; las paradas se cuentan al salir del pit y se mantienen toda la carrera.
 - Wizard: paso de Pit actualizado para indicar pit por defecto vs por equipo y guiar con acciones clicables.
+ - Actualización de config: al actualizar/recargar el plugin, las nuevas claves de `config.yml` se fusionan en tu archivo existente sin sobrescribir tus cambios.
+ - Tipo de barco: al colocar a los corredores se usa la variante de madera elegida (incluidas variantes con cofre y raft) en lugar de OAK fijo; compatible entre versiones con fallback seguro.
 - Permisos: los jugadores pueden usar `join`, `leave` y `status` por defecto; solo `open|start|force|stop` siguen siendo solo admin. Se eliminaron comprobaciones extra en runtime que podían bloquear con defaults permisivos.
 - Barcos: ahora respetan de forma robusta la madera seleccionada por el jugador entre versiones del API; fallback a OAK si la enum no existe.
 - Puestos de salida por jugador y orden de parrilla: nuevos comandos `/boatracing setup setpos <player> <slot|auto>` y `/boatracing setup clearpos <player>`. Al empezar, los jugadores con puesto personalizado se colocan primero; el resto se ordena por su mejor tiempo registrado en esa pista (más rápido primero), y los que no tienen tiempo van al final.

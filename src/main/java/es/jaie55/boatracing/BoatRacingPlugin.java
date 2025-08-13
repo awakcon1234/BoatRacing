@@ -9,6 +9,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 
 import es.jaie55.boatracing.team.TeamManager;
 import es.jaie55.boatracing.ui.TeamGUI;
@@ -21,6 +24,8 @@ import es.jaie55.boatracing.track.Region;
 import es.jaie55.boatracing.track.SelectionUtils;
 import es.jaie55.boatracing.race.RaceManager;
 import es.jaie55.boatracing.setup.SetupWizard;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 
 public class BoatRacingPlugin extends JavaPlugin {
     private static BoatRacingPlugin instance;
@@ -56,6 +61,12 @@ public class BoatRacingPlugin extends JavaPlugin {
     public void onEnable() {
         instance = this;
         saveDefaultConfig();
+        // Ensure new default keys are merged into existing config.yml on updates
+        try {
+            mergeConfigDefaults();
+        } catch (Throwable t) {
+            getLogger().warning("Failed to merge default config values: " + t.getMessage());
+        }
         this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
         this.teamManager = new TeamManager(this);
     this.teamGUI = new TeamGUI(this);
@@ -122,6 +133,19 @@ public class BoatRacingPlugin extends JavaPlugin {
                 try {
                     if (getConfig().getBoolean("updates.enabled", true)) {
                         updateChecker.checkAsync();
+                        // After a short delay, if outdated, also log to console
+                        Bukkit.getScheduler().runTaskLater(this, () -> {
+                            try {
+                                if (updateChecker.isChecked() && updateChecker.isOutdated() && getConfig().getBoolean("updates.console-warn", true)) {
+                                    int behind = updateChecker.getBehindCount();
+                                    String current = getPluginMeta().getVersion();
+                                    String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
+                                    Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
+                                    Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
+                                    Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
+                                }
+                            } catch (Throwable ignored2) {}
+                        }, 20L * 5);
                     }
                 } catch (Throwable ignored) {}
             }, period, period);
@@ -132,6 +156,17 @@ public class BoatRacingPlugin extends JavaPlugin {
             getCommand("boatracing").setTabCompleter(this);
         }
     getLogger().info("BoatRacing enabled");
+    }
+
+    // Merge default config.yml values into the existing config without overwriting user changes
+    private void mergeConfigDefaults() {
+        InputStream is = getResource("config.yml");
+        if (is == null) return;
+        YamlConfiguration def = YamlConfiguration.loadConfiguration(new InputStreamReader(is, StandardCharsets.UTF_8));
+        FileConfiguration cfg = getConfig();
+        cfg.addDefaults(def);
+        cfg.options().copyDefaults(true);
+        saveConfig();
     }
 
     // Resolve an OfflinePlayer without remote lookups: prefer online, then cache, or UUID literal
@@ -216,6 +251,8 @@ public class BoatRacingPlugin extends JavaPlugin {
                 // Persist current state, reload config and data
                 if (teamManager != null) teamManager.save();
                 reloadConfig();
+                // After reload, also merge any new defaults into config.yml
+                try { mergeConfigDefaults(); } catch (Throwable ignored) {}
                 this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
                 // Recreate team manager to re-read data and settings
                 this.teamManager = new TeamManager(this);
@@ -490,7 +527,12 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         Region r = new Region(sel.worldName, sel.box);
                         if (args.length >= 3) {
-                            String teamName = args[2];
+                            // Join the rest of tokens to support names with spaces; allow quoted names
+                            String raw = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length)).trim();
+                            String teamName = raw;
+                            if ((teamName.startsWith("\"") && teamName.endsWith("\"")) || (teamName.startsWith("'") && teamName.endsWith("'"))) {
+                                teamName = teamName.substring(1, teamName.length()-1);
+                            }
                             var ot = teamManager.findByName(teamName);
                             if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
                             trackConfig.setTeamPit(ot.get().getId(), r);
@@ -816,12 +858,15 @@ public class BoatRacingPlugin extends JavaPlugin {
                             org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
                             if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found.")); return true; }
                             String type = args[4].toUpperCase();
-                            // Validate against allowed boats (vanilla boats and chest boats)
+                            // Validate against allowed boats: boats, chest boats, and raft names
                             java.util.Set<String> allowed = new java.util.LinkedHashSet<>();
                             for (org.bukkit.Material m : org.bukkit.Material.values()) {
                                 String n = m.name();
                                 if (n.endsWith("_BOAT") || n.endsWith("_CHEST_BOAT")) allowed.add(n);
                             }
+                            // Also accept RAFT/CHEST_RAFT tokens even if not present as Materials
+                            allowed.add("RAFT");
+                            allowed.add("CHEST_RAFT");
                             if (!allowed.contains(type)) { p.sendMessage(Text.colorize(prefix + "&cInvalid boat type.")); return true; }
                             var ot = teamManager.getTeamByMember(off.getUniqueId());
                             if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cPlayer is not in a team.")); return true; }
@@ -987,14 +1032,21 @@ public class BoatRacingPlugin extends JavaPlugin {
                 boolean allowBoat = getConfig().getBoolean("player-actions.allow-set-boat", true);
                 if (!allowBoat) { p.sendMessage(Text.colorize(prefix + "&cThis server has restricted boat changes. Only an administrator can set your boat.")); return true; }
                 String type = args[2].toUpperCase();
-                try {
-                    org.bukkit.Material m = org.bukkit.Material.valueOf(type);
-                    if (!m.name().endsWith("BOAT")) throw new IllegalArgumentException();
-                    ot.get().setBoatType(p.getUniqueId(), m.name());
+                // Accept RAFT tokens directly, otherwise require a valid BOAT material
+                if (type.equals("RAFT") || type.equals("CHEST_RAFT")) {
+                    ot.get().setBoatType(p.getUniqueId(), type);
                     teamManager.save();
                     p.sendMessage(Text.colorize(prefix + "&aYour boat set to &e" + type.toLowerCase() + "&a."));
-                } catch (IllegalArgumentException ex) {
-                    p.sendMessage(Text.colorize(prefix + "&cInvalid boat type."));
+                } else {
+                    try {
+                        org.bukkit.Material m = org.bukkit.Material.valueOf(type);
+                        if (!m.name().endsWith("BOAT")) throw new IllegalArgumentException();
+                        ot.get().setBoatType(p.getUniqueId(), m.name());
+                        teamManager.save();
+                        p.sendMessage(Text.colorize(prefix + "&aYour boat set to &e" + type.toLowerCase() + "&a."));
+                    } catch (IllegalArgumentException ex) {
+                        p.sendMessage(Text.colorize(prefix + "&cInvalid boat type."));
+                    }
                 }
                 return true;
             }
@@ -1085,6 +1137,13 @@ public class BoatRacingPlugin extends JavaPlugin {
                 if (args.length == 2) return java.util.Arrays.asList("help","team","player");
                 if (args.length == 3 && args[1].equalsIgnoreCase("team")) return java.util.Arrays.asList("create","delete","rename","color","add","remove");
                 if (args.length == 3 && args[1].equalsIgnoreCase("player")) return java.util.Arrays.asList("setteam","setnumber","setboat");
+                if (args.length == 5 && args[2].equalsIgnoreCase("setboat")) {
+                    return java.util.Arrays.asList(
+                        "oak_boat","spruce_boat","birch_boat","jungle_boat","acacia_boat","dark_oak_boat","mangrove_boat","cherry_boat","pale_oak_boat",
+                        "oak_chest_boat","spruce_chest_boat","birch_chest_boat","jungle_chest_boat","acacia_chest_boat","dark_oak_chest_boat","mangrove_chest_boat","cherry_chest_boat","pale_oak_chest_boat",
+                        "bamboo_raft","bamboo_chest_raft"
+                    );
+                }
                 return java.util.Collections.emptyList();
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("race")) {
@@ -1104,12 +1163,17 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
                 if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","setpit","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
-                if (args.length == 3 && args[1].equalsIgnoreCase("setpit")) {
-                    String prefix = args[2] == null ? "" : args[2].toLowerCase();
+                if (args.length >= 3 && args[1].equalsIgnoreCase("setpit")) {
+                    // Build current partial input (join tokens from index 2)
+                    String partial = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length)).toLowerCase();
+                    boolean startedQuote = args[2] != null && (args[2].startsWith("\"") || args[2].startsWith("'"));
                     java.util.List<String> names = new java.util.ArrayList<>();
                     for (es.jaie55.boatracing.team.Team t : teamManager.getTeams()) {
                         String name = t.getName();
-                        if (name != null && name.toLowerCase().startsWith(prefix)) names.add(name);
+                        if (name == null) continue;
+                        String quoted = '"' + name + '"';
+                        String cand = startedQuote ? quoted : name;
+                        if (cand.toLowerCase().startsWith(partial)) names.add(cand);
                     }
                     return names;
                 }
@@ -1157,7 +1221,9 @@ public class BoatRacingPlugin extends JavaPlugin {
                     // Normal boats first
                     "oak_boat","spruce_boat","birch_boat","jungle_boat","acacia_boat","dark_oak_boat","mangrove_boat","cherry_boat","pale_oak_boat",
                     // Then chest-boat variants
-                    "oak_chest_boat","spruce_chest_boat","birch_chest_boat","jungle_chest_boat","acacia_chest_boat","dark_oak_chest_boat","mangrove_chest_boat","cherry_chest_boat","pale_oak_chest_boat"
+                    "oak_chest_boat","spruce_chest_boat","birch_chest_boat","jungle_chest_boat","acacia_chest_boat","dark_oak_chest_boat","mangrove_chest_boat","cherry_chest_boat","pale_oak_chest_boat",
+                    // Rafts (bamboo)
+                    "bamboo_raft","bamboo_chest_raft"
                 );
             }
             return Collections.emptyList();

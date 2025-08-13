@@ -53,7 +53,8 @@ public class TeamGUI implements Listener {
         Material.DARK_OAK_BOAT,
         Material.MANGROVE_BOAT,
         Material.CHERRY_BOAT,
-        Material.PALE_OAK_BOAT,
+    Material.PALE_OAK_BOAT,
+    Material.BAMBOO_RAFT,
         Material.OAK_CHEST_BOAT,
         Material.SPRUCE_CHEST_BOAT,
         Material.BIRCH_CHEST_BOAT,
@@ -61,8 +62,9 @@ public class TeamGUI implements Listener {
         Material.ACACIA_CHEST_BOAT,
         Material.DARK_OAK_CHEST_BOAT,
         Material.MANGROVE_CHEST_BOAT,
-        Material.CHERRY_CHEST_BOAT,
-        Material.PALE_OAK_CHEST_BOAT
+    Material.CHERRY_CHEST_BOAT,
+    Material.PALE_OAK_CHEST_BOAT,
+    Material.BAMBOO_CHEST_RAFT
     };
     private final BoatRacingPlugin plugin;
     private final NamespacedKey KEY_TEAM_ID;
