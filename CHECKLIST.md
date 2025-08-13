@@ -278,6 +278,7 @@ Clickable verifications (all should paste the command to chat with hover “Clic
 - Run `/boatracing setup show` to see the summary (includes “Track: <name>` if saved/loaded from Admin Tracks GUI). It now also shows if there are team-specific pits and how many custom start positions exist.
 - Optional: use the Tracks GUI to create multiple tracks.
  - After creating a track in the Tracks GUI, a clickable tip should appear to paste `/boatracing setup wizard`.
+ - On finishing the wizard, ensure the “Summary” line includes “Custom slots N”.
 
 ## Quick race test
 

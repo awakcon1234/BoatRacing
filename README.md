@@ -97,7 +97,7 @@ Use the BoatRacing selection tool to make cuboid selections (left-click = mark C
 - Start: `/boatracing setup wizard` (single entrypoint)
 - Auto‑advance when possible. Navigation appears as clickable emojis on every step: ⟵ Back, ℹ Status, ✖ Cancel.
 
-The wizard provides concise, colorized instructions with clickable actions. Steps: Starts → Finish → Start lights (5 required) → Pit area (optional) → Checkpoints (optional) → Laps → Done. The Starts step also includes optional buttons to set per‑player custom start slots (setpos/clearpos/auto) and shows the count of custom slots configured. It does not auto‑start races; the final prompt suggests opening registration for the currently selected track. Use `/boatracing setup wand` to get the selection tool.
+The wizard provides concise, colorized instructions with clickable actions. Steps: Starts → Finish → Start lights (5 required) → Pit area (optional) → Checkpoints (optional) → Laps → Done. The Starts step also includes optional buttons to set per‑player custom start slots (setpos/clearpos/auto) and shows the count of custom slots configured. On completion, the wizard prints a Summary that includes “Custom slots N”. It does not auto‑start races; the final prompt suggests opening registration for the currently selected track. Use `/boatracing setup wand` to get the selection tool.
 
 Notes:
 - Checkpoints (if configured) must be passed in order every lap before crossing finish; when none are configured, crossing finish counts the lap directly.
@@ -327,7 +327,7 @@ Usa la herramienta de selección para hacer selecciones cúbicas (clic izq. = Co
 - Inicio: `/boatracing setup wizard` (único punto de entrada)
 - Avanza automático cuando se puede. Navegación con emojis clicables en cada paso: ⟵ Back, ℹ Status, ✖ Cancel.
 
-El wizard da instrucciones concisas, con colores y clicables. Pasos: Starts → Finish → Start lights (5 requeridas) → Pit area (opcional) → Checkpoints (opcional) → Laps → Done. En el paso Starts también verás botones opcionales para definir puestos personalizados por jugador (setpos/clearpos/auto) y el número de puestos personalizados configurados. No inicia carreras automáticamente; el final sugiere abrir el registro para la pista seleccionada. Usa `/boatracing setup wand` para obtener la herramienta.
+El wizard da instrucciones concisas, con colores y clicables. Pasos: Starts → Finish → Start lights (5 requeridas) → Pit area (opcional) → Checkpoints (opcional) → Laps → Done. En el paso Starts también verás botones opcionales para definir puestos personalizados por jugador (setpos/clearpos/auto) y el número de puestos personalizados configurados. Al finalizar, el wizard imprime un resumen que incluye “Custom slots N”. No inicia carreras automáticamente; el final sugiere abrir el registro para la pista seleccionada. Usa `/boatracing setup wand` para obtener la herramienta.
 
 Notas:
 - Si hay checkpoints, deben pasarse en orden cada vuelta antes de cruzar meta; si no hay checkpoints, cruzar meta cuenta la vuelta directamente.
