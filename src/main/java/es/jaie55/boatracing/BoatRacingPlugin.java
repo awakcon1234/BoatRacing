@@ -108,7 +108,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     // Updates
     if (getConfig().getBoolean("updates.enabled", true)) {
             String currentVersion = getPluginMeta().getVersion();
-            updateChecker = new UpdateChecker(this, "Jaie55", "BoatRacing", currentVersion);
+            updateChecker = new UpdateChecker(this, "boatracing", currentVersion);
             updateChecker.checkAsync();
             // Post-result console notice (delayed)
             Bukkit.getScheduler().runTaskLater(this, () -> {
@@ -228,7 +228,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 
                 // Ensure we have a checker and run one if needed
                 if (updateChecker == null) {
-                    updateChecker = new UpdateChecker(this, "Jaie55", "BoatRacing", current);
+                    updateChecker = new UpdateChecker(this, "boatracing", current);
                 }
                 if (!updateChecker.isChecked()) {
                     p.sendMessage(Text.colorize(prefix + "&7Checking for updates..."));

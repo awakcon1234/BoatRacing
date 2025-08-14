@@ -11,6 +11,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -27,13 +28,19 @@ public class UpdateChecker {
     private volatile boolean checked = false;
     private volatile boolean error = false;
 
-    private static final Pattern TAG_NAME_PATTERN = Pattern.compile("\"tag_name\"\s*:\s*\"([^\"]+)\"");
-    private static final Pattern HTML_URL_PATTERN = Pattern.compile("\"html_url\"\s*:\s*\"([^\"]+)\"");
+    // Modrinth JSON: array of versions, each with "version_number"
+    private static final Pattern VERSION_NUMBER_PATTERN = Pattern.compile("\"version_number\"\\s*:\\s*\"([^\"]+)\"");
 
-    public UpdateChecker(Plugin plugin, String repoOwner, String repoName, String currentVersion) {
+    /**
+     * Create an UpdateChecker for a Modrinth project slug.
+     * @param plugin plugin
+     * @param modrinthSlug e.g. "boatracing"
+     * @param currentVersion plugin version
+     */
+    public UpdateChecker(Plugin plugin, String modrinthSlug, String currentVersion) {
         this.plugin = plugin;
-        this.releasesApi = "https://api.github.com/repos/" + repoOwner + "/" + repoName + "/releases?per_page=100";
-        this.releasesPage = "https://github.com/" + repoOwner + "/" + repoName + "/releases";
+        this.releasesApi = "https://api.modrinth.com/v2/project/" + modrinthSlug + "/version";
+        this.releasesPage = "https://modrinth.com/plugin/" + modrinthSlug;
         this.currentVersion = currentVersion;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
@@ -59,41 +66,32 @@ public class UpdateChecker {
                 .build();
         HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
         if (res.statusCode() != 200) {
-            throw new IOException("GitHub API HTTP " + res.statusCode());
+            throw new IOException("Modrinth API HTTP " + res.statusCode());
         }
         String body = res.body();
 
-        // Extract all tag_name values (ordered newest->oldest as GitHub returns by default)
-        List<String> tags = new ArrayList<>();
-        Matcher m = TAG_NAME_PATTERN.matcher(body);
+        // Modrinth returns an array (usually newest first). Take the first version_number as latest.
+        List<String> versions = new ArrayList<>();
+        Matcher m = VERSION_NUMBER_PATTERN.matcher(body);
         while (m.find()) {
-            String tag = normalizeVersion(m.group(1));
-            if (tag != null) tags.add(tag);
+            String v = normalizeVersion(m.group(1));
+            if (v != null) versions.add(v);
         }
-        // Extract first html_url as latest URL, fallback to releases page
-        Matcher urlM = HTML_URL_PATTERN.matcher(body);
-        if (urlM.find()) {
-            latestUrl = urlM.group(1);
-        } else {
-            latestUrl = releasesPage;
-        }
+        latestUrl = releasesPage; // point to project page for downloads
 
-        if (tags.isEmpty()) {
-            // Fallback to repo releases page without version
+        if (versions.isEmpty()) {
             latestVersion = null;
             checked = true;
             return;
         }
 
-        latestVersion = tags.get(0);
-    String current = normalizeVersion(currentVersion);
+        latestVersion = versions.get(0);
+        String current = normalizeVersion(currentVersion);
         behindCount = 0;
         if (current != null) {
-            for (String tag : tags) {
-                if (isNewer(tag, current)) behindCount++;
-                else break; // list is newest -> oldest; stop when we reach current or older
+            for (String v : versions) {
+                if (isNewer(v, current)) behindCount++; else break;
             }
-            // If we counted the latest as newer but current equals latest, fix count
             if (latestVersion.equals(current)) behindCount = 0;
         }
         checked = true;

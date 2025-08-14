@@ -1,4 +1,18 @@
+<!-- Language switcher with flags (hatscripts circle-flags) -->
+<p align="right">
+	<a href="#en" title="English">
+		<img src="https://hatscripts.github.io/circle-flags/flags/gb.svg" width="18" height="18" alt="English" /> English
+	</a>
+	·
+	<a href="#es" title="Español">
+		<img src="https://hatscripts.github.io/circle-flags/flags/es.svg" width="18" height="18" alt="Español" /> Español
+	</a>
+</p>
+
+<a id="en"></a>
 # BoatRacing
+
+[![Modrinth](https://img.shields.io/modrinth/v/boatracing?logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/boatracing) [![Downloads](https://img.shields.io/modrinth/dt/boatracing?logo=modrinth&label=Downloads)](https://modrinth.com/plugin/boatracing)
 
 An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 
@@ -83,7 +97,7 @@ Fixes and polish:
  
 
 ## Install
-1. Download the latest BoatRacing.jar from Releases.
+1. Download the latest BoatRacing.jar from Modrinth: https://modrinth.com/plugin/boatracing
 2. Drop the jar into your `plugins/` folder.
 3. Start the server to generate config and data files.
 
@@ -250,6 +264,7 @@ Distributed under the MIT License. See `LICENSE`.
 
 ---
 
+<a id="es"></a>
 # BoatRacing
 
 Un plugin de carreras de barcos sobre hielo con estilo F1 para Paper y una GUI limpia tipo vanilla. Gestiona equipos, configura circuitos con la herramienta de selección integrada de BoatRacing, lanza carreras cronometradas con checkpoints, penalizaciones por boxes (pit) y un asistente guiado de configuración.
@@ -333,7 +348,7 @@ Correcciones y pulido:
  
 
 ## Instalación
-1. Descarga el BoatRacing.jar más reciente desde Releases.
+1. Descarga el BoatRacing.jar más reciente desde Modrinth: https://modrinth.com/plugin/boatracing
 2. Pon el jar en la carpeta `plugins/`.
 3. Arranca el servidor para generar config y datos.
 

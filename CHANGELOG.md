@@ -12,6 +12,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Configurable start “lights out” delay via `racing.lights-out-delay-seconds` to slow down the transition from all lit to GO.
 - Optional “lights out” jitter via `racing.lights-out-jitter-seconds` (random 0..value seconds added to the delay).
 - Sector and finish gaps: broadcasts a compact gap vs lap leader at each checkpoint and at lap finish; at race finish, gap vs winner.
+ - Updates now point to Modrinth for downloads: https://modrinth.com/plugin/boatracing
  - Native hiding of vanilla sidebar numbers using scoreboard NumberFormat when available (Paper 1.20.5+). Re-applied each update tick for robustness.
 
 ### Fixed
