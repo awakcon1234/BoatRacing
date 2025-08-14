@@ -12,10 +12,13 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Configurable start “lights out” delay via `racing.lights-out-delay-seconds` to slow down the transition from all lit to GO.
 - Optional “lights out” jitter via `racing.lights-out-jitter-seconds` (random 0..value seconds added to the delay).
 - Sector and finish gaps: broadcasts a compact gap vs lap leader at each checkpoint and at lap finish; at race finish, gap vs winner.
+ - Native hiding of vanilla sidebar numbers using scoreboard NumberFormat when available (Paper 1.20.5+). Re-applied each update tick for robustness.
 
 ### Fixed
 - Pitstop as finish: crossing the configured pit area now counts as finish for lap progression once all checkpoints for the lap have been collected (pit time penalty still applies when enabled).
 - Setup Wizard UX: clearer pit step text and a clickable “Clear checkpoints” action; checkpoints removal command advertised from the wizard.
+ - Scoreboard layout polish: names left-aligned, the entire " - Lap X/Y [CP]" segment centered, compact/dynamic padding, and no extra padding after truncated names ("..."). Removed decorative separator and arrow prefix. Self entry highlighted in green (no bold). FIN label standardized to “FINISHED”.
+ - Display name handling: prefer EssentialsX displayName when available and strip leading wrappers like [Rank]/(Rank)/{Rank} and punctuation for alignment.
 
 
 ## [1.0.5] - 2025-08-13

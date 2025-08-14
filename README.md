@@ -15,6 +15,10 @@ Improvements and tweaks:
  - Sector and finish gaps: compact messages show your time gap vs the lap/finish leader at each checkpoint and at lap finish (and vs winner at race finish).
  - Start lights jitter: optional random jitter added to the lights‑out delay via `racing.lights-out-jitter-seconds`.
  - Live leaderboard: sidebar shows the top‑10 positions; your Lap/CP/Time are shown in the ActionBar (auto‑created on race start and cleaned up on stop/reset).
+ - Vanilla numbers hidden: the sidebar’s right‑side numbers are hidden natively when supported by your server (Paper 1.20.5+); no TAB plugin required.
+ - Layout polish: names are left‑aligned and the whole " - Lap X/Y [CP]" block is centered. Removed the decorative separator and arrow prefix, compact/dynamic padding based on the longest visible name. Long names are truncated with "..." and no extra padding is added after the ellipsis. Your own name is highlighted in green (no bold).
+ - FIN label: standardized to “FINISHED”.
+ - Display names: supports EssentialsX displayName and strips common rank wrappers like [Admin]/(Rank) at the start for cleaner alignment.
 ## What’s new (1.0.5)
 Fixes and polish:
  - Nuevo leaderboard en el sidebar: ahora el sidebar muestra el top‑10 en tiempo real. Las estadísticas personales pasan al ActionBar.
@@ -250,7 +254,7 @@ Distributed under the MIT License. See `LICENSE`.
 
 Un plugin de carreras de barcos sobre hielo con estilo F1 para Paper y una GUI limpia tipo vanilla. Gestiona equipos, configura circuitos con la herramienta de selección integrada de BoatRacing, lanza carreras cronometradas con checkpoints, penalizaciones por boxes (pit) y un asistente guiado de configuración.
 
-> Estado: Public release (1.0.5)
+> Estado: Public release (1.0.6)
 
 Consulta [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md) para ver los últimos cambios.
 
@@ -261,6 +265,10 @@ Mejoras y ajustes:
 - Luces de salida: retraso configurable del “apagado de luces” vía `racing.lights-out-delay-seconds` para hacer más lenta la transición desde las 5 luces encendidas hasta GO.
 - Asistente de configuración: texto más claro en el paso de Pit y acción clicable [Clear checkpoints] directamente en el paso de Checkpoints.
 - Docs: CHANGELOG y CHECKLIST solo en inglés; README primero en inglés y luego el mismo contenido en español.
+ - Números vanilla ocultos: los números del lado derecho del sidebar se ocultan de forma nativa cuando el servidor lo soporta (Paper 1.20.5+); no hace falta TAB.
+ - Pulido del layout: nombres alineados a la izquierda y el bloque completo " - Lap X/Y [CP]" centrado. Se eliminan el separador decorativo y la flecha; padding compacto/dinámico según el nombre más largo visible. Los nombres largos se truncan con "..." y sin añadir espacio extra después. Tu propio nombre va en verde (sin negrita).
+ - Etiqueta de meta: ahora muestra “FINISHED”.
+ - Nombres mostrados: se soporta EssentialsX displayName y se eliminan envoltorios de rango comunes al principio (p. ej. [Admin]) para mejorar la alineación.
 
 ## Novedades (1.0.5)
 Correcciones y pulido:

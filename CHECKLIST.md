@@ -6,10 +6,14 @@ README — BoatRacing QA checklist (teams, admin, tracks; two-player tests)
 	- Start a race and observe after the 5th light: GO occurs after the fixed delay plus a small random jitter (0..value seconds).
 - Sidebar leaderboard (top‑10):
 	- During a race, the sidebar shows up to 10 positions sorted by: finished (time), lap desc, checkpoint desc, then total time asc.
-	- Finished entries show “FIN <time>”. Unfinished show “L<curr>/<total> CP<done>/<total>”.
+	- Finished entries show “FINISHED <time>”. Unfinished show “Lap <curr>/<total>  [CP <done>/<total>]”.
+	- The entire " - Lap X/Y [CP]" segment is centered; names are left‑aligned with compact/dynamic padding. Truncated names (with “...”) do not add extra padding after the ellipsis.
+	- Right‑side vanilla numbers are hidden when supported by the server (Paper 1.20.5+).
 - ActionBar HUD:
 	- Each player sees “Lap X/Y  CP A/B  Time M:SS.mmm” updating about twice per second.
 	- The old per‑player sidebar lines (Lap/CP/Time) are no longer present.
+ - Display names:
+	- With EssentialsX installed, nicknames (displayName) should be used and common rank wrappers like [Admin]/(Rank) should be stripped from the start. Alignment should remain correct.
 - Sector and finish gaps:
 	- At each checkpoint, a compact message announces the gap vs sector leader for the current lap (first crosser sets the reference).
 	- At lap finish (except final lap), a gap vs lap leader is broadcast.
