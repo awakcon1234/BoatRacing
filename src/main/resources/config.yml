@@ -28,3 +28,7 @@ racing:
   enable-pit-penalty: true
   # Enable/disable false start penalty during the light countdown
   enable-false-start-penalty: true
+  # Delay between all 5 lights lit and 'lights out' (seconds); allows a brief suspense before GO
+  lights-out-delay-seconds: 1.0
+  # Optional random jitter added on top of the delay (random between 0 and this value)
+  lights-out-jitter-seconds: 0.0

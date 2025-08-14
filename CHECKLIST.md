@@ -1,16 +1,29 @@
 README — BoatRacing QA checklist (teams, admin, tracks; two-player tests)
 
+## What to verify for 1.0.6
+- Start lights jitter and delay:
+	- Configure 5 start lights and set `racing.lights-out-delay-seconds` (e.g., 1.0) and `racing.lights-out-jitter-seconds` (e.g., 0.5–1.5).
+	- Start a race and observe after the 5th light: GO occurs after the fixed delay plus a small random jitter (0..value seconds).
+- Sidebar leaderboard (top‑10):
+	- During a race, the sidebar shows up to 10 positions sorted by: finished (time), lap desc, checkpoint desc, then total time asc.
+	- Finished entries show “FIN <time>”. Unfinished show “L<curr>/<total> CP<done>/<total>”.
+- ActionBar HUD:
+	- Each player sees “Lap X/Y  CP A/B  Time M:SS.mmm” updating about twice per second.
+	- The old per‑player sidebar lines (Lap/CP/Time) are no longer present.
+- Sector and finish gaps:
+	- At each checkpoint, a compact message announces the gap vs sector leader for the current lap (first crosser sets the reference).
+	- At lap finish (except final lap), a gap vs lap leader is broadcast.
+	- At final finish, a gap vs race winner is broadcast for non‑winners.
+- Config defaults:
+	- Ensure `racing.lights-out-jitter-seconds` appears in `config.yml` after update/reload (merge without overwriting custom values).
+
 ## What to verify for 1.0.5 (quick bugfix validation)
 - Team persistence: after restart/update, no team members are lost; loading does not enforce capacity caps on existing teams.
 - Setup pit quoting: `/boatracing setup setpit "Team With Spaces"` works; tab‑completion suggests quoted names when starting with a quote.
 - Config defaults merge: delete/comment a known key (e.g., `racing.false-start-penalty-seconds`), then `/boatracing reload` — the key should reappear with default value, and existing custom values remain unchanged.
 - Boat/raft type: on start, racers are mounted in their selected wood variant (including chest variants). If RAFT types exist in your server build, they are respected; otherwise BOAT types apply. No forced OAK unless fallback is required.
 
-## Qué verificar para 1.0.5 (bugfix rápido)
-- Persistencia de equipos: tras reiniciar/actualizar, no se pierden miembros; la carga no aplica límites de capacidad a equipos existentes.
-- Comillas en pit de setup: funciona `/boatracing setup setpit "Equipo Con Espacios"`; el autocompletado sugiere nombres entrecomillados al empezar con comillas.
-- Fusión de defaults en config: borra/comenta una clave conocida (p. ej., `racing.false-start-penalty-seconds`), luego `/boatracing reload` — la clave debe reaparecer con su valor por defecto y tus valores personalizados deben mantenerse.
-- Tipo de barco/raft: al comenzar, los corredores se montan en su variante elegida (incluidas variantes con cofre). Si tu build soporta RAFT, se respeta; si no, se usan BOAT. No debe forzarse OAK salvo fallback.
+
 
 ## Prerequisites
 

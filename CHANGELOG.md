@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
 
+## [Unreleased]
+
+## [1.0.6] - 2025-08-14
+### Added
+- Leaderboard sidebar: top‑10 live positions; personal stats moved to ActionBar.
+- Configurable start “lights out” delay via `racing.lights-out-delay-seconds` to slow down the transition from all lit to GO.
+- Optional “lights out” jitter via `racing.lights-out-jitter-seconds` (random 0..value seconds added to the delay).
+- Sector and finish gaps: broadcasts a compact gap vs lap leader at each checkpoint and at lap finish; at race finish, gap vs winner.
+
+### Fixed
+- Pitstop as finish: crossing the configured pit area now counts as finish for lap progression once all checkpoints for the lap have been collected (pit time penalty still applies when enabled).
+- Setup Wizard UX: clearer pit step text and a clickable “Clear checkpoints” action; checkpoints removal command advertised from the wizard.
+
+
 ## [1.0.5] - 2025-08-13
 ### Fixed
 - Team member persistence: no members are lost after updates/reloads/startup; loader now restores members without enforcing capacity constraints.
@@ -11,11 +25,6 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Config defaults: `config.yml` now merges new default keys on update/reload without overwriting user changes.
 - Boat/raft type: placed vehicles now match the racer’s selected wood variant (including chest variants); no longer always spawns OAK. Compatible across API versions with safe fallbacks.
 
-### Corregido (ES)
-- Persistencia de miembros: no se pierden miembros tras actualizar/recargar/arrancar; la carga restaura sin imponer límites de capacidad.
-- Setup pit: `/boatracing setup setpit [team]` admite nombres de equipo con espacios entre comillas (p. ej., "/boatracing setup setpit \"Toast Peace\""); el autocompletado sugiere nombres entrecomillados cuando el input empieza con comillas.
-- Defaults de config: `config.yml` fusiona nuevas claves por defecto al actualizar/recargar sin sobrescribir cambios del usuario.
-- Tipo de barco/raft: ahora coincide con la variante elegida por el jugador (incluidas variantes con cofre); ya no aparece siempre OAK. Compatible entre versiones con fallback seguro.
 
 ## [1.0.4] - 2025-08-13
 ### Added
@@ -34,18 +43,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ### Fixed
 - Boats now spawn with the player’s selected wood type using a resilient enum mapping with safe fallback to OAK across API versions.
 
-## [Unreleased]
-### Added
-- Live scoreboard: per-player sidebar showing Lap, Checkpoints, and Elapsed Time with periodic updates; created on race start and cleared on stop/reset/cancel.
-
-### Fixed
-- Pitstop as finish: crossing the configured pit area now counts as finish for lap progression once all checkpoints for the lap have been collected (pit time penalty still applies when enabled).
-
-### Añadido (ES)
-- Marcador en vivo: panel lateral por jugador con Vuelta, Checkpoints y Tiempo transcurrido, con actualizaciones periódicas; se crea al iniciar la carrera y se limpia al parar/reiniciar/cancelar.
-
-### Corregido (ES)
-- “Pit como meta”: cruzar por el área de boxes ahora cuenta como línea de meta para la progresión de vuelta cuando se han completado los checkpoints de esa vuelta (la penalización de boxes se mantiene si está habilitada).
+ 
 
 ## [1.0.3]
 ### Added
@@ -98,7 +96,9 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## [1.0.3] - 2025-08-12
 - Public release noted in README. Core gameplay, teams, GUIs, WE/FAWE setup, racing, and update checks.
 
- [Unreleased]: https://github.com/Jaie55/BoatRacing/compare/v1.0.5...HEAD
+ [Unreleased]: https://github.com/Jaie55/BoatRacing/compare/v1.0.6...HEAD
+
+[1.0.6]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.6
 
 [1.0.5]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.5
 

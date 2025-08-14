@@ -2,18 +2,26 @@
 
 An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 
-> Status: Public release (1.0.5)
+> Status: Public release (1.0.6)
 
 See the changelog in [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md).
 
 This is how to test the plugin to validate its behavior after each update: see the QA checklist in [CHECKLIST.md](CHECKLIST.md)
 
+## What’s new (1.0.6)
+Improvements and tweaks:
+ - New sidebar leaderboard: the sidebar now shows the top‑10 positions in real time. Personal stats moved to the ActionBar.
+ - Personal HUD: your Lap, CP and Elapsed Time now appear in the ActionBar, updated every 0.5s.
+ - Sector and finish gaps: compact messages show your time gap vs the lap/finish leader at each checkpoint and at lap finish (and vs winner at race finish).
+ - Start lights jitter: optional random jitter added to the lights‑out delay via `racing.lights-out-jitter-seconds`.
+ - Live leaderboard: sidebar shows the top‑10 positions; your Lap/CP/Time are shown in the ActionBar (auto‑created on race start and cleaned up on stop/reset).
 ## What’s new (1.0.5)
 Fixes and polish:
-- Team member persistence: no members are lost after updates/reloads/startup; loading restores members without enforcing capacity checks.
-- Setup pit command: `/boatracing setup setpit [team]` now supports team names with spaces by quoting them (e.g., "/boatracing setup setpit \"Toast Peace\""); tab‑completion suggests quoted names when the input starts with a quote.
-- Config defaults: on plugin update or `/boatracing reload`, new default keys are merged into your existing `config.yml` without overwriting your changes.
-- Boat/raft type: racers are mounted in their selected wood variant (including chest variants) instead of always OAK; compatible across API versions with safe fallbacks.
+ - Nuevo leaderboard en el sidebar: ahora el sidebar muestra el top‑10 en tiempo real. Las estadísticas personales pasan al ActionBar.
+ - HUD personal: tu Lap, CP y Time aparecen en el ActionBar, actualizado cada 0.5s.
+ - “Gaps” en sectores y meta: mensajes compactos muestran tu diferencia respecto al líder de vuelta/meta en cada checkpoint y al finalizar la vuelta (y frente al ganador al terminar la carrera).
+ - “Jitter” en las luces de salida: aleatoriedad opcional añadida al retraso con `racing.lights-out-jitter-seconds`.
+ - Leaderboard en vivo: el sidebar muestra el top‑10; tus Lap/CP/Time aparecen en el ActionBar (se crea al iniciar y se limpia en stop/reset).
 
 ## What’s new (1.0.4)
 - Team-specific pit areas: new unified command `/boatracing setup setpit [team]` sets the default pit when no team is provided, or the pit for a specific team when a team name is given. Tab‑completion suggests team names.
@@ -206,6 +214,7 @@ Players without `boatracing.setup` can use `/boatracing race join <track>`, `/bo
  - `racing.false-start-penalty-seconds`: time penalty applied for a false start during the light countdown (double, default 3.0)
  - `racing.enable-pit-penalty`: enable/disable pit area time penalty (boolean, default true)
  - `racing.enable-false-start-penalty`: enable/disable false start penalty (boolean, default true)
+ - `racing.lights-out-delay-seconds` (since 1.0.6): delay between all 5 start lights lit and “lights out”/GO (seconds, default 1.0)
 
 ## Updates & Metrics
 - Update checks: GitHub Releases; console WARNs and in‑game admin notices
@@ -246,6 +255,12 @@ Un plugin de carreras de barcos sobre hielo con estilo F1 para Paper y una GUI l
 Consulta [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md) para ver los últimos cambios.
 
 Así es como se prueba el plugin para validar su funcionamiento en cada actualización: ver el checklist en [CHECKLIST.md](CHECKLIST.md)
+
+## Novedades (1.0.6)
+Mejoras y ajustes:
+- Luces de salida: retraso configurable del “apagado de luces” vía `racing.lights-out-delay-seconds` para hacer más lenta la transición desde las 5 luces encendidas hasta GO.
+- Asistente de configuración: texto más claro en el paso de Pit y acción clicable [Clear checkpoints] directamente en el paso de Checkpoints.
+- Docs: CHANGELOG y CHECKLIST solo en inglés; README primero en inglés y luego el mismo contenido en español.
 
 ## Novedades (1.0.5)
 Correcciones y pulido:
@@ -445,6 +460,7 @@ Los jugadores sin `boatracing.setup` pueden usar `/boatracing race join <track>`
  - `racing.false-start-penalty-seconds`: penalización por falsa salida durante la cuenta atrás (double, por defecto 3.0)
  - `racing.enable-pit-penalty`: habilitar/deshabilitar penalización de pit (boolean, por defecto true)
  - `racing.enable-false-start-penalty`: habilitar/deshabilitar penalización por falsa salida (boolean, por defecto true)
+ - `racing.lights-out-delay-seconds` (desde 1.0.6): retraso entre encender las 5 luces y “apagado de luces”/GO (segundos, por defecto 1.0)
 
 ## Actualizaciones y métricas
 - Checks de actualización: GitHub Releases; WARN en consola y avisos in‑game a admins
