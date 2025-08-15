@@ -11,7 +11,6 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -40,8 +39,9 @@ public class UpdateChecker {
      */
     public UpdateChecker(Plugin plugin, String modrinthSlug, String currentVersion) {
         this.plugin = plugin;
-        this.releasesApi = "https://api.modrinth.com/v2/project/" + modrinthSlug + "/version";
-        this.releasesPage = "https://modrinth.com/plugin/" + modrinthSlug;
+    this.releasesApi = "https://api.modrinth.com/v2/project/" + modrinthSlug + "/version";
+    // Downloads/announcements should link to Modrinth project page
+    this.releasesPage = "https://modrinth.com/plugin/" + modrinthSlug;
         this.currentVersion = currentVersion;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))

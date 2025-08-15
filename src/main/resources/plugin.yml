@@ -4,6 +4,7 @@ version: ${project.version}
 api-version: '1.21'
 authors: [Jaie55]
 description: An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
+website: https://modrinth.com/plugin/boatracing
 commands:
   boatracing:
     description: BoatRacing base command
