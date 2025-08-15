@@ -75,6 +75,17 @@
 				"$maven"
 			],
 			"group": "build"
+		},
+		{
+			"label": "Build BoatRacing with Maven Wrapper",
+			"type": "shell",
+			"command": ".\\mvnw.cmd",
+			"args": [
+				"-q",
+				"-DskipTests",
+				"clean",
+				"package"
+			]
 		}
 	]
 }
