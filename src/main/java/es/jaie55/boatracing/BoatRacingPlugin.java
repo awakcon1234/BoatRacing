@@ -127,25 +127,12 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (getConfig().getBoolean("updates.notify-admins", true)) {
                 Bukkit.getPluginManager().registerEvents(new UpdateNotifier(this, updateChecker, prefix), this);
             }
-            // Periodic update checks every 5 minutes
+            // Periodic silent update checks every 5 minutes (no console spam)
             long period = 20L * 60L * 5L; // 5 minutes
             Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
                 try {
                     if (getConfig().getBoolean("updates.enabled", true)) {
                         updateChecker.checkAsync();
-                        // After a short delay, if outdated, also log to console
-                        Bukkit.getScheduler().runTaskLater(this, () -> {
-                            try {
-                                if (updateChecker.isChecked() && updateChecker.isOutdated() && getConfig().getBoolean("updates.console-warn", true)) {
-                                    int behind = updateChecker.getBehindCount();
-                                    String current = getPluginMeta().getVersion();
-                                    String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
-                                    Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
-                                    Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
-                                    Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
-                                }
-                            } catch (Throwable ignored2) {}
-                        }, 20L * 5);
                     }
                 } catch (Throwable ignored) {}
             }, period, period);
