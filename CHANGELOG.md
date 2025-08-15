@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.7 — 2025-08-15
+### Changed
+- Update checks: removed periodic console spam; keep a single WARN shortly after startup when outdated (honors `updates.console-warn`). Periodic 5‑minute checks remain silent.
+ - Scoreboard: redesigned layout with centered rows, compact labels, rank colors, and viewer highlight.
+### Added
+ 
+### Fixed
+- Update checker logs network errors at most once per server run.
+### Removed
+- Internal hiding of vanilla scoreboard sidebar numbers has been removed entirely. If you want to hide the right‑side numbers, please use an external plugin while we work on a future built‑in implementation.
+# Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
@@ -13,7 +25,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Optional “lights out” jitter via `racing.lights-out-jitter-seconds` (random 0..value seconds added to the delay).
 - Sector and finish gaps: broadcasts a compact gap vs lap leader at each checkpoint and at lap finish; at race finish, gap vs winner.
  - Updates now point to Modrinth for downloads: https://modrinth.com/plugin/boatracing
- - Native hiding of vanilla sidebar numbers using scoreboard NumberFormat when available (Paper 1.20.5+). Re-applied each update tick for robustness.
+ 
 
 ### Fixed
 - Pitstop as finish: crossing the configured pit area now counts as finish for lap progression once all checkpoints for the lap have been collected (pit time penalty still applies when enabled).

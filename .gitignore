@@ -13,8 +13,7 @@
 # Allow source code
 !/src/**
 
-# Allow Maven wrapper config only (not scripts)
-!/.mvn/wrapper/maven-wrapper.properties
+# Ignore Maven wrapper (incl. properties)
 
 # Allow GitHub meta if present
 !/.github/**
@@ -29,6 +28,9 @@
 /.settings/
 /.vscode/
 /.project
+/.factorypath
+/.mvn/
  
 # Allow QA checklist to be committed
 !/CHECKLIST.md
+

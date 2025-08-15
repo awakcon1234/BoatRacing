@@ -18,11 +18,23 @@ Un plugin de carreras de barcos sobre hielo con estilo F1 para Paper y una GUI l
 
 [![bStats](https://bstats.org/signatures/bukkit/BoatRacing.svg)](https://bstats.org/plugin/bukkit/BoatRacing/26881)
 
-> Estado: Public release (1.0.6)
+> Estado: Public release (1.0.7)
 
 Consulta el changelog en [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md).
 
 Así se prueba el plugin para validar su comportamiento tras cada actualización: ver el checklist en [CHECKLIST.md](CHECKLIST.md)
+
+## Novedades (1.0.7)
+Correcciones y calidad de vida:
+ - Ruido en consola por checks de actualización eliminado: solo un WARN único poco después de iniciar cuando estás desactualizado (respetando `updates.console-warn`). Los checks cada 5 minutos siguen pero en silencio.
+ 
+ - Estabilidad: los errores de red durante los checks de update se registran como mucho una vez por ejecución del servidor.
+ 
+ Eliminado:
+ - Se ha retirado por completo el ocultado integrado de los números vanilla del marcador (scoreboard). Si quieres ocultar los números de la derecha del sidebar, usa por ahora un plugin externo mientras evaluamos una futura implementación integrada.
+ 
+ UI:
+ - Marcador rediseñado: filas centradas, formato compacto “Nombre - L X/Y CP A/B”, colores por posición (1=oro, 2=plateado, 3=bronze-ish) y tu nombre en verde.
 
 ## Novedades (1.0.6)
 Mejoras y ajustes:
@@ -235,8 +247,8 @@ Los jugadores sin `boatracing.setup` pueden usar `/boatracing race join <track>`
  - `racing.lights-out-delay-seconds` (desde 1.0.6): retraso entre encender las 5 luces y “apagado de luces”/GO (segundos, por defecto 1.0)
 
 ## Actualizaciones y métricas
-- Checks de actualización: proyecto en Modrinth; WARN en consola y avisos in‑game a admins
-- Check periódico cada 5 minutos mientras el server corre
+- Checks de actualización: proyecto en Modrinth; un único WARN en consola tras el arranque si estás desactualizado (respetando `updates.console-warn`) y avisos in‑game a admins (si está habilitado)
+- Check silencioso cada 5 minutos mientras el server corre
 - bStats: activado por defecto; opt‑out vía config global de bStats (plugin id fijo)
 
 ## Almacenamiento

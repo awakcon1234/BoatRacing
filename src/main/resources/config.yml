@@ -32,3 +32,5 @@ racing:
   lights-out-delay-seconds: 1.0
   # Optional random jitter added on top of the delay (random between 0 and this value)
   lights-out-jitter-seconds: 0.0
+
+## Integration and internal scoreboard number-hiding options removed on request.

@@ -18,11 +18,23 @@
 
 An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 
-> Status: Public release (1.0.6)
+> Status: Public release (1.0.7)
 
 See the changelog in [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md).
 
 This is how to test the plugin to validate its behavior after each update: see the QA checklist in [CHECKLIST.md](CHECKLIST.md)
+
+## What’s new (1.0.7)
+Bugfixes and quality-of-life:
+ - Console update check noise removed: only a single WARN shortly after startup when you are outdated (respecting `updates.console-warn`). Periodic 5‑minute checks remain but are silent.
+ 
+ - Stability: network errors during update checks are logged at most once per server run.
+ 
+ Removal:
+ - The built‑in hiding of vanilla scoreboard numbers has been removed. If you want to hide the sidebar’s right‑side numbers, use an external plugin for now while a future built‑in approach is evaluated.
+ 
+ UI:
+ - Scoreboard redesigned: centered rows, compact “Name - L X/Y CP A/B” layout, rank colors (1=gold, 2=silver-ish, 3=bronze-ish), and your own name in green.
 
 ## What’s new (1.0.6)
 Improvements and tweaks:
@@ -233,10 +245,11 @@ Players without `boatracing.setup` can use `/boatracing race join <track>`, `/bo
  - `racing.enable-pit-penalty`: enable/disable pit area time penalty (boolean, default true)
  - `racing.enable-false-start-penalty`: enable/disable false start penalty (boolean, default true)
  - `racing.lights-out-delay-seconds` (since 1.0.6): delay between all 5 start lights lit and “lights out”/GO (seconds, default 1.0)
+ 
 
 ## Updates & Metrics
-- Update checks: Modrinth project; console WARNs and in‑game admin notices
-- Periodic update check every 5 minutes while the server is running
+- Update checks: Modrinth project; a single console WARN shortly after startup if outdated (respecting `updates.console-warn`) and in‑game admin notices (if enabled)
+- Silent periodic check every 5 minutes while the server is running
 - bStats: enabled by default; opt‑out via the global bStats config (plugin id hardcoded)
 
 ## Storage

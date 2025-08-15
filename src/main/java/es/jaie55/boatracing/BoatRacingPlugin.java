@@ -94,7 +94,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
         }, this);
     
-        try {
+    try {
             boolean metricsEnabled = getConfig().getBoolean("bstats.enabled", true);
             if (metricsEnabled) {
                 final int pluginId = 26881; // fixed bStats plugin id
@@ -104,6 +104,8 @@ public class BoatRacingPlugin extends JavaPlugin {
         } catch (Throwable t) {
             getLogger().warning("Failed to initialize bStats metrics: " + t.getMessage());
         }
+
+    // ViaVersion integration and internal scoreboard number hiding removed by request
 
     // Updates
     if (getConfig().getBoolean("updates.enabled", true)) {
@@ -156,6 +158,8 @@ public class BoatRacingPlugin extends JavaPlugin {
         saveConfig();
     }
 
+    // Scoreboard number hiding removed by request
+
     // Resolve an OfflinePlayer without remote lookups: prefer online, then cache, or UUID literal
     private org.bukkit.OfflinePlayer resolveOffline(String token) {
         if (token == null || token.isEmpty()) return null;
@@ -179,6 +183,8 @@ public class BoatRacingPlugin extends JavaPlugin {
     public void onDisable() {
         if (teamManager != null) teamManager.save();
     }
+
+    // ViaVersion integration removed by request
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -243,6 +249,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
                 // Recreate team manager to re-read data and settings
                 this.teamManager = new TeamManager(this);
+                // ViaVersion integration removed; nothing to re-apply
                 p.sendMessage(Text.colorize(prefix + "&aPlugin reloaded."));
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                 return true;
