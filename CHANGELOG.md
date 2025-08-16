@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.8 — 2025-08-16
+### Added
+- Config toggles to customize the sidebar and ActionBar visibility:
+	- `racing.ui.scoreboard.show-position|show-lap|show-checkpoints|show-pitstops|show-name`
+	- `racing.ui.actionbar.show-lap|show-checkpoints|show-pitstops|show-time`
+- HUD pitstops: when `racing.mandatory-pitstops > 0`, show “PIT A/B” on the sidebar and ActionBar (config‑gated).
+- Registration broadcast now includes the track name and the exact join command using `racing.registration-announce` template.
+- Setup Wizard: new optional step to set “Mandatory pit stops” with quick buttons [0] [1] [2] [3].
+- Setup command `/boatracing setup setpitstops <n>` to update and persist `racing.mandatory-pitstops`.
+- Finish‑without‑checkpoints: added a clear player message when trying to finish without all required checkpoints for the lap (sound remains).
+- Results broadcast now highlights the podium: 🥇/🥈/🥉 medals and rank colors for the top‑3.
+
+### Changed
+ - Race tab-complete now shows `join|leave|status` to all players; admin actions suggested only to admins.
+- `race status` can be viewed by any player (keeps default permission true).
+- Sidebar order switched to “L/CP - Name” and removed centering/padding.
+- Names are shown as-is (keeps leading '.' for Bedrock players via Geyser/Velocity).
+ - Results lines use safe name rendering (strip rank wrappers; preserve leading '.') and keep a penalty suffix when applicable.
+
+### Fixed
+- Minor cleanup and removal of unused variables in scoreboard rendering.
+ - Prevented a potential permission recursion by defining `boatracing.admin` with explicit children instead of inheriting `boatracing.*`.
+ - `/boatracing race leave <track>` now replies when registration is closed or when the player isn’t registered (no more silent no-op).
+ - Setup Wizard (Pit): no longer repeats waiting for team pits when a default pit exists; the wizard now advances to Checkpoints automatically (team pits remain optional).
+
 ## 1.0.7 — 2025-08-15
 ### Changed
 - Update checks: removed periodic console spam; keep a single WARN shortly after startup when outdated (honors `updates.console-warn`). Periodic 5‑minute checks remain silent.

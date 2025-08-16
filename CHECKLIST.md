@@ -1,5 +1,32 @@
 README — BoatRacing QA checklist (teams, admin, tracks; two-player tests)
 
+## What to verify for 1.0.8
+- Permissions and tab-complete:
+	- `boatracing.admin` grants every permission via the wildcard `boatracing.*`. Removing `boatracing.admin` should revoke all admin-only actions.
+	- Non-admin players can tab-complete `/boatracing race` with `join`, `leave`, and `status`, and see track name suggestions where applicable. Admin-only verbs (`open/start/force/stop`) are suggested only to admins.
+	- `/boatracing race status` works for non-admin players (default: true).
+- Sidebar leaderboard (top‑10):
+	- Order and format: `L <curr>/<total>[  CP <done>/<total>]  -  <Name>` (no centering or padding). If there are no checkpoints, CP is omitted.
+	- Visibility toggles in config: `racing.ui.scoreboard.show-position`, `show-lap`, `show-checkpoints`, `show-pitstops`, `show-name` (all default: true).
+	- Names are shown verbatim; preserve leading `.` for Bedrock usernames.
+ 	- When `racing.mandatory-pitstops > 0` and `show-pitstops` is true, a `PIT A/B` segment appears after CP.
+- ActionBar HUD:
+	- Controlled by config toggles: `racing.ui.actionbar.show-lap`, `show-checkpoints`, `show-pitstops`, `show-time` (all default: true).
+ 	- When `racing.mandatory-pitstops > 0` and `show-pitstops` is true, a `Pit A/B` segment appears.
+- Registration announcement:
+	- When registration opens, the global broadcast includes the track name and the exact join command. It uses the template `racing.registration-announce` with placeholders `{track}`, `{laps}`, `{cmd}`.
+- Config and docs:
+	- Config text is English-only. On reload/update, new keys appear without overwriting customized values.
+ 	- New keys present: `racing.ui.scoreboard.show-pitstops` and `racing.ui.actionbar.show-pitstops` (default true); `racing.mandatory-pitstops` exists and defaults to 0.
+- Release polish:
+	- Project version is 1.0.8. Update checks reference Modrinth; a single startup WARN is expected when a newer version exists.
+
+- Results broadcast:
+	- At race end, the broadcast lists results by total time and highlights the top‑3 with 🥇/🥈/🥉 and rank colors (gold/silver-ish/bronze-ish). A penalty suffix “(+X penalty)” appears when applicable. Names are rendered safely (strip rank wrappers; preserve leading '.').
+
+- Wizard flow (Pit step):
+	- With a default pit already set, invoking any pit action or pressing Next should auto‑advance to Checkpoints. Team-specific pits are optional and must not block progress.
+
 ## What to verify for 1.0.6
 - Start lights jitter and delay:
 	- Configure 5 start lights and set `racing.lights-out-delay-seconds` (e.g., 1.0) and `racing.lights-out-jitter-seconds` (e.g., 0.5–1.5).
@@ -58,7 +85,7 @@ README — BoatRacing QA checklist (teams, admin, tracks; two-player tests)
 - Footer bars use darker gray (GRAY_STAINED_GLASS_PANE).
  - Command `/boatracing setup wand` gives the built-in selection tool (Blaze Rod, “BoatRacing Selection Tool”).
 - Setup Wizard shows concise, colorized English prompts (green/red states), clickable actions, and selected track name. Navigation uses emojis (⟵ Back, ℹ Status, ✖ Cancel) on every step; a blank line at the top improves readability.
- - Registration broadcasts: join/leave are announced server-wide in English.
+ - Registration broadcasts: when registration opens, the broadcast includes the track name and the exact join command; join/leave are announced server-wide in English.
 
 ## Core: create teams and list
 
@@ -200,6 +227,7 @@ Recommended flow:
 - `/boatracing setup setpos` → suggests online player names; for the 2nd arg suggests `auto` and valid slot numbers (1-based).
 - `/boatracing setup clearpos` → suggests online player names.
 - `/boatracing admin team ...` and `/boatracing admin player ...` → subcommand/parameter completion (team/player names).
+ - `/boatracing race` → non-admins see `join`, `leave`, and `status`; admins also see `open`, `start`, `force`, `stop`. Track names are suggested where an argument `<track>` is required.
 
 ## Persistence and reload
 
@@ -271,7 +299,7 @@ Goal: make a functional track with starts and finish (required). Pit and checkpo
 - Verify selection with `/boatracing setup selinfo` → should show min/max and world.
 
 2) Start the wizard
-- `/boatracing setup wizard` → shows “1/5 Starts” with clickable actions (e.g., `[Add start]`).
+- `/boatracing setup wizard` → shows “1/7 Starts” with clickable actions (e.g., `[Add start]`).
 - Per-step navigation: clickable emojis ⟵ Back, ℹ Status, ✖ Cancel.
 Clickable verifications (all should paste the command to chat with hover “Click to paste: …”):
 - Starts: `[Add start]`, `[Clear starts]`
@@ -280,6 +308,7 @@ Clickable verifications (all should paste the command to chat with hover “Clic
 - Pit area (optional): `[Set pit]` (default pit) or `[Set pit <team>]` for team-specific pits (tab‑complete), `[Get wand]`
  - Quoted names: if a team name contains spaces, set a team-specific pit using quotes, e.g., `/boatracing setup setpit "Toast Peace"`. Tab‑completion should suggest quoted names when the input starts with a quote.
 - Checkpoints (optional): `[Add checkpoint]`, `[Get wand]`
+- Mandatory pit stops (optional): shows current value and quick options `[0] [1] [2] [3]` (click to paste `/boatracing setup setpitstops <n>`)
 - Laps: `[1]` `[3]` `[5]` and `[Finish]`
 - Done: `[Open registration]`, `[Setup show]` (no “Start now” from the wizard)
 
@@ -329,6 +358,8 @@ Clickable verifications (all should paste the command to chat with hover “Clic
 - If a pit area is configured, enter during the race and confirm time penalty per `racing.pit-penalty-seconds`.
  - If start lights are configured and `racing.enable-false-start-penalty` is enabled, moving forward during the countdown applies a false-start penalty per `racing.false-start-penalty-seconds`.
  - Crossing the pit area should also count as finish for lap progression once all lap checkpoints are completed.
+ - Mandatory pitstops: if `racing.mandatory-pitstops > 0`, verify HUD segments appear and that players can’t finish until they have completed at least that many pit exits.
+ - Finish without checkpoints: attempt to cross finish without all required checkpoints for the lap; expect a clear denial message plus a sound.
 
 4) Results
 - At the end, results are announced by total time (elapsed + penalties).

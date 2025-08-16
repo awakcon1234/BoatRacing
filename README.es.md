@@ -18,11 +18,27 @@ Un plugin de carreras de barcos sobre hielo con estilo F1 para Paper y una GUI l
 
 [![bStats](https://bstats.org/signatures/bukkit/BoatRacing.svg)](https://bstats.org/plugin/bukkit/BoatRacing/26881)
 
-> Estado: Public release (1.0.7)
+> Estado: Public release (1.0.8)
 
 Consulta el changelog en [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md).
 
 Así se prueba el plugin para validar su comportamiento tras cada actualización: ver el checklist en [CHECKLIST.md](CHECKLIST.md)
+
+## Novedades (1.0.8)
+Mejoras y opciones:
+ - HUD personalizable: nuevas flags de config para mostrar/ocultar partes del marcador y del ActionBar.
+	 - `racing.ui.scoreboard.show-position|show-lap|show-checkpoints|show-pitstops|show-name`
+	 - `racing.ui.actionbar.show-lap|show-checkpoints|show-pitstops|show-time`
+ - Pitstops en HUD: cuando `racing.mandatory-pitstops > 0`, se muestra “PIT A/B” en la barra lateral y “Pit A/B” en el ActionBar (gobernado por los toggles anteriores).
+ - El anuncio de inscripción ahora incluye el nombre de la pista y el comando exacto para unirse (`racing.registration-announce`).
+ - El marcador cambia el orden a “L/CP - Nombre”; sin centrado/espaciado; los nombres se muestran tal cual (conserva el “.” inicial de Bedrock).
+ - Mensaje de intento de finalización: al cruzar meta sin tener todos los checkpoints requeridos, ahora se muestra un mensaje claro al jugador (además del sonido de denegación).
+ - Asistente: nuevo paso opcional “Paradas obligatorias en pit” con botones rápidos [0] [1] [2] [3].
+ - Comando de setup: `/boatracing setup setpitstops <n>` establece y persiste `racing.mandatory-pitstops`.
+ - Resultados: se resaltan los tres primeros con medallas 🥇/🥈/🥉 y colores de rango; mantiene sufijo de penalización si aplica; nombres renderizados de forma segura (conserva el “.” inicial de Bedrock).
+ - Flujo del asistente: si ya hay pit por defecto en el paso 4, el asistente avanza automáticamente a Checkpoints (los pits por equipo siguen siendo opcionales).
+ - Permisos: se introduce el wildcard `boatracing.*`. Los admins siguen teniendo absolutamente todos los permisos, ahora mediante hijos explícitos bajo `boatracing.admin` (evita herencia circular).
+ - Autocompletado: los jugadores (no admin) ven `join|leave|status` bajo `/boatracing race`; los verbos solo‑admin (`open|start|force|stop`) se sugieren solo a admins.
 
 ## Novedades (1.0.7)
 Correcciones y calidad de vida:
@@ -137,6 +153,7 @@ Usa la herramienta de selección para hacer selecciones cúbicas (clic izq. = Co
 - `/boatracing setup clearstarts` — elimina todos los starts
 - `/boatracing setup setpos <player> <slot|auto>` — asigna a un jugador un puesto de salida (1‑based) o usa `auto` para quitar la asignación
 - `/boatracing setup clearpos <player>` — elimina el puesto personalizado de un jugador
+ - `/boatracing setup setpitstops <n>` — establece el número de paradas obligatorias en pit (0 desactiva el requisito)
 - `/boatracing setup show` — muestra el resumen de la pista actual (incluye pits por equipo y número de puestos personalizados)
 	(incluye el nombre de la pista activa si se guardó/cargó desde la Admin Tracks GUI)
  - `/boatracing setup selinfo` — info de depuración de tu selección actual
@@ -145,7 +162,7 @@ Usa la herramienta de selección para hacer selecciones cúbicas (clic izq. = Co
 - Inicio: `/boatracing setup wizard` (único punto de entrada)
 - Avanza automático cuando se puede. Navegación con emojis clicables en cada paso: ⟵ Atrás, ℹ Estado, ✖ Cancelar.
 
-El asistente proporciona instrucciones concisas, con colores y con acciones clicables. Pasos: Puestos de salida → Meta → Luces de salida (5 requeridas) → Zona de pit (opcional) → Puntos de control (opcional) → Vueltas → Finalizar. En el paso de Puestos de salida también verás botones opcionales para definir puestos personalizados por jugador (setpos/clearpos/auto) y se muestra el número de puestos personalizados configurados. Al finalizar, el asistente imprime un resumen que incluye “Puestos personalizados N”. No inicia carreras automáticamente; el mensaje final sugiere abrir el registro para la pista seleccionada. Usa `/boatracing setup wand` para obtener la herramienta.
+El asistente proporciona instrucciones concisas, con colores y con acciones clicables. Pasos: Puestos de salida → Meta → Luces de salida (5 requeridas) → Zona de pit (opcional) → Puntos de control (opcional) → Paradas obligatorias en pit (opcional) → Vueltas → Finalizar. En el paso de Puestos de salida también verás botones opcionales para definir puestos personalizados por jugador (setpos/clearpos/auto) y se muestra el número de puestos personalizados configurados. El nuevo paso “Paradas obligatorias en pit” muestra tu valor actual y opciones rápidas [0] [1] [2] [3]. Al finalizar, el asistente imprime un resumen que incluye “Puestos personalizados N”. No inicia carreras automáticamente; el mensaje final sugiere abrir el registro para la pista seleccionada. Usa `/boatracing setup wand` para obtener la herramienta.
 
 Notas:
 - Si hay checkpoints, deben pasarse en orden cada vuelta antes de cruzar meta; si no hay checkpoints, cruzar meta cuenta la vuelta directamente.
@@ -165,9 +182,12 @@ Notas:
 Aspectos clave de la lógica de carrera:
 - Con checkpoints, las vueltas cuentan solo tras recogerlos en orden; sin checkpoints, cruzar meta cuenta la vuelta.
  - Entrar al área de pit (cuando está configurada) añade una penalización fija y también cuenta como meta para progresar la vuelta cuando ya se completaron los checkpoints de esa vuelta.
+ - Paradas obligatorias: cuando `racing.mandatory-pitstops > 0`, los corredores deben completar al menos ese número de salidas de pit durante la carrera para poder finalizar.
+ - Si un corredor intenta finalizar sin los checkpoints requeridos de la vuelta, se envía un mensaje claro (además del sonido de denegación).
  - Moverse antes de terminar la cuenta atrás (false start) añade una penalización fija.
 	- Puedes desactivar penalizaciones de pit y de falsa salida con flags de config.
 - Los resultados se anuncian ordenados por tiempo total = tiempo + penalizaciones.
+ - El anuncio resalta el podio con 🥇/🥈/🥉 y colores para el top‑3.
 - Al iniciar, los corredores se colocan en starts únicos, mirando hacia delante (pitch 0) y auto‑montados en su barco. Prioridad: puestos personalizados primero; luego por mejor tiempo registrado; los que no tienen tiempo van al final.
 - Si hay 5 luces configuradas, se ejecuta una cuenta regresiva de lámparas de izq. a der. (1/s) antes de empezar; se encienden por block data (sin redstone).
 - El número total de vueltas viene de `racing.laps` y/o de la pista guardada; `open` y `start` no aceptan argumento de vueltas.
@@ -177,7 +197,7 @@ Aspectos clave de la lógica de carrera:
 - Teams: `create`, `rename`, `color`, `join`, `leave`, `boat`, `number`, `confirm`, `cancel` (rename/color solo admin por comando; la GUI para miembros puede habilitarse por config). Disband no está expuesto por comando de jugador; es una acción de GUI cuando está habilitado.
 - Setup: `help`, `wand`, `wizard`, `addstart`, `clearstarts`, `setfinish`, `setpit`, `addcheckpoint`, `clearcheckpoints`, `addlight`, `clearlights`, `setpos`, `clearpos`, `show`, `selinfo`
  - `setpos` sugiere nombres de jugadores, y también `auto` y números de slot; `clearpos` sugiere nombres de jugadores.
-- Race: `help`, `open`, `join`, `leave`, `force`, `start`, `stop`, `status` — cuando un subcomando espera `<track>`, sugiere nombres de pista.
+- Race: los no‑admin ven `join`, `leave` y `status`; los admins también ven `open`, `start`, `force`, `stop`. Cuando un subcomando espera `<track>`, se sugieren nombres de pista existentes.
 - `color` lista todos los DyeColors
 - `boat` lista tipos de barco permitidos (normales primero, luego chest)
 - `join` sugiere nombres de equipos existentes
@@ -206,13 +226,14 @@ Admins (permiso `boatracing.admin`) pueden:
 	- `/boatracing admin player setboat <player> <BoatType>`
 
 ## Permisos
+- `boatracing.*` (por defecto: false) — wildcard que otorga TODOS los permisos de BoatRacing
 - `boatracing.use` (por defecto: true) — permiso meta; otorga `boatracing.teams` y `boatracing.version`
 - `boatracing.teams` (por defecto: true) — acceso a `/boatracing teams`
 - `boatracing.version` (por defecto: true) — acceso a `/boatracing version`
 - `boatracing.reload` (por defecto: op) — acceso a `/boatracing reload`
 - `boatracing.update` (por defecto: op) — recibir avisos de actualización in‑game
 - `boatracing.setup` (por defecto: op) — configurar pistas y selecciones (wizard, luces, starts, meta, pit, checkpoints)
-- `boatracing.admin` (por defecto: op) — GUI y comandos de admin (gestión de equipos y jugadores). También habilita autocompletado raíz para `admin`.
+- `boatracing.admin` (por defecto: op) — GUI y comandos de admin (gestión de equipos y jugadores). Otorga todos los permisos del plugin vía hijos explícitos (sin wildcard circular). También habilita autocompletado raíz para `admin`.
 	- Admin Tracks GUI requiere `boatracing.setup` para abrir desde el panel Admin.
 
 Permisos específicos de carrera:

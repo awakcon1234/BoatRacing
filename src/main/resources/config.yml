@@ -33,4 +33,20 @@ racing:
   # Optional random jitter added on top of the delay (random between 0 and this value)
   lights-out-jitter-seconds: 0.0
 
-## Integration and internal scoreboard number-hiding options removed on request.
+  # Scoreboard & ActionBar customization
+  ui:
+    scoreboard:
+      show-position: true    # rank number at line start
+      show-lap: true         # L X/Y
+      show-checkpoints: true # CP A/B (hidden if no checkpoints configured)
+      show-pitstops: true    # PIT A/B (hidden if mandatory-pitstops is 0)
+      show-name: true        # player name at end of line
+    actionbar:
+      show-lap: true
+      show-checkpoints: true
+      show-pitstops: true
+      show-time: true
+
+  # Registration announce message template
+  # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command
+  registration-announce: "&6[BoatRacing] &eNew race on &f{track}&e (&f{laps}&e laps). &7Join with &f{cmd}"

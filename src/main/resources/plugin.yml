@@ -11,6 +11,21 @@ commands:
     usage: /<command> teams|race|setup|admin|reload|version
     permission: boatracing.use
 permissions:
+  boatracing.*:
+    description: Grant ALL BoatRacing permissions
+    default: false
+    children:
+      boatracing.use: true
+      boatracing.teams: true
+      boatracing.version: true
+      boatracing.reload: true
+      boatracing.update: true
+      boatracing.setup: true
+      boatracing.admin: true
+      boatracing.race.join: true
+      boatracing.race.leave: true
+      boatracing.race.status: true
+      boatracing.race.admin: true
   boatracing.use:
     description: Meta permission for BoatRacing base usage
     default: true
@@ -38,6 +53,17 @@ permissions:
   boatracing.admin:
     description: Administer teams and players (create/rename teams, assign members, set numbers/boats)
     default: op
+    children:
+      boatracing.use: true
+      boatracing.teams: true
+      boatracing.version: true
+      boatracing.reload: true
+      boatracing.update: true
+      boatracing.setup: true
+      boatracing.race.join: true
+      boatracing.race.leave: true
+      boatracing.race.status: true
+      boatracing.race.admin: true
   boatracing.race.join:
     description: Join a race registration
     default: true

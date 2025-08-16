@@ -312,7 +312,14 @@ public class BoatRacingPlugin extends JavaPlugin {
                         String tname = args[2];
                         if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
                         if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
-                        raceManager.leave(p);
+                        boolean removed = raceManager.leave(p);
+                        if (!removed) {
+                            if (!raceManager.isRegistering()) {
+                                p.sendMessage(Text.colorize(prefix + "&cRegistration is not open."));
+                            } else {
+                                p.sendMessage(Text.colorize(prefix + "&7You are not registered."));
+                            }
+                        }
                         return true;
                     }
                     case "force" -> {
@@ -391,11 +398,6 @@ public class BoatRacingPlugin extends JavaPlugin {
                         return true;
                     }
                     case "status" -> {
-                        if (!p.hasPermission("boatracing.race.status")) {
-                            p.sendMessage(Text.colorize(prefix + "&cYou don't have permission to do that."));
-                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                            return true;
-                        }
                         if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " race status <track>")); return true; }
                         String tname = args[2];
                         if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
@@ -421,6 +423,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         p.sendMessage(Text.colorize("&7Laps: &f" + laps));
                         p.sendMessage(Text.colorize("&7Starts: &f" + starts + " &8• &7Start lights: &f" + lights + "/5 &8• &7Finish: &f" + (hasFinish?"yes":"no") + " &8• &7Pit area: &f" + (hasPit?"yes":"no")));
                         p.sendMessage(Text.colorize("&7Checkpoints: &f" + cps));
+                        p.sendMessage(Text.colorize("&7Mandatory pit stops: &f" + raceManager.getMandatoryPitstops()));
                         if (ready) {
                             p.sendMessage(Text.colorize("&aTrack is ready."));
                         } else {
@@ -448,6 +451,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addlight &7(Add the redstone lamp you're looking at as a start light; max 5, left-to-right order)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearlights &7(Remove all configured start lights)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setlaps <n> &7(Set the number of laps for the race)"));
+                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpitstops <n> &7(Set mandatory pit stops required to finish; 0 to disable)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpos <player> <slot|auto> &7(Bind a player to a specific start slot, 1-based; auto removes binding)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearpos <player> &7(Remove a player's custom start slot)"));
                     p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearcheckpoints &7(Remove all checkpoints)"));
@@ -588,6 +592,21 @@ public class BoatRacingPlugin extends JavaPlugin {
                         if (setupWizard != null) setupWizard.afterAction(p);
                         return true;
                     }
+                    case "setpitstops" -> {
+                        if (args.length < 3 || !args[2].matches("\\d+")) {
+                            p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " setup setpitstops <number>"));
+                            return true;
+                        }
+                        int req = Math.max(0, Integer.parseInt(args[2]));
+                        raceManager.setMandatoryPitstops(req);
+                        // Persist to config as the global default
+                        getConfig().set("racing.mandatory-pitstops", req);
+                        saveConfig();
+                        p.sendMessage(Text.colorize(prefix + "&aMandatory pit stops set to &f" + req));
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+                        if (setupWizard != null) setupWizard.afterAction(p);
+                        return true;
+                    }
                     case "setpos" -> {
                         if (args.length < 4) { p.sendMessage(Text.colorize(prefix + "&cUsage: /" + label + " setup setpos <player> <slot|auto>")); return true; }
                         org.bukkit.OfflinePlayer off = resolveOffline(args[2]);
@@ -638,6 +657,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         p.sendMessage(Text.colorize("&7 - &fTeam-specific pits: &e" + (teamPitCount > 0 ? (teamPitCount + " configured") : "none")));
                         p.sendMessage(Text.colorize("&7 - &fCustom start positions: &e" + (customStarts > 0 ? (customStarts + " player(s)") : "none")));
                         p.sendMessage(Text.colorize("&7 - &fCheckpoints: &e" + cps));
+                        p.sendMessage(Text.colorize("&7 - &fMandatory pit stops: &e" + raceManager.getMandatoryPitstops()));
                     }
                     case "selinfo" -> {
                         java.util.List<String> dump = SelectionUtils.debugSelection(p);
@@ -1108,7 +1128,8 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (args.length == 0 || (args.length == 1 && (args[0] == null || args[0].isEmpty()))) {
                 java.util.List<String> root = new java.util.ArrayList<>();
                 if (sender.hasPermission("boatracing.teams")) root.add("teams");
-                if (sender.hasPermission("boatracing.setup")) root.add("race");
+                // Expose 'race' root to all users for join/leave/status discoverability
+                root.add("race");
                 if (sender.hasPermission("boatracing.setup")) root.add("setup");
                 if (sender.hasPermission("boatracing.admin")) root.add("admin");
                 if (sender.hasPermission("boatracing.reload")) root.add("reload");
@@ -1119,7 +1140,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 String pref = args[0].toLowerCase();
                 java.util.List<String> root = new java.util.ArrayList<>();
                 if (sender.hasPermission("boatracing.teams")) root.add("teams");
-                if (sender.hasPermission("boatracing.setup")) root.add("race");
+                root.add("race");
                 if (sender.hasPermission("boatracing.setup")) root.add("setup");
                 if (sender.hasPermission("boatracing.admin")) root.add("admin");
                 if (sender.hasPermission("boatracing.reload")) root.add("reload");
@@ -1141,8 +1162,17 @@ public class BoatRacingPlugin extends JavaPlugin {
                 return java.util.Collections.emptyList();
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("race")) {
-                if (!sender.hasPermission("boatracing.setup")) return java.util.Collections.emptyList();
-                if (args.length == 2) return java.util.Arrays.asList("help","open","join","leave","force","start","stop","status");
+                // Admin subcommands guarded; expose join/leave/status to everyone
+                if (args.length == 2) {
+                    java.util.List<String> subs = new java.util.ArrayList<>();
+                    subs.add("help");
+                    subs.add("join"); subs.add("leave"); subs.add("status");
+                    if (sender.hasPermission("boatracing.race.admin") || sender.hasPermission("boatracing.setup")) {
+                        subs.add("open"); subs.add("start"); subs.add("force"); subs.add("stop");
+                    }
+                    String pref = args[1] == null ? "" : args[1].toLowerCase();
+                    return subs.stream().filter(s -> s.startsWith(pref)).toList();
+                }
                 // For subcommands that take <track>, suggest track names from library
                 if (args.length == 3 && java.util.Arrays.asList("open","join","leave","force","start","stop","status").contains(args[1].toLowerCase())) {
                     String prefix = args[2] == null ? "" : args[2].toLowerCase();

@@ -18,11 +18,27 @@
 
 An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 
-> Status: Public release (1.0.7)
+> Status: Public release (1.0.8)
 
 See the changelog in [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md).
 
 This is how to test the plugin to validate its behavior after each update: see the QA checklist in [CHECKLIST.md](CHECKLIST.md)
+
+## What’s new (1.0.8)
+Improvements and toggles:
+ - Customizable HUD: new config flags to show/hide parts of the sidebar and ActionBar.
+	 - `racing.ui.scoreboard.show-position|show-lap|show-checkpoints|show-pitstops|show-name`
+	 - `racing.ui.actionbar.show-lap|show-checkpoints|show-pitstops|show-time`
+ - Pitstops on HUD: when `racing.mandatory-pitstops > 0`, show “PIT A/B” on the sidebar and “Pit A/B” in the ActionBar (gated by the toggles above).
+ - Registration broadcast now includes the track name and the exact join command (`racing.registration-announce`).
+ - Sidebar order switched to “L/CP - Name”; removed centering/padding; names shown as-is (keeps leading '.' for Bedrock).
+ - Finish attempt message: crossing the finish line without all required checkpoints now shows a clear player message (in addition to the denial sound).
+ - Setup Wizard: new optional step “Mandatory pit stops” with quick buttons [0] [1] [2] [3].
+ - Setup command: `/boatracing setup setpitstops <n>` sets and persists `racing.mandatory-pitstops`.
+ - Results broadcast: podium medals 🥇/🥈/🥉 and rank colors for top‑3; keeps a penalty suffix when present; names rendered safely (keeps leading '.' for Bedrock).
+ - Wizard flow: if a default pit is already set in step 4, the wizard automatically advances to Checkpoints (team pits remain optional).
+ - Permissions: introduced wildcard `boatracing.*`. Admins still get absolutely all plugin permissions, now by explicit children under `boatracing.admin` to avoid circular inheritance.
+ - Tab-complete: players (non-admin) see `join|leave|status` under `/boatracing race`; admin-only verbs (`open|start|force|stop`) are suggested only to admins.
 
 ## What’s new (1.0.7)
 Bugfixes and quality-of-life:
@@ -137,6 +153,7 @@ Use the BoatRacing selection tool to make cuboid selections (left-click = mark C
 - `/boatracing setup clearstarts` — remove all start slots
 - `/boatracing setup setpos <player> <slot|auto>` — bind a player to a specific start slot (1‑based) or use `auto` to remove the binding
 - `/boatracing setup clearpos <player>` — remove a player’s custom start slot
+- `/boatracing setup setpitstops <n>` — set the number of mandatory pitstops (0 disables the requirement)
 - `/boatracing setup show` — show a summary of the current track config (includes team‑specific pits and count of custom start positions)
 	(includes the active track name if saved/loaded from Admin Tracks GUI)
  - `/boatracing setup selinfo` — debug info about your current selection
@@ -145,7 +162,7 @@ Use the BoatRacing selection tool to make cuboid selections (left-click = mark C
 - Start: `/boatracing setup wizard` (single entrypoint)
 - Auto‑advance when possible. Navigation appears as clickable emojis on every step: ⟵ Back, ℹ Status, ✖ Cancel.
 
-The wizard provides concise, colorized instructions with clickable actions. Steps: Starts → Finish → Start lights (5 required) → Pit area (optional) → Checkpoints (optional) → Laps → Done. The Starts step also includes optional buttons to set per‑player custom start slots (setpos/clearpos/auto) and shows the count of custom slots configured. On completion, the wizard prints a Summary that includes “Custom slots N”. It does not auto‑start races; the final prompt suggests opening registration for the currently selected track. Use `/boatracing setup wand` to get the selection tool.
+The wizard provides concise, colorized instructions with clickable actions. Steps: Starts → Finish → Start lights (5 required) → Pit area (optional) → Checkpoints (optional) → Mandatory pit stops (optional) → Laps → Done. The Starts step also includes optional buttons to set per‑player custom start slots (setpos/clearpos/auto) and shows the count of custom slots configured. The new “Mandatory pit stops” step shows your current value and quick options [0] [1] [2] [3]. On completion, the wizard prints a Summary that includes “Custom slots N”. It does not auto‑start races; the final prompt suggests opening registration for the currently selected track. Use `/boatracing setup wand` to get the selection tool.
 
 Notes:
 - Checkpoints (if configured) must be passed in order every lap before crossing finish; when none are configured, crossing finish counts the lap directly.
@@ -165,19 +182,22 @@ Notes:
 Race logic highlights:
 - With checkpoints configured, laps count only after collecting all checkpoints in order; if no checkpoints are set, crossing finish counts the lap.
  - Entering the pit area (when configured) adds a fixed time penalty to the racer’s total time, and also counts as finish for lap progression when the lap’s checkpoints are done.
+ - Mandatory pitstops: when `racing.mandatory-pitstops > 0`, racers must complete at least that many pit exits during the race before they are allowed to finish.
+ - If a racer attempts to finish without the required checkpoints for the lap, a clear message is sent (denial sound also plays).
  - Moving forward before the countdown ends (false start) adds a fixed time penalty.
 	- You can disable pit and false-start penalties via config flags.
 - Results are broadcast sorted by total time = elapsed + penalties.
+ - The broadcast highlights the podium with 🥇/🥈/🥉 and rank colors for the top‑3.
 - On start, racers are placed on unique start slots facing forward (pitch 0) and auto‑mounted into their selected boat type. Grid priority: custom slot bindings first; then by best recorded time on the track (fastest first); racers without a recorded time go last.
 - If 5 start lights are configured, a left-to-right lamp countdown runs (1 per second) before the race starts; lamps are lit via block data (no redstone power required).
 - Total laps come from configuration (`racing.laps`) and/or the track’s saved setting; `open` and `start` don’t accept a laps argument.
 
-### Tab‑completion
+### Tab–completion
 - Root: `teams`, `race`, `setup`, `reload`, `version`, `admin` (filtered by permissions)
 - Teams: `create`, `rename`, `color`, `join`, `leave`, `boat`, `number`, `confirm`, `cancel` (rename/color are admin‑only via command; GUI for members can be enabled via config). Disband is not exposed as a player command; it’s a GUI action when enabled.
 - Setup: `help`, `wand`, `wizard`, `addstart`, `clearstarts`, `setfinish`, `setpit`, `addcheckpoint`, `clearcheckpoints`, `addlight`, `clearlights`, `setpos`, `clearpos`, `show`, `selinfo`
  - `setpos` suggests player names, plus `auto` and slot numbers; `clearpos` suggests player names.
-- Race: `help`, `open`, `join`, `leave`, `force`, `start`, `stop`, `status` — when a subcommand expects `<track>`, tab‑completion lists existing track names.
+- Race: non‑admins see `join`, `leave`, and `status`; admins also see `open`, `start`, `force`, `stop`. When a subcommand expects `<track>`, tab‑completion lists existing track names.
 - `color` lists all DyeColors
 - `boat` lists allowed boat types (normal first, then chest variants)
 - `join` suggests existing team names
@@ -206,13 +226,14 @@ Admins (permission `boatracing.admin`) can:
 	- `/boatracing admin player setboat <player> <BoatType>`
 
 ## Permissions
+- `boatracing.*` (default: false) — wildcard that grants ALL BoatRacing permissions
 - `boatracing.use` (default: true) — meta permission; grants `boatracing.teams` and `boatracing.version`
 - `boatracing.teams` (default: true) — access to `/boatracing teams`
 - `boatracing.version` (default: true) — access to `/boatracing version`
 - `boatracing.reload` (default: op) — access to `/boatracing reload`
 - `boatracing.update` (default: op) — receive in‑game update notices
 - `boatracing.setup` (default: op) — configure tracks and selections (wizard, lights, starts, finish, pit, checkpoints)
-- `boatracing.admin` (default: op) — admin GUI and commands (manage teams and players). Also enables root tab‑completion for `admin`.
+- `boatracing.admin` (default: op) — admin GUI and commands (manage teams and players). Grants all plugin permissions via explicit children (no circular wildcard). Also enables root tab‑completion for `admin`.
 	- Admin Tracks GUI requires `boatracing.setup` to open from the Admin panel.
 
 Race‑specific permissions:
@@ -239,6 +260,7 @@ Players without `boatracing.setup` can use `/boatracing race join <track>`, `/bo
 - `updates.console-warn`: WARN in console when outdated
 - `updates.notify-admins`: in‑game update notices for admins (`boatracing.update`)
 - `racing.laps`: default race laps (int, default 3)
+- `racing.mandatory-pitstops`: required pit exits to be allowed to finish (int, default 0 = disabled)
 - `racing.pit-penalty-seconds`: time penalty applied on pit entry (double, default 5.0)
 - `racing.registration-seconds`: registration window length (seconds, default 300)
  - `racing.false-start-penalty-seconds`: time penalty applied for a false start during the light countdown (double, default 3.0)
