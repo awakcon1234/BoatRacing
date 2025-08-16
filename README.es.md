@@ -40,6 +40,10 @@ Mejoras y opciones:
  - Permisos: se introduce el wildcard `boatracing.*`. Los admins siguen teniendo absolutamente todos los permisos, ahora mediante hijos explícitos bajo `boatracing.admin` (evita herencia circular).
  - Autocompletado: los jugadores (no admin) ven `join|leave|status` bajo `/boatracing race`; los verbos solo‑admin (`open|start|force|stop`) se sugieren solo a admins.
 
+Updater:
+ - Aviso en consola restaurado: un WARN único poco después del arranque cuando estás desactualizado, y además un recordatorio cada hora mientras siga habiendo update (respeta `updates.console-warn`).
+ - Al unirse un admin: se lanza un check rápido (con throttle) y, si justo se publicó una update, se le notifica en segundos.
+
 ## Novedades (1.0.7)
 Correcciones y calidad de vida:
  - Ruido en consola por checks de actualización eliminado: solo un WARN único poco después de iniciar cuando estás desactualizado (respetando `updates.console-warn`). Los checks cada 5 minutos siguen pero en silencio.

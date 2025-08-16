@@ -24,6 +24,7 @@
  - Prevented a potential permission recursion by defining `boatracing.admin` with explicit children instead of inheriting `boatracing.*`.
  - `/boatracing race leave <track>` now replies when registration is closed or when the player isn’t registered (no more silent no-op).
  - Setup Wizard (Pit): no longer repeats waiting for team pits when a default pit exists; the wizard now advances to Checkpoints automatically (team pits remain optional).
+ - Updater: fixed missing console notice; now logs a WARN once on startup (if outdated) and also every hour while outdated. When an admin joins, a quick check runs (throttled) to notify them within seconds if a new update was just published.
 
 ## 1.0.7 — 2025-08-15
 ### Changed

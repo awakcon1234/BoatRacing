@@ -39,6 +39,10 @@ Improvements and toggles:
  - Wizard flow: if a default pit is already set in step 4, the wizard automatically advances to Checkpoints (team pits remain optional).
  - Permissions: introduced wildcard `boatracing.*`. Admins still get absolutely all plugin permissions, now by explicit children under `boatracing.admin` to avoid circular inheritance.
  - Tab-complete: players (non-admin) see `join|leave|status` under `/boatracing race`; admin-only verbs (`open|start|force|stop`) are suggested only to admins.
+ 
+Updater:
+ - Console notice restored: a single WARN shortly after startup when outdated, plus an hourly reminder while still outdated (respects `updates.console-warn`).
+ - Admin join: when an admin joins, a quick check runs (throttled) and notifies them within seconds if a new update was just published.
 
 ## What’s new (1.0.7)
 Bugfixes and quality-of-life:

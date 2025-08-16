@@ -11,6 +11,9 @@ public class UpdateNotifier implements Listener {
     private final Plugin plugin;
     private final UpdateChecker checker;
     private final String prefix;
+    // Throttle network checks triggered by joins (ms)
+    private volatile long lastJoinCheckMs = 0L;
+    private static final long JOIN_CHECK_COOLDOWN_MS = 60_000L; // 60s
 
     public UpdateNotifier(Plugin plugin, UpdateChecker checker, String prefix) {
         this.plugin = plugin;
@@ -24,7 +27,7 @@ public class UpdateNotifier implements Listener {
         if (!plugin.getConfig().getBoolean("updates.notify-admins", true)) return;
         Player p = e.getPlayer();
         if (!p.hasPermission("boatracing.update")) return;
-        // Notify only if a check already ran and we're outdated; if not yet checked, schedule a short retry
+        // Notify immediately if we already know we're outdated
         if (checker != null && checker.isChecked() && checker.isOutdated()) {
             int behind = checker.getBehindCount();
             String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
@@ -32,18 +35,23 @@ public class UpdateNotifier implements Listener {
             p.sendMessage(Text.colorize(prefix + "&eYou're " + behind + " version(s) out of date!"));
             p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
             p.sendMessage(Text.colorize(prefix + "&eDownload: &b" + checker.getLatestUrl()));
-        } else if (checker != null && !checker.isChecked()) {
-            // poll after a short delay to notify if outdated
-            org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (checker.isChecked() && checker.isOutdated() && p.isOnline() && p.hasPermission("boatracing.update")) {
-                    int behind = checker.getBehindCount();
-                    String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
-                    String current = plugin.getPluginMeta().getVersion();
-                    p.sendMessage(Text.colorize(prefix + "&eYou're " + behind + " version(s) out of date!"));
-                    p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
-                    p.sendMessage(Text.colorize(prefix + "&eDownload: &b" + checker.getLatestUrl()));
-                }
-            }, 20L * 5);
+        } else if (checker != null) {
+            // If result is stale or not yet checked, trigger a quick check (throttled)
+            long now = System.currentTimeMillis();
+            if (!checker.isChecked() || (now - lastJoinCheckMs) >= JOIN_CHECK_COOLDOWN_MS) {
+                lastJoinCheckMs = now;
+                try { checker.checkAsync(); } catch (Throwable ignored) {}
+                org.bukkit.Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (checker.isChecked() && checker.isOutdated() && p.isOnline() && p.hasPermission("boatracing.update")) {
+                        int behind = checker.getBehindCount();
+                        String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
+                        String current = plugin.getPluginMeta().getVersion();
+                        p.sendMessage(Text.colorize(prefix + "&eYou're " + behind + " version(s) out of date!"));
+                        p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
+                        p.sendMessage(Text.colorize(prefix + "&eDownload: &b" + checker.getLatestUrl()));
+                    }
+                }, 20L * 5);
+            }
         }
     }
 }

@@ -138,6 +138,26 @@ public class BoatRacingPlugin extends JavaPlugin {
                     }
                 } catch (Throwable ignored) {}
             }, period, period);
+            // Console reminder every hour: run a fresh check and then warn once when outdated
+            long hourly = 20L * 60L * 60L; // 1 hour
+            Bukkit.getScheduler().runTaskTimer(this, () -> {
+                if (!getConfig().getBoolean("updates.enabled", true)) return;
+                if (!getConfig().getBoolean("updates.console-warn", true)) return;
+                try {
+                    updateChecker.checkAsync();
+                } catch (Throwable ignored) {}
+                // give the async call a moment to complete, then log if outdated
+                Bukkit.getScheduler().runTaskLater(this, () -> {
+                    if (updateChecker.isChecked() && updateChecker.isOutdated()) {
+                        int behind = updateChecker.getBehindCount();
+                        String current = getPluginMeta().getVersion();
+                        String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
+                        Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
+                        Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
+                        Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
+                    }
+                }, 20L * 8L); // ~8s grace period after triggering the check
+            }, hourly, hourly);
         }
 
     if (getCommand("boatracing") != null) {
