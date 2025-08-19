@@ -3,10 +3,6 @@
 	<a href="#en" title="English">
 		<img src="https://hatscripts.github.io/circle-flags/flags/gb.svg" width="18" height="18" alt="English" /> English
 	</a>
-	·
-	<a href="README.es.md#es" title="Español">
-		<img src="https://hatscripts.github.io/circle-flags/flags/es.svg" width="18" height="18" alt="Español" /> Español
-	</a>
 </p>
 
 <a id="en"></a>
@@ -30,6 +26,11 @@ Compatibility and fixes:
 - Safer boat types across versions: dynamic Material resolution for boats/rafts (including Bamboo Raft and Pale Oak variants) avoids NoSuchFieldError on older APIs and removes CraftLegacy warnings.
 - Classified as a Bukkit/Spigot plugin on Paper (paper-plugin.yml excluded from the JAR). Paper-only APIs replaced with Bukkit-safe calls.
 - Docs: README, CHANGELOG and QA checklist updated (EN/ES).
+ 
+Updater cadence:
+- Background checks still run every 5 minutes. When a new version is first detected during runtime, a console WARN is printed immediately (once per version).
+- Hourly reminder aligned to the top of each hour (00:00, 01:00, …) while outdated (respects `updates.console-warn`).
+- Admin join: always notifies in chat (if enabled), never prints to console on player join.
 
 ## What’s new (1.0.8)
 Improvements and toggles:
@@ -288,8 +289,8 @@ Players without `boatracing.setup` can use `/boatracing race join <track>`, `/bo
  
 
 ## Updates & Metrics
-- Update checks: Modrinth project; a single console WARN shortly after startup if outdated (respecting `updates.console-warn`) and in‑game admin notices (if enabled)
-- Silent periodic check every 5 minutes while the server is running
+- Update checks: Modrinth project. A console WARN is printed on first detection (startup or when a new version appears during runtime) and an hourly reminder at 00:00, 01:00, … while outdated (respects `updates.console-warn`). Admin join shows an in‑game chat notice (if enabled) and does not print to console.
+- Background: checks every 5 minutes; if a new version is detected mid‑run, the console WARN prints immediately (once per version).
 - bStats: enabled by default; opt‑out via the global bStats config (plugin id hardcoded)
 
 ## Storage

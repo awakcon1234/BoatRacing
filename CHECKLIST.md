@@ -11,11 +11,13 @@ README — BoatRacing QA checklist (teams, admin, tracks; two-player tests)
 	- Team GUI boat picker shows all allowed boats. On 1.21.x, Pale Oak and Rafts render when available; on 1.19, no crashes and no CraftLegacy WARN in console.
 	- Spawning and mounting uses dynamic resolution; falls back gracefully when a variant doesn’t exist.
 - Updater cadence (regression):
-	- Single WARN a few seconds after startup if outdated; then hourly while outdated (config-gated).
-	- Admin join quick-check shows update within seconds after release (throttled).
+	- Startup: single WARN a few seconds after enable if outdated (config-gated).
+	- Runtime detection: background check every 5 minutes; if a new version appears mid-run, print a console WARN immediately (once per version).
+	- Hourly reminder: console WARN aligned to 00:00, 01:00, 02:00… while outdated (config-gated).
+	- Admin join: always show chat notice to admins (if enabled), no console output on player join.
 - Docs:
 	- README shows Status 1.0.9 and Requirements: 1.19–1.21.8, Java 17+.
-	- CHANGELOG.md has 1.0.9 entry. CHANGELOG.txt present. README.es.md added.
+	- CHANGELOG.md has 1.0.9 entry. CHANGELOG.txt present.
 
 ## What to verify for 1.0.8
 - Permissions and tab-complete:
@@ -309,7 +311,7 @@ Neutral phrasing:
 - Rango soporte: 1.19–1.21.8; Java 17+.
 - Clasificación Bukkit/Spigot en Paper (sin paper-plugin.yml).
 - Arreglo barcos/rafts (incluye Bamboo Raft y Pale Oak) sin errores ni avisos CraftLegacy.
-- README/CHANGELOG/CHECKLIST actualizados; añadido README.es.md.
+- README/CHANGELOG/CHECKLIST actualizados.
  - Penalties: disable via `racing.enable-pit-penalty` and/or `racing.enable-false-start-penalty`. False-start penalty seconds via `racing.false-start-penalty-seconds`. Mandatory pitstops via `racing.mandatory-pitstops` (0 = disabled).
 
 ## Track setup (built-in tool) and wizard

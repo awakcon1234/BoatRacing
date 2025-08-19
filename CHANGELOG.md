@@ -6,6 +6,7 @@
 - Documented supported servers: Purpur, Paper, Spigot, CraftBukkit (Bukkit-compatible forks may work; Folia/Sponge/Forge hybrids not supported).
 - Classified as Bukkit/Spigot on Paper by excluding `paper-plugin.yml` from the jar and using only Bukkit-safe APIs for metadata.
 - Documentation updated: README, CHANGELOG and QA checklist in EN/ES.
+- Updater cadence: background check every 5 minutes; when a new version is first detected during runtime, print a console WARN immediately (once per version). Hourly console reminder aligned to each hour (00:00, 01:00, …) while outdated (config-gated). Admin join always shows an in‑game chat notice (if enabled) and never prints to console.
 
 ### Fixed
 - Boat/Raft materials on mixed APIs: dynamic Material resolution for boat/raft variants (including Bamboo Raft and Pale Oak) removes NoSuchFieldError on older bases and avoids CraftLegacy warnings.
