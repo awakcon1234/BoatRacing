@@ -11,10 +11,6 @@
 - Boat/Raft materials on mixed APIs: dynamic Material resolution for boat/raft variants (including Bamboo Raft and Pale Oak) removes NoSuchFieldError on older bases and avoids CraftLegacy warnings.
 - Command metadata on Spigot: restored by replacing Paper-only `getPluginMeta()` with Bukkit `getDescription()`.
 
-— Español —
-- Soporte oficial 1.19 → 1.21.8, Java 17+. Clasificación Bukkit/Spigot en Paper. Corrección de materiales de barco/raft y metadatos de comandos.
-- Documentados servidores soportados: Purpur, Paper, Spigot, CraftBukkit (otros forks Bukkit pueden funcionar; no soportados Folia/Sponge/híbridos Forge).
-
 ## 1.0.8 — 2025-08-16
 ### Added
 - Config toggles to customize the sidebar and ActionBar visibility:
@@ -162,3 +158,4 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 [1.0.4]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.4
 
 [1.0.3]: https://github.com/Jaie55/BoatRacing/releases/tag/v1.0.3
+
