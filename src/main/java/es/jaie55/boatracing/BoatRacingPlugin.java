@@ -40,6 +40,8 @@ public class BoatRacingPlugin extends JavaPlugin {
     private RaceManager raceManager;
     private SetupWizard setupWizard;
     private es.jaie55.boatracing.ui.AdminTracksGUI tracksGUI;
+    // Last latest-version announced in console due to 5-minute silent checks (to avoid duplicate prints)
+    private volatile String lastConsoleAnnouncedVersion = null;
     // Track pending disband confirmations per player
     private final java.util.Set<java.util.UUID> pendingDisband = new java.util.HashSet<>();
     private final java.util.Map<java.util.UUID, java.util.UUID> pendingTransfer = new java.util.HashMap<>();
@@ -122,6 +124,8 @@ public class BoatRacingPlugin extends JavaPlugin {
                         Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
                         Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
                         Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
+                        // Record which latest was announced
+                        lastConsoleAnnouncedVersion = updateChecker.getLatestVersion();
                     }
                 }
             }, 20L * 5); // ~5s after enable
@@ -129,25 +133,46 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (getConfig().getBoolean("updates.notify-admins", true)) {
                 Bukkit.getPluginManager().registerEvents(new UpdateNotifier(this, updateChecker, prefix), this);
             }
-            // Periodic silent update checks every 5 minutes (no console spam)
+            // Periodic silent update checks every 5 minutes. If a NEW update is first detected here,
+            // print a console WARN immediately (single time per version); hourly reminders handle repetition.
             long period = 20L * 60L * 5L; // 5 minutes
             Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
                 try {
-                    if (getConfig().getBoolean("updates.enabled", true)) {
-                        updateChecker.checkAsync();
-                    }
+                    if (!getConfig().getBoolean("updates.enabled", true)) return;
+                    updateChecker.checkAsync();
+                    // Evaluate result shortly after on the main thread to avoid race conditions
+                    Bukkit.getScheduler().runTaskLater(this, () -> {
+                        if (!getConfig().getBoolean("updates.enabled", true)) return;
+                        if (!getConfig().getBoolean("updates.console-warn", true)) return;
+                        if (updateChecker.isChecked() && updateChecker.isOutdated()) {
+                            String latest = updateChecker.getLatestVersion();
+                            if (latest != null && (lastConsoleAnnouncedVersion == null || !latest.equals(lastConsoleAnnouncedVersion))) {
+                                int behind = updateChecker.getBehindCount();
+                                String current = getDescription().getVersion();
+                                Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
+                                Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
+                                Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
+                                lastConsoleAnnouncedVersion = latest; // avoid duplicate console prints for the same version here
+                            }
+                        }
+                    }, 20L * 8L);
                 } catch (Throwable ignored) {}
             }, period, period);
-            // Console reminder every hour: run a fresh check and then warn once when outdated
+            // Console reminder every hour:
+            // - Warn immediately if we already know we're outdated
+            // - Trigger a fresh async check and then warn once when the result arrives (with retries to cover latency)
+            // Hourly console reminder aligned to the top of each local hour (00:00, 01:00, 02:00, ...)
+            java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+            java.time.ZonedDateTime nextHour = now.withMinute(0).withSecond(0).withNano(0).plusHours(1);
+            long delayTicks = Math.max(1L, java.time.Duration.between(now, nextHour).toMillis() / 50L);
             long hourly = 20L * 60L * 60L; // 1 hour
             Bukkit.getScheduler().runTaskTimer(this, () -> {
                 if (!getConfig().getBoolean("updates.enabled", true)) return;
                 if (!getConfig().getBoolean("updates.console-warn", true)) return;
-                try {
-                    updateChecker.checkAsync();
-                } catch (Throwable ignored) {}
-                // give the async call a moment to complete, then log if outdated
+                try { updateChecker.checkAsync(); } catch (Throwable ignored) {}
                 Bukkit.getScheduler().runTaskLater(this, () -> {
+                    if (!getConfig().getBoolean("updates.enabled", true)) return;
+                    if (!getConfig().getBoolean("updates.console-warn", true)) return;
                     if (updateChecker.isChecked() && updateChecker.isOutdated()) {
                         int behind = updateChecker.getBehindCount();
                         String current = getDescription().getVersion();
@@ -156,8 +181,8 @@ public class BoatRacingPlugin extends JavaPlugin {
                         Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
                         Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
                     }
-                }, 20L * 8L); // ~8s grace period after triggering the check
-            }, hourly, hourly);
+                }, 20L * 10L);
+            }, delayTicks, hourly);
         }
 
     if (getCommand("boatracing") != null) {
@@ -178,7 +203,6 @@ public class BoatRacingPlugin extends JavaPlugin {
         saveConfig();
     }
 
-    // Scoreboard number hiding removed by request
 
     // Resolve an OfflinePlayer without remote lookups: prefer online, then cache, or UUID literal
     private org.bukkit.OfflinePlayer resolveOffline(String token) {
@@ -203,8 +227,6 @@ public class BoatRacingPlugin extends JavaPlugin {
     public void onDisable() {
         if (teamManager != null) teamManager.save();
     }
-
-    // ViaVersion integration removed by request
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {

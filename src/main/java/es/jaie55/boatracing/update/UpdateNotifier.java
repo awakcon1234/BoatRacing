@@ -31,7 +31,7 @@ public class UpdateNotifier implements Listener {
         if (checker != null && checker.isChecked() && checker.isOutdated()) {
             int behind = checker.getBehindCount();
             String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
-            String current = plugin.getPluginMeta().getVersion();
+            String current = plugin.getDescription().getVersion();
             p.sendMessage(Text.colorize(prefix + "&eYou're " + behind + " version(s) out of date!"));
             p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
             p.sendMessage(Text.colorize(prefix + "&eDownload: &b" + checker.getLatestUrl()));
@@ -45,7 +45,7 @@ public class UpdateNotifier implements Listener {
                     if (checker.isChecked() && checker.isOutdated() && p.isOnline() && p.hasPermission("boatracing.update")) {
                         int behind = checker.getBehindCount();
                         String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
-                        String current = plugin.getPluginMeta().getVersion();
+                        String current = plugin.getDescription().getVersion();
                         p.sendMessage(Text.colorize(prefix + "&eYou're " + behind + " version(s) out of date!"));
                         p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
                         p.sendMessage(Text.colorize(prefix + "&eDownload: &b" + checker.getLatestUrl()));
