@@ -1,3 +1,51 @@
+<a id="es"></a>
+# BoatRacing
+
+[![Modrinth](https://img.shields.io/modrinth/v/boatracing?logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/boatracing) [![Downloads](https://img.shields.io/modrinth/dt/boatracing?logo=modrinth&label=Descargas)](https://modrinth.com/plugin/boatracing)
+
+[![bStats](https://bstats.org/signatures/bukkit/BoatRacing.svg)](https://bstats.org/plugin/bukkit/BoatRacing/26881)
+
+Plugin de carreras de barcos estilo F1 en hielo para Bukkit/Spigot (compatible con Paper/Purpur) con una GUI cuidada estilo vanilla. Gestiona equipos, configura circuitos con la herramienta de selección integrada, corre carreras cronometradas con checkpoints, penalización por entrar en boxes y un asistente de configuración.
+
+> Estado: Public release (1.0.9)
+
+Consulta el registro de cambios en CHANGELOG.md y la checklist de QA en CHECKLIST.md.
+
+## Novedades (1.0.9)
+Compatibilidad y correcciones:
+- Soporte oficial: Bukkit/Spigot/Paper/Purpur 1.19 → 1.21.8. Requiere Java 17+.
+- Tipos de barco seguros entre versiones: resolución dinámica de Material para barcos/rafts (incluye Bamboo Raft y Pale Oak) evitando NoSuchFieldError en APIs antiguas y sin avisos CraftLegacy.
+- Clasificado como plugin de Bukkit/Spigot en Paper (se excluye paper-plugin.yml del JAR). APIs exclusivas de Paper reemplazadas por llamadas seguras Bukkit.
+- Docs: README, CHANGELOG y checklist actualizados (EN/ES).
+
+## Requisitos
+- Bukkit/Spigot/Paper/Purpur 1.19–1.21.8 (api-version: 1.19)
+- Java 17+
+
+Servidores soportados
+- Purpur
+- Paper
+- Spigot
+- CraftBukkit
+Otros forks compatibles con Bukkit pueden funcionar pero no están probados oficialmente. No soportados: Folia (regionizado), Sponge, híbridos Forge (Mohist/Magma/Arclight).
+
+## Instalación
+1. Descarga BoatRacing.jar desde Modrinth.
+2. Copia el jar a la carpeta `plugins/`.
+3. Arranca el servidor para generar `config.yml` y datos.
+
+## Uso rápido
+- `/boatracing teams` abre la GUI principal.
+- Crea un equipo, elige número de piloto y tipo de barco.
+- Configura un circuito (salidas, meta, opcionalmente boxes y checkpoints) con la herramienta de selección integrada y el Asistente.
+- Abre registro y lanza carreras con `/boatracing race` o desde la GUI de Admin.
+
+## Compatibilidad
+- Inglés únicamente para mensajes in‑game.
+- Estadísticas bStats activadas por defecto.
+
+## Licencia
+MIT. Ver `LICENSE`.
 <!-- Conmutador de idioma con banderas (hatscripts circle-flags) -->
 <p align="right">
 	<a href="README.md#en" title="English">

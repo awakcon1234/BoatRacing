@@ -1,9 +1,9 @@
 name: BoatRacing
 main: es.jaie55.boatracing.BoatRacingPlugin
 version: ${project.version}
-api-version: '1.21'
+api-version: '1.19'
 authors: [Jaie55]
-description: An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
+description: An F1‑style ice boat racing plugin for Bukkit/Spigot with a clean, vanilla‑like GUI. Compatible with Paper/Purpur. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 website: https://modrinth.com/plugin/boatracing
 commands:
   boatracing:

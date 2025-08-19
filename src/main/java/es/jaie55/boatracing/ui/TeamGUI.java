@@ -42,30 +42,39 @@ public class TeamGUI implements Listener {
     private static final Component TITLE_BOAT_PICKER = Text.title("Choose your boat");
     private static final Component TITLE_DISBAND_CONFIRM = Text.title("Disband team?");
     private static final Component TITLE_LEAVE_CONFIRM = Text.title("Leave team?");
+    // Resolve allowed boat/raft materials by name to avoid NoSuchFieldError on servers lacking newer enums
+    private static final Material[] ALLOWED_BOATS = resolveAllowedBoats();
     
+    private static Material[] resolveAllowedBoats() {
+        java.util.List<Material> list = new java.util.ArrayList<>();
+        addIfPresent(list, "OAK_BOAT");
+        addIfPresent(list, "SPRUCE_BOAT");
+        addIfPresent(list, "BIRCH_BOAT");
+        addIfPresent(list, "JUNGLE_BOAT");
+        addIfPresent(list, "ACACIA_BOAT");
+        addIfPresent(list, "DARK_OAK_BOAT");
+        addIfPresent(list, "MANGROVE_BOAT");
+        addIfPresent(list, "CHERRY_BOAT");
+        addIfPresent(list, "PALE_OAK_BOAT");
+        addIfPresent(list, "BAMBOO_RAFT");
+        addIfPresent(list, "OAK_CHEST_BOAT");
+        addIfPresent(list, "SPRUCE_CHEST_BOAT");
+        addIfPresent(list, "BIRCH_CHEST_BOAT");
+        addIfPresent(list, "JUNGLE_CHEST_BOAT");
+        addIfPresent(list, "ACACIA_CHEST_BOAT");
+        addIfPresent(list, "DARK_OAK_CHEST_BOAT");
+        addIfPresent(list, "MANGROVE_CHEST_BOAT");
+        addIfPresent(list, "CHERRY_CHEST_BOAT");
+        addIfPresent(list, "PALE_OAK_CHEST_BOAT");
+        addIfPresent(list, "BAMBOO_CHEST_RAFT");
+        return list.toArray(new Material[0]);
+    }
     
-    private static final Material[] ALLOWED_BOATS = new Material[] {
-        Material.OAK_BOAT,
-        Material.SPRUCE_BOAT,
-        Material.BIRCH_BOAT,
-        Material.JUNGLE_BOAT,
-        Material.ACACIA_BOAT,
-        Material.DARK_OAK_BOAT,
-        Material.MANGROVE_BOAT,
-        Material.CHERRY_BOAT,
-    Material.PALE_OAK_BOAT,
-    Material.BAMBOO_RAFT,
-        Material.OAK_CHEST_BOAT,
-        Material.SPRUCE_CHEST_BOAT,
-        Material.BIRCH_CHEST_BOAT,
-        Material.JUNGLE_CHEST_BOAT,
-        Material.ACACIA_CHEST_BOAT,
-        Material.DARK_OAK_CHEST_BOAT,
-        Material.MANGROVE_CHEST_BOAT,
-    Material.CHERRY_CHEST_BOAT,
-    Material.PALE_OAK_CHEST_BOAT,
-    Material.BAMBOO_CHEST_RAFT
-    };
+    private static void addIfPresent(java.util.List<Material> out, String name) {
+        // Resolve strictly by modern enum name; avoids triggering legacy material support
+        Material m = org.bukkit.Material.matchMaterial(name);
+        if (m != null) out.add(m);
+    }
     private final BoatRacingPlugin plugin;
     private final NamespacedKey KEY_TEAM_ID;
     private final NamespacedKey KEY_TARGET_ID;

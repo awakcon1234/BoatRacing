@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.9 — 2025-08-19
+### Added / Changed
+- Official support range declared: 1.19 → 1.21.8 (Bukkit/Spigot compatible; works on Paper/Purpur). Requires Java 17+; plugin.yml api-version set to 1.19.
+- Documented supported servers: Purpur, Paper, Spigot, CraftBukkit (Bukkit-compatible forks may work; Folia/Sponge/Forge hybrids not supported).
+- Classified as Bukkit/Spigot on Paper by excluding `paper-plugin.yml` from the jar and using only Bukkit-safe APIs for metadata.
+- Documentation updated: README, CHANGELOG and QA checklist in EN/ES.
+
+### Fixed
+- Boat/Raft materials on mixed APIs: dynamic Material resolution for boat/raft variants (including Bamboo Raft and Pale Oak) removes NoSuchFieldError on older bases and avoids CraftLegacy warnings.
+- Command metadata on Spigot: restored by replacing Paper-only `getPluginMeta()` with Bukkit `getDescription()`.
+
+— Español —
+- Soporte oficial 1.19 → 1.21.8, Java 17+. Clasificación Bukkit/Spigot en Paper. Corrección de materiales de barco/raft y metadatos de comandos.
+- Documentados servidores soportados: Purpur, Paper, Spigot, CraftBukkit (otros forks Bukkit pueden funcionar; no soportados Folia/Sponge/híbridos Forge).
+
 ## 1.0.8 — 2025-08-16
 ### Added
 - Config toggles to customize the sidebar and ActionBar visibility:

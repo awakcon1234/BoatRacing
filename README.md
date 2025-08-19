@@ -16,13 +16,20 @@
 
 [![bStats](https://bstats.org/signatures/bukkit/BoatRacing.svg)](https://bstats.org/plugin/bukkit/BoatRacing/26881)
 
-An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
+An F1‒style ice boat racing plugin for Bukkit/Spigot (compatible with Paper/Purpur) with a clean, vanilla‒like GUI. Manage teams, configure tracks with the built‒in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 
-> Status: Public release (1.0.8)
+> Status: Public release (1.0.9)
 
 See the changelog in [CHANGELOG.md](https://github.com/Jaie55/BoatRacing/blob/main/CHANGELOG.md).
 
 This is how to test the plugin to validate its behavior after each update: see the QA checklist in [CHECKLIST.md](CHECKLIST.md)
+
+## What’s new (1.0.9)
+Compatibility and fixes:
+- Official support: Bukkit/Spigot/Paper/Purpur 1.19 → 1.21.8. Requires Java 17+.
+- Safer boat types across versions: dynamic Material resolution for boats/rafts (including Bamboo Raft and Pale Oak variants) avoids NoSuchFieldError on older APIs and removes CraftLegacy warnings.
+- Classified as a Bukkit/Spigot plugin on Paper (paper-plugin.yml excluded from the JAR). Paper-only APIs replaced with Bukkit-safe calls.
+- Docs: README, CHANGELOG and QA checklist updated (EN/ES).
 
 ## What’s new (1.0.8)
 Improvements and toggles:
@@ -125,8 +132,15 @@ Fixes and polish:
  - Admin Race GUI: open/close registration, start/force/stop the race, adjust laps, and manage registrants.
 
 ## Requirements
-- Paper 1.21.8 (api-version: 1.21)
-- Java 21
+- Bukkit/Spigot/Paper/Purpur 1.19–1.21.8 (api-version: 1.19)
+- Java 17+
+
+Supported servers
+- Purpur
+- Paper
+- Spigot
+- CraftBukkit
+Other Bukkit-compatible forks may work but aren’t officially tested. Not supported: Folia (regionized threading), Sponge, Forge hybrids (Mohist/Magma/Arclight).
  
 
 ## Install
@@ -286,7 +300,7 @@ Players without `boatracing.setup` can use `/boatracing race join <track>`, `/bo
 Legacy migration: if a legacy `plugins/BoatRacing/track.yml` is found on startup, it is migrated to `plugins/BoatRacing/tracks/default.yml` (or `default_N.yml`) and the old file is removed when possible. Admins with `boatracing.setup` get an in‑game notice.
 
 ## Compatibility
-- Paper 1.21.8; Java 21
+- Bukkit/Spigot/Paper/Purpur 1.19–1.21.8; Java 17+
 - English‑only messages with vanilla‑styled titles and lore
  
 

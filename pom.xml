@@ -6,16 +6,16 @@
 
     <groupId>es.jaie55</groupId>
     <artifactId>boatracing</artifactId>
-    <version>1.0.8</version>
+    <version>1.0.9</version>
     <name>BoatRacing</name>
     <url>https://modrinth.com/plugin/boatracing</url>
-    <description>An F1‑style ice boat racing plugin for Paper with a clean, vanilla‑like GUI. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.</description>
+    <description>An F1‑style ice boat racing plugin for Bukkit/Spigot with a clean, vanilla‑like GUI. Compatible with Paper/Purpur. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.</description>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <paper.api.version>1.21.8-R0.1-SNAPSHOT</paper.api.version>
+    <paper.api.version>1.19.4-R0.1-SNAPSHOT</paper.api.version>
     </properties>
 
     <repositories>
@@ -69,6 +69,7 @@
                 <filtering>false</filtering>
                 <excludes>
                     <exclude>plugin.yml</exclude>
+                    <exclude>paper-plugin.yml</exclude>
                 </excludes>
             </resource>
         </resources>
@@ -78,7 +79,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <release>21</release>
+                    <release>17</release>
                     <includes>
                         <include>es/**</include>
                     </includes>

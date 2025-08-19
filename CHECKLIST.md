@@ -1,5 +1,22 @@
 README — BoatRacing QA checklist (teams, admin, tracks; two-player tests)
 
+## What to verify for 1.0.9
+- Compatibility policy:
+	- Server range: 1.19, 1.20.1/1.20.4, 1.21/1.21.1/1.21.8 boot without errors. `/boatracing version` works.
+	- Java 17+: starting on Java 17 passes; Java 21 also works. Documented minimum is 17.
+- Classification on Paper:
+	- On Paper/Purpur, plugin appears under Bukkit/Spigot plugins. No paper-plugin.yml inside the jar.
+	- Commands and metadata use Bukkit `getDescription()` (no Paper-only API).
+- Boat/Raft materials fix:
+	- Team GUI boat picker shows all allowed boats. On 1.21.x, Pale Oak and Rafts render when available; on 1.19, no crashes and no CraftLegacy WARN in console.
+	- Spawning and mounting uses dynamic resolution; falls back gracefully when a variant doesn’t exist.
+- Updater cadence (regression):
+	- Single WARN a few seconds after startup if outdated; then hourly while outdated (config-gated).
+	- Admin join quick-check shows update within seconds after release (throttled).
+- Docs:
+	- README shows Status 1.0.9 and Requirements: 1.19–1.21.8, Java 17+.
+	- CHANGELOG.md has 1.0.9 entry. CHANGELOG.txt present. README.es.md added.
+
 ## What to verify for 1.0.8
 - Permissions and tab-complete:
 	- `boatracing.admin` grants every permission via the wildcard `boatracing.*`. Removing `boatracing.admin` should revoke all admin-only actions.
@@ -287,6 +304,12 @@ Neutral phrasing:
 
 - Built-in BoatRacing selection tool (no WorldEdit/FAWE required).
 - In-game messaging is English-only. This checklist is now in English.
+
+— Español (resumen 1.0.9) —
+- Rango soporte: 1.19–1.21.8; Java 17+.
+- Clasificación Bukkit/Spigot en Paper (sin paper-plugin.yml).
+- Arreglo barcos/rafts (incluye Bamboo Raft y Pale Oak) sin errores ni avisos CraftLegacy.
+- README/CHANGELOG/CHECKLIST actualizados; añadido README.es.md.
  - Penalties: disable via `racing.enable-pit-penalty` and/or `racing.enable-false-start-penalty`. False-start penalty seconds via `racing.false-start-penalty-seconds`. Mandatory pitstops via `racing.mandatory-pitstops` (0 = disabled).
 
 ## Track setup (built-in tool) and wizard

@@ -109,7 +109,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 
     // Updates
     if (getConfig().getBoolean("updates.enabled", true)) {
-            String currentVersion = getPluginMeta().getVersion();
+            String currentVersion = getDescription().getVersion();
             updateChecker = new UpdateChecker(this, "boatracing", currentVersion);
             updateChecker.checkAsync();
             // Post-result console notice (delayed)
@@ -150,7 +150,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 Bukkit.getScheduler().runTaskLater(this, () -> {
                     if (updateChecker.isChecked() && updateChecker.isOutdated()) {
                         int behind = updateChecker.getBehindCount();
-                        String current = getPluginMeta().getVersion();
+                        String current = getDescription().getVersion();
                         String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
                         Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
                         Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
@@ -225,8 +225,8 @@ public class BoatRacingPlugin extends JavaPlugin {
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return true;
                 }
-                String current = getPluginMeta().getVersion();
-                java.util.List<String> authors = getPluginMeta().getAuthors();
+                String current = getDescription().getVersion();
+                java.util.List<String> authors = getDescription().getAuthors();
                 p.sendMessage(Text.colorize(prefix + "&e" + getName() + "-" + current));
                 if (!authors.isEmpty()) {
                     p.sendMessage(Text.colorize(prefix + "&eAuthors: &f" + String.join(", ", authors)));
@@ -1277,7 +1277,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 
     private void sendUpdateStatus(Player p) {
         if (updateChecker == null) return;
-        String current = getPluginMeta().getVersion();
+                        String current = getDescription().getVersion();
         if (!updateChecker.isChecked()) return;
         if (updateChecker.hasError()) {
             p.sendMessage(Text.colorize(prefix + "&7Update check failed. See console for details."));
