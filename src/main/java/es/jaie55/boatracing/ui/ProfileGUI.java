@@ -30,9 +30,11 @@ import java.util.List;
 public class ProfileGUI implements Listener {
     private static final Component TITLE = Text.title("Hồ sơ tay đua");
     private static final Component TITLE_COLOR = Text.title("Chọn màu");
+    private static final Component TITLE_ICON = Text.title("Chọn biểu tượng");
     private final BoatRacingPlugin plugin;
     private final NamespacedKey KEY_ACTION;
     private final NamespacedKey KEY_COLOR;
+    private final NamespacedKey KEY_ICON;
 
     private enum Action { COLOR, NUMBER, ICON, CLOSE }
 
@@ -40,6 +42,7 @@ public class ProfileGUI implements Listener {
         this.plugin = plugin;
         this.KEY_ACTION = new NamespacedKey(plugin, "profile-action");
         this.KEY_COLOR = new NamespacedKey(plugin, "profile-color");
+        this.KEY_ICON = new NamespacedKey(plugin, "profile-icon");
     }
 
     public void open(Player p) {
@@ -59,7 +62,7 @@ public class ProfileGUI implements Listener {
         inv.setItem(14, buttonWithLore(Material.NAME_TAG, Text.item("&a&lSố đua"), Action.NUMBER,
                 List.of("&7Nhập số đua (1-99)."), true));
         inv.setItem(16, buttonWithLore(Material.FLOWER_BANNER_PATTERN, Text.item("&d&lBiểu tượng"), Action.ICON,
-                List.of("&7Nhập kí tự biểu tượng (Unicode)."), true));
+            List.of("&7Chọn 1 biểu tượng từ danh sách."), true));
 
         inv.setItem(26, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
                 List.of("&7Đóng"), true));
@@ -86,6 +89,12 @@ public class ProfileGUI implements Listener {
         return it;
     }
 
+    // Limit colors to a curated set
+    private static final DyeColor[] ALLOWED_COLORS = new DyeColor[] {
+        DyeColor.WHITE, DyeColor.BLACK, DyeColor.RED, DyeColor.BLUE, DyeColor.GREEN,
+        DyeColor.YELLOW, DyeColor.ORANGE, DyeColor.PURPLE, DyeColor.PINK, DyeColor.LIGHT_BLUE
+    };
+
     public void openColorPicker(Player p) {
         int size = 54;
         Inventory inv = Bukkit.createInventory(null, size, TITLE_COLOR);
@@ -93,7 +102,7 @@ public class ProfileGUI implements Listener {
         for (int i = 0; i < size; i++) inv.setItem(i, filler);
 
         int slot = 10;
-        for (DyeColor dc : DyeColor.values()) {
+        for (DyeColor dc : ALLOWED_COLORS) {
             Material mat = paneForColor(dc);
             ItemStack it = new ItemStack(mat);
             ItemMeta im = it.getItemMeta();
@@ -108,6 +117,38 @@ public class ProfileGUI implements Listener {
             inv.setItem(slot, it);
             slot++;
             if ((slot + 1) % 9 == 0) slot += 2; // spacing
+            if (slot >= size - 9) break;
+        }
+        inv.setItem(size-1, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE, List.of("&7Đóng"), true));
+        p.openInventory(inv);
+        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.1f);
+    }
+
+    // Predefined icon set
+    private static final String[] ALLOWED_ICONS = new String[] {
+        "★","☆","✦","✧","❖","◆","◇","❤","✚","⚡","☀","☂","☕","⚓","♪","♫","🚤","⛵"
+    };
+
+    public void openIconPicker(Player p) {
+        int size = 54;
+        Inventory inv = Bukkit.createInventory(null, size, TITLE_ICON);
+        ItemStack filler = pane(Material.GRAY_STAINED_GLASS_PANE);
+        for (int i = 0; i < size; i++) inv.setItem(i, filler);
+        int slot = 10;
+        for (String ic : ALLOWED_ICONS) {
+            ItemStack it = new ItemStack(Material.PAPER);
+            ItemMeta im = it.getItemMeta();
+            if (im != null) {
+                im.displayName(Text.item("&f" + ic));
+                im.lore(Text.lore(List.of("&7Bấm: &fChọn biểu tượng này")));
+                im.getPersistentDataContainer().set(KEY_ACTION, PersistentDataType.STRING, Action.ICON.name());
+                im.getPersistentDataContainer().set(KEY_ICON, PersistentDataType.STRING, ic);
+                im.addItemFlags(ItemFlag.values());
+                it.setItemMeta(im);
+            }
+            inv.setItem(slot, it);
+            slot++;
+            if ((slot + 1) % 9 == 0) slot += 2;
             if (slot >= size - 9) break;
         }
         inv.setItem(size-1, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE, List.of("&7Đóng"), true));
@@ -193,7 +234,8 @@ public class ProfileGUI implements Listener {
         String title = Text.plain(e.getView().title());
         boolean inMain = title.equals(Text.plain(TITLE));
         boolean inColor = title.equals(Text.plain(TITLE_COLOR));
-        if (!inMain && !inColor) return;
+        boolean inIcon = title.equals(Text.plain(TITLE_ICON));
+        if (!inMain && !inColor && !inIcon) return;
         e.setCancelled(true);
         if (e.getClickedInventory() == null || e.getClickedInventory() != e.getView().getTopInventory()) return;
         HumanEntity who = e.getWhoClicked();
@@ -220,7 +262,13 @@ public class ProfileGUI implements Listener {
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
             }
             case NUMBER -> { p.closeInventory(); promptNumber(p); }
-            case ICON -> { p.closeInventory(); promptIcon(p); }
+            case ICON -> {
+                if (inMain) { openIconPicker(p); return; }
+                String ic = im.getPersistentDataContainer().get(KEY_ICON, PersistentDataType.STRING);
+                if (ic != null) plugin.getProfileManager().setIcon(p.getUniqueId(), ic);
+                open(p);
+                p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+            }
             case CLOSE -> p.closeInventory();
         }
     }
@@ -229,7 +277,7 @@ public class ProfileGUI implements Listener {
     public void onDrag(InventoryDragEvent e) {
         if (e.getView() == null) return;
         String title = Text.plain(e.getView().title());
-        if (title.equals(Text.plain(TITLE)) || title.equals(Text.plain(TITLE_COLOR))) {
+        if (title.equals(Text.plain(TITLE)) || title.equals(Text.plain(TITLE_COLOR)) || title.equals(Text.plain(TITLE_ICON))) {
             e.setCancelled(true);
         }
     }
