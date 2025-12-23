@@ -28,11 +28,11 @@ public class WandListener implements Listener {
         switch (ev.getAction()) {
             case LEFT_CLICK_BLOCK, LEFT_CLICK_AIR -> {
                 if (ev.getClickedBlock() != null) SelectionManager.setCornerA(p, ev.getClickedBlock().getLocation());
-                Text.msg(p, "&aCorner A set.");
+                Text.msg(p, "&aĐã đặt góc A.");
             }
             case RIGHT_CLICK_BLOCK, RIGHT_CLICK_AIR -> {
                 if (ev.getClickedBlock() != null) SelectionManager.setCornerB(p, ev.getClickedBlock().getLocation());
-                Text.msg(p, "&aCorner B set.");
+                Text.msg(p, "&aĐã đặt góc B.");
             }
             default -> {}
         }

@@ -60,7 +60,7 @@ public class RaceManager {
         Region pit = trackConfig.getPitlane();
         if (pit != null && pit.contains(to)) {
             enterPit(player.getUniqueId());
-            Text.msg(player, "&aPit stop counted.");
+            Text.msg(player, "&aĐã tính dừng pit.");
         }
 
         // Checkpoints
@@ -69,7 +69,7 @@ public class RaceManager {
             Region r = checkpoints.get(i);
             if (r != null && r.contains(to)) {
                 checkpointReached(player.getUniqueId(), i);
-                Text.msg(player, "&eCheckpoint " + (i+1) + " reached.");
+                Text.msg(player, "&eĐã qua checkpoint " + (i+1) + ".");
             }
         }
 
@@ -128,7 +128,7 @@ public class RaceManager {
         if (getMandatoryPitstops() > 0 && !s.pitDoneThisLap) {
             s.penaltySeconds += 30; // simple time penalty
             Player p = participantPlayers.get(uuid);
-            if (p != null) Text.msg(p, "&cPenalty: missing pit stop (+30s)");
+            if (p != null) Text.msg(p, "&cPhạt: thiếu dừng pit (+30s)");
         }
         // reset pit flag for next lap
         s.pitDoneThisLap = false;
@@ -138,7 +138,7 @@ public class RaceManager {
             finishPlayer(uuid);
         } else {
             Player p = participantPlayers.get(uuid);
-            if (p != null) Text.msg(p, "&aLap " + s.currentLap + " of " + getTotalLaps());
+            if (p != null) Text.msg(p, "&aVòng " + s.currentLap + " / " + getTotalLaps());
         }
     }
 
@@ -152,7 +152,7 @@ public class RaceManager {
         s.finishPosition = pos + 1;
         Player p = participantPlayers.get(uuid);
         if (p != null) {
-            Text.msg(p, "&6You finished! Position: &e" + s.finishPosition);
+            Text.msg(p, "&6Bạn đã về đích! Vị trí: &e" + s.finishPosition);
         }
     }
 
