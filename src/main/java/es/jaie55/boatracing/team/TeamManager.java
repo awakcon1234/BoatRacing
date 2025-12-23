@@ -55,7 +55,7 @@ public class TeamManager {
     Team team = new Team(id, name, color, leader.getUniqueId());
         teams.put(id, team);
         save();
-        leader.sendMessage(Text.colorize(plugin.pref() + "&aĐã tạo đội '" + name + "'"));
+        es.jaie55.boatracing.util.Text.msg(leader, "&aĐã tạo đội '" + name + "'");
         return team;
     }
 

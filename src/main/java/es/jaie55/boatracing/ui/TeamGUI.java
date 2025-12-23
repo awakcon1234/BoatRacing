@@ -257,13 +257,13 @@ public class TeamGUI implements Listener {
     if (inMain && slot == base + 4) {
             boolean allowCreate2 = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
             if (!allowCreate2) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc tạo đội. Chỉ quản trị viên mới có thể tạo đội."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc tạo đội. Chỉ quản trị viên mới có thể tạo đội.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return;
             }
             TeamManager tm = plugin.getTeamManager();
             if (tm.getTeamByMember(p.getUniqueId()).isPresent()) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cBạn đã ở trong một đội."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cBạn đã ở trong một đội.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.7f, 0.7f);
                 return;
             }
@@ -320,12 +320,12 @@ public class TeamGUI implements Listener {
                 boolean allowRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
                 boolean isAdmin = p.hasPermission("boatracing.admin");
                 if (!allowRename && !isAdmin) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi tên đội. Chỉ quản trị viên mới có thể đổi tên đội."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi tên đội. Chỉ quản trị viên mới có thể đổi tên đội.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 if (!isAdmin && !team.isMember(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ thành viên của đội mới có thể đổi tên đội của mình."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&cChỉ thành viên của đội mới có thể đổi tên đội của mình.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -336,12 +336,12 @@ public class TeamGUI implements Listener {
                 boolean allowColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
                 boolean isAdmin = p.hasPermission("boatracing.admin");
                 if (!allowColor && !isAdmin) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi màu đội. Chỉ quản trị viên mới có thể đổi màu đội."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi màu đội. Chỉ quản trị viên mới có thể đổi màu đội.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 if (!isAdmin && !team.isMember(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ thành viên của đội mới có thể đổi màu đội."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&cChỉ thành viên của đội mới có thể đổi màu đội.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -350,24 +350,24 @@ public class TeamGUI implements Listener {
             } else if (it.getType() == Material.GREEN_CONCRETE) {
                 // Join team
                 if (team.getMembers().size() >= plugin.getTeamManager().getMaxMembers()) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cĐội này đã đầy."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&cĐội này đã đầy.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 if (plugin.getTeamManager().getTeamByMember(p.getUniqueId()).isPresent()) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cBạn đã ở trong một đội. Hãy rời đội trước."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&cBạn đã ở trong một đội. Hãy rời đội trước.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 team.addMember(p.getUniqueId());
                 plugin.getTeamManager().save();
-                p.sendMessage(Text.colorize(plugin.pref() + "&aBạn đã tham gia đội " + team.getName()));
+                es.jaie55.boatracing.util.Text.msg(p, "&aBạn đã tham gia đội " + team.getName());
                 // Notify other team members
                 for (java.util.UUID m : team.getMembers()) {
                     if (m.equals(p.getUniqueId())) continue;
                     org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                     if (op.isOnline() && op.getPlayer() != null) {
-                        op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã tham gia đội."));
+                        op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã tham gia đội."));
                     }
                 }
                 p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
@@ -387,7 +387,7 @@ public class TeamGUI implements Listener {
                             openMemberProfile(p, team);
                             p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         } else {
-                            p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ quản trị viên mới có thể quản lý thành viên khác."));
+                            es.jaie55.boatracing.util.Text.msg(p, "&cChỉ quản trị viên mới có thể quản lý thành viên khác.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                         }
                     }
@@ -397,7 +397,7 @@ public class TeamGUI implements Listener {
                 boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
                 boolean isAdmin = p.hasPermission("boatracing.admin");
                 if (!(isAdmin || (cfgDisband && team.isMember(p.getUniqueId())))) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -456,7 +456,7 @@ public class TeamGUI implements Listener {
             if (team == null) { p.closeInventory(); return; }
             boolean allowColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
             if (!allowColor && !p.hasPermission("boatracing.admin")) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi màu đội. Chỉ quản trị viên mới có thể đổi màu đội."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi màu đội. Chỉ quản trị viên mới có thể đổi màu đội.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return;
             }
@@ -465,13 +465,13 @@ public class TeamGUI implements Listener {
             if (chosen == null) return;
             team.setColor(chosen);
             plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đặt màu đội thành " + chosen.name() + "."));
+            es.jaie55.boatracing.util.Text.msg(p, "&aĐã đặt màu đội thành " + chosen.name() + ".");
             // Notify other team members
             for (java.util.UUID m : team.getMembers()) {
                 if (m.equals(p.getUniqueId())) continue;
                 org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                 if (op.isOnline() && op.getPlayer() != null) {
-                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã đổi màu đội thành " + chosen.name() + "."));
+                    op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã đổi màu đội thành " + chosen.name() + "."));
                 }
             }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
@@ -496,14 +496,14 @@ public class TeamGUI implements Listener {
             Material chosen = it.getType();
             boolean allowBoat = plugin.getConfig().getBoolean("player-actions.allow-set-boat", true);
             if (!allowBoat) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi thuyền. Chỉ quản trị viên mới có thể đặt thuyền của bạn."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi thuyền. Chỉ quản trị viên mới có thể đặt thuyền của bạn.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return;
             }
             if (!isBoatItem(chosen)) return;
             team.setBoatType(p.getUniqueId(), chosen.name());
             plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đặt loại thuyền thành " + chosen.name() + "."));
+            es.jaie55.boatracing.util.Text.msg(p, "&aĐã đặt loại thuyền thành " + chosen.name() + ".");
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
             openMemberProfile(p, team);
     } else if (inDisbandConfirm) {
@@ -528,7 +528,7 @@ public class TeamGUI implements Listener {
                 boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
                 boolean allowed = p.hasPermission("boatracing.admin") || (cfgDisband && team.isMember(p.getUniqueId()));
                 if (!allowed) { 
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội.")); 
+                    es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội."); 
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f); 
                     return; 
                 }
@@ -539,13 +539,13 @@ public class TeamGUI implements Listener {
                     if (op.isOnline()) {
                         Player mp = op.getPlayer();
                         if (mp != null) {
-                            mp.sendMessage(Text.colorize(plugin.pref() + "&eĐội của bạn đã bị giải tán."));
+                            mp.sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&eĐội của bạn đã bị giải tán."));
                             mp.playSound(mp.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.8f, 0.8f);
                         }
                     }
                 }
                 plugin.getTeamManager().deleteTeam(team);
-                p.sendMessage(Text.colorize(plugin.pref() + "&aĐã giải tán đội."));
+                es.jaie55.boatracing.util.Text.msg(p, "&aĐã giải tán đội.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 0.7f, 1.2f);
                 openMain(p);
             }
@@ -566,15 +566,15 @@ public class TeamGUI implements Listener {
                 team.removeMember(p.getUniqueId());
                 if (team.getMembers().isEmpty()) {
                     plugin.getTeamManager().deleteTeam(team);
-                    p.sendMessage(Text.colorize(plugin.pref() + "&aBạn đã rời và đội của bạn đã bị xóa (không còn thành viên)."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&aBạn đã rời và đội của bạn đã bị xóa (không còn thành viên).");
                 } else {
                     plugin.getTeamManager().save();
-                    p.sendMessage(Text.colorize(plugin.pref() + "&aBạn đã rời đội."));
+                    es.jaie55.boatracing.util.Text.msg(p, "&aBạn đã rời đội.");
                     // Notify remaining members
                     for (java.util.UUID m : team.getMembers()) {
                         org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                         if (op.isOnline() && op.getPlayer() != null) {
-                            op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã rời đội."));
+                            op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã rời đội."));
                         }
                     }
                 }
@@ -597,7 +597,7 @@ public class TeamGUI implements Listener {
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
             try { java.util.UUID.fromString(mid); } catch (Exception ex) { return; }
-            p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ quản trị viên mới có thể quản lý thành viên. Dùng /boatracing admin team remove <team> <player>."));
+            es.jaie55.boatracing.util.Text.msg(p, "&cChỉ quản trị viên mới có thể quản lý thành viên. Dùng /boatracing admin team remove <team> <player>.");
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
             return;
             // Disabled buttons in no-leader mode
@@ -616,7 +616,7 @@ public class TeamGUI implements Listener {
             if (tid == null || mid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
-            p.sendMessage(Text.colorize(plugin.pref() + "&cHệ thống trưởng nhóm đã bị loại bỏ."));
+            es.jaie55.boatracing.util.Text.msg(p, "&cHệ thống trưởng nhóm đã bị loại bỏ.");
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
             Team teamBack = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
             if (teamBack != null) openTeamView(p, teamBack);
@@ -635,7 +635,7 @@ public class TeamGUI implements Listener {
             if (tid == null || mid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
-            p.sendMessage(Text.colorize(plugin.pref() + "&cThao tác này chỉ dành cho quản trị viên. Dùng /boatracing admin team remove <team> <player>."));
+            es.jaie55.boatracing.util.Text.msg(p, "&cThao tác này chỉ dành cho quản trị viên. Dùng /boatracing admin team remove <team> <player>.");
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
             Team tb = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
             if (tb != null) openTeamView(p, tb);
@@ -1039,39 +1039,39 @@ public class TeamGUI implements Listener {
     private java.util.List<AnvilGUI.ResponseAction> handleAnvilInput(Player p, String action, UUID teamId, String input) {
         if ("name".equals(action)) {
             Team team = getTeam(teamId);
-            if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cKhông tìm thấy đội.")); return java.util.Collections.emptyList(); }
+            if (team == null) { es.jaie55.boatracing.util.Text.msg(p, "&cKhông tìm thấy đội."); return java.util.Collections.emptyList(); }
             boolean allowRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
             boolean isAdmin = p.hasPermission("boatracing.admin");
             if (!allowRename && !isAdmin) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi tên đội. Chỉ quản trị viên mới có thể đổi tên đội."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi tên đội. Chỉ quản trị viên mới có thể đổi tên đội.");
                 return java.util.Collections.emptyList();
             }
             if (!isAdmin && !team.isMember(p.getUniqueId())) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ thành viên của đội mới có thể đổi tên đội của mình."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cChỉ thành viên của đội mới có thể đổi tên đội của mình.");
                 return java.util.Collections.emptyList();
             }
             String err = validateNameMessage(input);
             if (err != null) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&c" + err));
+                es.jaie55.boatracing.util.Text.msg(p, "&c" + err);
                 String retry = input.isEmpty() ? BLANK : input;
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
             }
             boolean exists = plugin.getTeamManager().getTeams().stream().anyMatch(t -> t != team && t.getName().equalsIgnoreCase(input));
             if (exists) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&cĐã tồn tại đội với tên đó.")); 
+                es.jaie55.boatracing.util.Text.msg(p, "&cĐã tồn tại đội với tên đó."); 
                 String retry = input.isEmpty() ? BLANK : input;
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
             }
             team.setName(sanitizeName(input)); plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đổi tên đội thành &e" + input + "&a."));
+            es.jaie55.boatracing.util.Text.msg(p, "&aĐã đổi tên đội thành &e" + input + "&a.");
             // Notify other team members
             for (java.util.UUID m : team.getMembers()) {
                 if (m.equals(p.getUniqueId())) continue;
                 org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                 if (op.isOnline() && op.getPlayer() != null) {
-                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã đổi tên đội thành &e" + input + "&e."));
+                    op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã đổi tên đội thành &e" + input + "&e."));
                 }
             }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.4f);
@@ -1081,22 +1081,22 @@ public class TeamGUI implements Listener {
             );
         } else if ("racer".equals(action)) {
             Team team = getTeam(teamId);
-            if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cKhông tìm thấy đội.")); return java.util.Collections.emptyList(); }
+            if (team == null) { es.jaie55.boatracing.util.Text.msg(p, "&cKhông tìm thấy đội."); return java.util.Collections.emptyList(); }
             boolean allowNumber = plugin.getConfig().getBoolean("player-actions.allow-set-number", true);
             if (!allowNumber) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đặt số tay đua. Chỉ quản trị viên mới có thể đặt số của bạn."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc đặt số tay đua. Chỉ quản trị viên mới có thể đặt số của bạn.");
                 return java.util.Collections.emptyList();
             }
             String err = validateNumberFormatRange(input);
             if (err != null) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&c" + err));
+                es.jaie55.boatracing.util.Text.msg(p, "&c" + err);
                 String retry = input.isEmpty() ? BLANK : input;
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
             }
             int num = Integer.parseInt(input);
             team.setRacerNumber(p.getUniqueId(), num); plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đặt số tay đua của bạn thành " + num + "."));
+            es.jaie55.boatracing.util.Text.msg(p, "&aĐã đặt số tay đua của bạn thành " + num + ".");
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.9f, 1.5f);
             return java.util.Arrays.asList(
                 AnvilGUI.ResponseAction.close(),
@@ -1104,24 +1104,24 @@ public class TeamGUI implements Listener {
             );
         } else if ("create".equals(action)) {
             if (plugin.getTeamManager().getTeamByMember(p.getUniqueId()).isPresent()) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&cBạn đã ở trong một đội. Hãy rời đội trước.")); 
+                es.jaie55.boatracing.util.Text.msg(p, "&cBạn đã ở trong một đội. Hãy rời đội trước."); 
                 return null; 
             }
             boolean allowCreate = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
             if (!allowCreate) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc tạo đội. Chỉ quản trị viên mới có thể tạo đội."));
+                es.jaie55.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc tạo đội. Chỉ quản trị viên mới có thể tạo đội.");
                 return java.util.Collections.emptyList();
             }
             String err = validateNameMessage(input);
             if (err != null) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&c" + err));
+                es.jaie55.boatracing.util.Text.msg(p, "&c" + err);
                 String retry = input.isEmpty() ? BLANK : input;
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
             }
             boolean exists = plugin.getTeamManager().getTeams().stream().anyMatch(t -> t.getName().equalsIgnoreCase(input));
             if (exists) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&cĐã tồn tại đội với tên đó.")); 
+                es.jaie55.boatracing.util.Text.msg(p, "&cĐã tồn tại đội với tên đó."); 
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(input));
             }

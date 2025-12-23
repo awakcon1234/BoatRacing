@@ -10,15 +10,13 @@ import org.bukkit.plugin.Plugin;
 public class UpdateNotifier implements Listener {
     private final Plugin plugin;
     private final UpdateChecker checker;
-    private final String prefix;
     // Throttle network checks triggered by joins (ms)
     private volatile long lastJoinCheckMs = 0L;
     private static final long JOIN_CHECK_COOLDOWN_MS = 60_000L; // 60s
 
-    public UpdateNotifier(Plugin plugin, UpdateChecker checker, String prefix) {
+    public UpdateNotifier(Plugin plugin, UpdateChecker checker) {
         this.plugin = plugin;
         this.checker = checker;
-        this.prefix = prefix;
     }
 
     @EventHandler
@@ -32,9 +30,9 @@ public class UpdateNotifier implements Listener {
             int behind = checker.getBehindCount();
             String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
             String current = plugin.getDescription().getVersion();
-            p.sendMessage(Text.colorize(prefix + "&eBạn đang chậm &f" + behind + "&e phiên bản!"));
-            p.sendMessage(Text.colorize(prefix + "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e."));
-            p.sendMessage(Text.colorize(prefix + "&eTải về: &b" + checker.getLatestUrl()));
+            Text.msg(p, "&eBạn đang chậm &f" + behind + "&e phiên bản!");
+            Text.msg(p, "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e.");
+            Text.msg(p, "&eTải về: &b" + checker.getLatestUrl());
         } else if (checker != null) {
             // If result is stale or not yet checked, trigger a quick check (throttled)
             long now = System.currentTimeMillis();
@@ -46,9 +44,9 @@ public class UpdateNotifier implements Listener {
                         int behind = checker.getBehindCount();
                         String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
                         String current = plugin.getDescription().getVersion();
-                        p.sendMessage(Text.colorize(prefix + "&eBạn đang chậm &f" + behind + "&e phiên bản!"));
-                        p.sendMessage(Text.colorize(prefix + "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e."));
-                        p.sendMessage(Text.colorize(prefix + "&eTải về: &b" + checker.getLatestUrl()));
+                        Text.msg(p, "&eBạn đang chậm &f" + behind + "&e phiên bản!");
+                        Text.msg(p, "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e.");
+                        Text.msg(p, "&eTải về: &b" + checker.getLatestUrl());
                     }
                 }, 20L * 5);
             }

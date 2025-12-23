@@ -131,7 +131,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }, 20L * 5); // ~5s after enable
             // In-game notifications for admins
             if (getConfig().getBoolean("updates.notify-admins", true)) {
-                Bukkit.getPluginManager().registerEvents(new UpdateNotifier(this, updateChecker, prefix), this);
+                Bukkit.getPluginManager().registerEvents(new UpdateNotifier(this, updateChecker), this);
             }
             // Periodic silent update checks every 5 minutes. If a NEW update is first detected here,
             // print a console WARN immediately (single time per version); hourly reminders handle repetition.
@@ -231,33 +231,33 @@ public class BoatRacingPlugin extends JavaPlugin {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!(sender instanceof Player)) {
-            sender.sendMessage(Text.colorize(prefix + "&cChỉ dành cho người chơi."));
+            Text.msg(sender, "&cChỉ dành cho người chơi.");
             return true;
         }
         Player p = (Player) sender;
         if (command.getName().equalsIgnoreCase("boatracing")) {
             if (args.length == 0) {
-                p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " teams|setup|reload|version"));
+                Text.msg(p, "&cCách dùng: /" + label + " teams|setup|reload|version");
                 return true;
             }
             // /boatracing version
             if (args[0].equalsIgnoreCase("version")) {
                 if (!p.hasPermission("boatracing.version")) {
-                    p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                    Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return true;
                 }
                 String current = getDescription().getVersion();
                 java.util.List<String> authors = getDescription().getAuthors();
-                p.sendMessage(Text.colorize(prefix + "&e" + getName() + "-" + current));
+                Text.msg(p, "&e" + getName() + "-" + current);
                 if (!authors.isEmpty()) {
-                    p.sendMessage(Text.colorize(prefix + "&eAuthors: &f" + String.join(", ", authors)));
+                    Text.msg(p, "&eAuthors: &f" + String.join(", ", authors));
                 }
                 
 
                 boolean updatesEnabled = getConfig().getBoolean("updates.enabled", true);
                 if (!updatesEnabled) {
-                    p.sendMessage(Text.colorize(prefix + "&7Kiểm tra cập nhật bị tắt trong cấu hình."));
+                    Text.msg(p, "&7Kiểm tra cập nhật bị tắt trong cấu hình.");
                     return true;
                 }
 
@@ -266,7 +266,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                     updateChecker = new UpdateChecker(this, "boatracing", current);
                 }
                 if (!updateChecker.isChecked()) {
-                    p.sendMessage(Text.colorize(prefix + "&7Đang kiểm tra cập nhật..."));
+                    Text.msg(p, "&7Đang kiểm tra cập nhật...");
                     updateChecker.checkAsync();
                     // Poll a couple of times to deliver result to the user shortly after
                     Bukkit.getScheduler().runTaskLater(this, () -> sendUpdateStatus(p), 40L);
@@ -279,7 +279,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args[0].equalsIgnoreCase("reload")) {
                 if (!p.hasPermission("boatracing.reload")) {
-                    p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                    Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return true;
                 }
@@ -292,90 +292,90 @@ public class BoatRacingPlugin extends JavaPlugin {
                 // Recreate team manager to re-read data and settings
                 this.teamManager = new TeamManager(this);
                 // ViaVersion integration removed; nothing to re-apply
-                p.sendMessage(Text.colorize(prefix + "&aĐã tải lại plugin."));
+                Text.msg(p, "&aĐã tải lại plugin.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                 return true;
             }
             // /boatracing race
             if (args[0].equalsIgnoreCase("race")) {
                 if (args.length == 1 || args[1].equalsIgnoreCase("help")) {
-                    p.sendMessage(Text.colorize(prefix + "&eLệnh đua:"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race join <track> &7(Tham gia đăng ký cho đường đua; cần có đội)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race leave <track> &7(Rời khỏi đăng ký cho đường đua)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " race status <track> &7(Hiển thị trạng thái cuộc đua cho đường đua)"));
+                    Text.msg(p, "&eLệnh đua:");
+                    Text.tell(p, "&7 - &f/" + label + " race join <track> &7(Tham gia đăng ký cho đường đua; cần có đội)");
+                    Text.tell(p, "&7 - &f/" + label + " race leave <track> &7(Rời khỏi đăng ký cho đường đua)");
+                    Text.tell(p, "&7 - &f/" + label + " race status <track> &7(Hiển thị trạng thái cuộc đua cho đường đua)");
                     if (p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup")) {
-                        p.sendMessage(Text.colorize("&8Quản trị:&7 /" + label + " race open|start|force|stop <track>"));
+                        Text.tell(p, "&8Quản trị:&7 /" + label + " race open|start|force|stop <track>");
                     }
                     return true;
                 }
                 switch (args[1].toLowerCase()) {
                     case "open" -> {
                         if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
-                            p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                            Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " race open <track>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race open <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
-                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
+                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
                         if (!trackConfig.isReady()) {
-                            p.sendMessage(Text.colorize(prefix + "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements())));
+                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements()));
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
                         int laps = raceManager.getTotalLaps();
                         boolean ok = raceManager.openRegistration(laps, null);
-                        if (!ok) p.sendMessage(Text.colorize(prefix + "&cKhông thể mở đăng ký lúc này."));
+                        if (!ok) Text.msg(p, "&cKhông thể mở đăng ký lúc này.");
                         return true;
                     }
                     case "join" -> {
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " race join <track>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race join <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
-                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
+                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
                         if (!trackConfig.isReady()) {
-                            p.sendMessage(Text.colorize(prefix + "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements())));
+                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements()));
                             return true;
                         }
                         // Must be in a team
                         if (teamManager.getTeamByMember(p.getUniqueId()).isEmpty()) {
-                            p.sendMessage(Text.colorize(prefix + "&cBạn phải ở trong một đội để tham gia cuộc đua."));
+                            Text.msg(p, "&cBạn phải ở trong một đội để tham gia cuộc đua.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
                         if (!raceManager.join(p)) {
-                            p.sendMessage(Text.colorize(prefix + "&cĐăng ký chưa mở."));
+                            Text.msg(p, "&cĐăng ký chưa mở.");
                         }
                         return true;
                     }
                     case "leave" -> {
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " race leave <track>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race leave <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
-                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
+                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
                         boolean removed = raceManager.leave(p);
                         if (!removed) {
                             if (!raceManager.isRegistering()) {
-                                p.sendMessage(Text.colorize(prefix + "&cĐăng ký chưa mở."));
+                                Text.msg(p, "&cĐăng ký chưa mở.");
                             } else {
-                                p.sendMessage(Text.colorize(prefix + "&7Bạn chưa đăng ký."));
+                                Text.msg(p, "&7Bạn chưa đăng ký.");
                             }
                         }
                         return true;
                     }
                     case "force" -> {
                         if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
-                            p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                            Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " race force <track>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race force <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
-                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
+                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
                         if (raceManager.getRegistered().isEmpty()) {
-                            p.sendMessage(Text.colorize(prefix + "&cKhông có người tham gia đã đăng ký. &7Mở đăng ký trước: &f/" + label + " race open"));
+                            Text.msg(p, "&cKhông có người tham gia đã đăng ký. &7Mở đăng ký trước: &f/" + label + " race open");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
@@ -384,20 +384,20 @@ public class BoatRacingPlugin extends JavaPlugin {
                     }
                     case "start" -> {
                         if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
-                            p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                            Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " race start <track>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race start <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
-                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
+                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
                         if (!trackConfig.isReady()) {
-                            p.sendMessage(Text.colorize(prefix + "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements())));
+                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements()));
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        if (raceManager.isRunning()) { p.sendMessage(Text.colorize(prefix + "&cCuộc đua đang diễn ra.")); return true; }
+                        if (raceManager.isRunning()) { Text.msg(p, "&cCuộc đua đang diễn ra."); return true; }
                         // Build participants: strictly registered participants only
                         java.util.List<org.bukkit.entity.Player> participants = new java.util.ArrayList<>();
                         java.util.Set<java.util.UUID> regs = new java.util.LinkedHashSet<>(raceManager.getRegistered());
@@ -406,27 +406,27 @@ public class BoatRacingPlugin extends JavaPlugin {
                             if (rp != null && rp.isOnline()) participants.add(rp);
                         }
                         if (participants.isEmpty()) {
-                            p.sendMessage(Text.colorize(prefix + "&cKhông có người tham gia đã đăng ký. Sử dụng &f/" + label + " race open &7để mở đăng ký."));
+                            Text.msg(p, "&cKhông có người tham gia đã đăng ký. Sử dụng &f/" + label + " race open &7để mở đăng ký.");
                             return true;
                         }
                         // Place with boats and start
                         java.util.List<org.bukkit.entity.Player> placed = raceManager.placeAtStartsWithBoats(participants);
-                        if (placed.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cKhông còn vị trí bắt đầu trống trên đường đua này.")); return true; }
-                        if (placed.size() < participants.size()) { p.sendMessage(Text.colorize(prefix + "&7Một số người chơi đăng ký không thể được đặt do thiếu vị trí bắt đầu.")); }
+                        if (placed.isEmpty()) { Text.msg(p, "&cKhông còn vị trí bắt đầu trống trên đường đua này."); return true; }
+                        if (placed.size() < participants.size()) { Text.msg(p, "&7Một số người chơi đăng ký không thể được đặt do thiếu vị trí bắt đầu."); }
                         // Use start lights countdown if configured
                         raceManager.startRaceWithCountdown(placed);
                         return true;
                     }
                     case "stop" -> {
                         if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
-                            p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                            Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " race stop <track>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race stop <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
-                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
+                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
                         boolean any = false;
                         if (raceManager.isRegistering()) {
                             any |= raceManager.cancelRegistration(true);
@@ -435,15 +435,15 @@ public class BoatRacingPlugin extends JavaPlugin {
                             any |= raceManager.cancelRace();
                         }
                         if (!any) {
-                            p.sendMessage(Text.colorize(prefix + "&7Không có gì để dừng."));
+                            Text.msg(p, "&7Không có gì để dừng.");
                         }
                         return true;
                     }
                     case "status" -> {
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " race status <track>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race status <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { p.sendMessage(Text.colorize(prefix + "&cTrack not found: &f" + tname)); return true; }
-                        if (!trackLibrary.select(tname)) { p.sendMessage(Text.colorize(prefix + "&cFailed to load track: &f" + tname)); return true; }
+                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
+                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
                         String cur = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
                         boolean running = raceManager.isRunning();
                         boolean registering = raceManager.isRegistering();
@@ -458,56 +458,56 @@ public class BoatRacingPlugin extends JavaPlugin {
                         boolean ready = trackConfig.isReady();
                         java.util.List<String> missing = ready ? java.util.Collections.emptyList() : trackConfig.missingRequirements();
 
-                        p.sendMessage(Text.colorize(prefix + "&eTrạng thái cuộc đua:"));
-                        p.sendMessage(Text.colorize("&7Đường đua: &f" + cur));
-                        p.sendMessage(Text.colorize(running ? "&aĐang chạy &7(Tham gia: &f" + participants + "&7)" : "&7Không có cuộc đua đang chạy."));
-                        p.sendMessage(Text.colorize(registering ? "&eĐăng ký mở &7(Đã đăng ký: &f" + regs + "&7)" : "&7Đăng ký đóng."));
-                        p.sendMessage(Text.colorize("&7Số vòng: &f" + laps));
-                        p.sendMessage(Text.colorize("&7Vị trí bắt đầu: &f" + starts + " &8• &7Đèn xuất phát: &f" + lights + "/5 &8• &7Vạch kết thúc: &f" + (hasFinish?"có":"không") + " &8• &7Khu pit: &f" + (hasPit?"có":"không")));
-                        p.sendMessage(Text.colorize("&7Điểm checkpoint: &f" + cps));
-                        p.sendMessage(Text.colorize("&7Số dừng pit bắt buộc: &f" + raceManager.getMandatoryPitstops()));
+                        Text.msg(p, "&eTrạng thái cuộc đua:");
+                        Text.tell(p, "&7Đường đua: &f" + cur);
+                        Text.tell(p, running ? "&aĐang chạy &7(Tham gia: &f" + participants + "&7)" : "&7Không có cuộc đua đang chạy.");
+                        Text.tell(p, registering ? "&eĐăng ký mở &7(Đã đăng ký: &f" + regs + "&7)" : "&7Đăng ký đóng.");
+                        Text.tell(p, "&7Số vòng: &f" + laps);
+                        Text.tell(p, "&7Vị trí bắt đầu: &f" + starts + " &8• &7Đèn xuất phát: &f" + lights + "/5 &8• &7Vạch kết thúc: &f" + (hasFinish?"có":"không") + " &8• &7Khu pit: &f" + (hasPit?"có":"không"));
+                        Text.tell(p, "&7Điểm checkpoint: &f" + cps);
+                        Text.tell(p, "&7Số dừng pit bắt buộc: &f" + raceManager.getMandatoryPitstops());
                         if (ready) {
-                            p.sendMessage(Text.colorize("&aĐường đua sẵn sàng."));
+                            Text.tell(p, "&aĐường đua sẵn sàng.");
                         } else {
-                            p.sendMessage(Text.colorize("&cĐường đua chưa sẵn sàng: &7" + String.join(", ", missing)));
+                            Text.tell(p, "&cĐường đua chưa sẵn sàng: &7" + String.join(", ", missing));
                         }
                         return true;
                     }
-                    default -> { p.sendMessage(Text.colorize(prefix + "&cKhông rõ lệnh con đua. Sử dụng /" + label + " race help")); return true; }
+                    default -> { Text.msg(p, "&cKhông rõ lệnh con đua. Sử dụng /" + label + " race help"); return true; }
                 }
             }
             // /boatracing setup
             if (args[0].equalsIgnoreCase("setup")) {
                 if (!p.hasPermission("boatracing.setup")) {
-                    p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                    Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return true;
                 }
                 if (args.length == 1 || args[1].equalsIgnoreCase("help")) {
-                    p.sendMessage(Text.colorize(prefix + "&eLệnh cấu hình:"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addstart &7(Thêm vị trí hiện tại làm vị trí bắt đầu; lặp lại để thêm nhiều)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearstarts &7(Xóa tất cả vị trí bắt đầu)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setfinish &7(Sử dụng selection của bạn để đặt vùng vạch đích)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpit [team] &7(Đặt vùng pit mặc định từ selection, hoặc pit theo đội nếu cung cấp tên đội)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addcheckpoint &7(Thêm checkpoint từ selection; có thể thêm nhiều. Thứ tự quan trọng)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup addlight &7(Thêm Đèn Redstone đang nhìn thành đèn xuất phát; tối đa 5, từ trái sang phải)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearlights &7(Xóa tất cả đèn xuất phát đã cấu hình)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setlaps <n> &7(Đặt số vòng cho cuộc đua)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpitstops <n> &7(Đặt số lần dừng pit bắt buộc để hoàn thành; 0 để vô hiệu)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup setpos <player> <slot|auto> &7(Gán người chơi vào vị trí bắt đầu cụ thể, 1-based; auto để xóa)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearpos <player> &7(Xóa vị trí bắt đầu tùy chỉnh của người chơi)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup clearcheckpoints &7(Xóa tất cả checkpoint)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup show &7(Tóm tắt cấu hình đường đua hiện tại)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup selinfo &7(Debug selection: selection hiện tại)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup wand &7(Phát công cụ chọn BoatRacing)"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " setup wizard &7(Khởi chạy trợ lý thiết lập)"));
+                    Text.msg(p, "&eLệnh cấu hình:");
+                    Text.tell(p, "&7 - &f/" + label + " setup addstart &7(Thêm vị trí hiện tại làm vị trí bắt đầu; lặp lại để thêm nhiều)");
+                    Text.tell(p, "&7 - &f/" + label + " setup clearstarts &7(Xóa tất cả vị trí bắt đầu)");
+                    Text.tell(p, "&7 - &f/" + label + " setup setfinish &7(Sử dụng selection của bạn để đặt vùng vạch đích)");
+                    Text.tell(p, "&7 - &f/" + label + " setup setpit [team] &7(Đặt vùng pit mặc định từ selection, hoặc pit theo đội nếu cung cấp tên đội)");
+                    Text.tell(p, "&7 - &f/" + label + " setup addcheckpoint &7(Thêm checkpoint từ selection; có thể thêm nhiều. Thứ tự quan trọng)");
+                    Text.tell(p, "&7 - &f/" + label + " setup addlight &7(Thêm Đèn Redstone đang nhìn thành đèn xuất phát; tối đa 5, từ trái sang phải)");
+                    Text.tell(p, "&7 - &f/" + label + " setup clearlights &7(Xóa tất cả đèn xuất phát đã cấu hình)");
+                    Text.tell(p, "&7 - &f/" + label + " setup setlaps <n> &7(Đặt số vòng cho cuộc đua)");
+                    Text.tell(p, "&7 - &f/" + label + " setup setpitstops <n> &7(Đặt số lần dừng pit bắt buộc để hoàn thành; 0 để vô hiệu)");
+                    Text.tell(p, "&7 - &f/" + label + " setup setpos <player> <slot|auto> &7(Gán người chơi vào vị trí bắt đầu cụ thể, 1-based; auto để xóa)");
+                    Text.tell(p, "&7 - &f/" + label + " setup clearpos <player> &7(Xóa vị trí bắt đầu tùy chỉnh của người chơi)");
+                    Text.tell(p, "&7 - &f/" + label + " setup clearcheckpoints &7(Xóa tất cả checkpoint)");
+                    Text.tell(p, "&7 - &f/" + label + " setup show &7(Tóm tắt cấu hình đường đua hiện tại)");
+                    Text.tell(p, "&7 - &f/" + label + " setup selinfo &7(Debug selection: selection hiện tại)");
+                    Text.tell(p, "&7 - &f/" + label + " setup wand &7(Phát công cụ chọn BoatRacing)");
+                    Text.tell(p, "&7 - &f/" + label + " setup wizard &7(Khởi chạy trợ lý thiết lập)");
                     return true;
                 }
                 String sub = args[1].toLowerCase();
                 switch (sub) {
                     case "wand" -> {
                         es.jaie55.boatracing.track.SelectionManager.giveWand(p);
-                        p.sendMessage(Text.colorize(prefix + "&aCông cụ chọn đã sẵn sàng. &7Nhấp trái đánh dấu &fGóc A&7; nhấp phải đánh dấu &fGóc B&7."));
+                        Text.msg(p, "&aCông cụ chọn đã sẵn sàng. &7Nhấp trái đánh dấu &fGóc A&7; nhấp phải đánh dấu &fGóc B&7.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ITEM_PICKUP, 0.9f, 1.2f);
                         return true;
                     }
@@ -534,34 +534,34 @@ public class BoatRacingPlugin extends JavaPlugin {
                     case "addstart" -> {
                         org.bukkit.Location loc = p.getLocation();
                         trackConfig.addStart(loc);
-                        p.sendMessage(Text.colorize(prefix + "&aĐã thêm vị trí bắt đầu tại &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ() + " &7(" + loc.getWorld().getName() + ")"));
-                        p.sendMessage(Text.colorize("&7Mẹo: Bạn có thể thêm nhiều vị trí bắt đầu. Chạy lệnh một lần nữa để thêm."));
+                        Text.msg(p, "&aĐã thêm vị trí bắt đầu tại &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ() + " &7(" + loc.getWorld().getName() + ")");
+                        Text.tell(p, "&7Mẹo: Bạn có thể thêm nhiều vị trí bắt đầu. Chạy lệnh một lần nữa để thêm.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
                     case "clearstarts" -> {
                         trackConfig.clearStarts();
-                        p.sendMessage(Text.colorize(prefix + "&aĐã xóa tất cả vị trí bắt đầu."));
+                        Text.msg(p, "&aĐã xóa tất cả vị trí bắt đầu.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
                     case "setfinish" -> {
                         var sel = SelectionUtils.getSelectionDetailed(p);
                         if (sel == null) {
-                            p.sendMessage(Text.colorize(prefix + "&cKhông phát hiện selection. Dùng công cụ chọn để đánh dấu &fGóc A&c (nhấp trái) và &fGóc B&c (nhấp phải)."));
+                            Text.msg(p, "&cKhông phát hiện selection. Dùng công cụ chọn để đánh dấu &fGóc A&c (nhấp trái) và &fGóc B&c (nhấp phải).");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
                         Region r = new Region(sel.worldName, sel.box);
                         trackConfig.setFinish(r);
-                        p.sendMessage(Text.colorize(prefix + "&aĐã đặt vùng đích (" + fmtBox(sel.box) + ")"));
+                        Text.msg(p, "&aĐã đặt vùng đích (" + fmtBox(sel.box) + ")");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
                     case "setpit" -> {
                         var sel = SelectionUtils.getSelectionDetailed(p);
                         if (sel == null) {
-                            p.sendMessage(Text.colorize(prefix + "&cKhông phát hiện selection. Dùng công cụ chọn để đánh dấu &fGóc A&c (nhấp trái) và &fGóc B&c (nhấp phải)."));
+                            Text.msg(p, "&cKhông phát hiện selection. Dùng công cụ chọn để đánh dấu &fGóc A&c (nhấp trái) và &fGóc B&c (nhấp phải).");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
@@ -574,12 +574,12 @@ public class BoatRacingPlugin extends JavaPlugin {
                                 teamName = teamName.substring(1, teamName.length()-1);
                             }
                             var ot = teamManager.findByName(teamName);
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cKhông tìm thấy đội.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cKhông tìm thấy đội."); return true; }
                             trackConfig.setTeamPit(ot.get().getId(), r);
-                            p.sendMessage(Text.colorize(prefix + "&aĐã đặt vùng pit cho đội &f" + ot.get().getName() + " &7(" + fmtBox(sel.box) + ")"));
+                            Text.msg(p, "&aĐã đặt vùng pit cho đội &f" + ot.get().getName() + " &7(" + fmtBox(sel.box) + ")");
                         } else {
                             trackConfig.setPitlane(r);
-                            p.sendMessage(Text.colorize(prefix + "&aĐã đặt vùng pit mặc định (" + fmtBox(sel.box) + ")"));
+                            Text.msg(p, "&aĐã đặt vùng pit mặc định (" + fmtBox(sel.box) + ")");
                         }
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
@@ -588,31 +588,31 @@ public class BoatRacingPlugin extends JavaPlugin {
                     case "addcheckpoint" -> {
                         var sel = SelectionUtils.getSelectionDetailed(p);
                         if (sel == null) {
-                            p.sendMessage(Text.colorize(prefix + "&cKhông phát hiện selection. Dùng công cụ chọn để đánh dấu &fGóc A&c (nhấp trái) và &fGóc B&c (nhấp phải)."));
+                            Text.msg(p, "&cKhông phát hiện selection. Dùng công cụ chọn để đánh dấu &fGóc A&c (nhấp trái) và &fGóc B&c (nhấp phải).");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
                         Region r = new Region(sel.worldName, sel.box);
                         trackConfig.addCheckpoint(r);
-                        p.sendMessage(Text.colorize(prefix + "&aĐã thêm checkpoint #&f" + trackConfig.getCheckpoints().size() + " &7(" + fmtBox(sel.box) + ")"));
-                        p.sendMessage(Text.colorize("&7Mẹo: Có thể thêm nhiều checkpoint. Thứ tự quan trọng."));
+                        Text.msg(p, "&aĐã thêm checkpoint #&f" + trackConfig.getCheckpoints().size() + " &7(" + fmtBox(sel.box) + ")");
+                        Text.tell(p, "&7Mẹo: Có thể thêm nhiều checkpoint. Thứ tự quan trọng.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
                     case "addlight" -> {
                         org.bukkit.block.Block target = p.getTargetBlockExact(6);
                         if (target == null) {
-                            p.sendMessage(Text.colorize(prefix + "&cHãy nhìn vào Đèn Redstone trong bán kính 6 block."));
+                            Text.msg(p, "&cHãy nhìn vào Đèn Redstone trong bán kính 6 block.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
                         boolean ok = trackConfig.addLight(target);
                         if (!ok) {
-                            p.sendMessage(Text.colorize(prefix + "&cKhông thể thêm đèn. Dùng Đèn Redstone, tránh trùng lặp, tối đa 5."));
+                            Text.msg(p, "&cKhông thể thêm đèn. Dùng Đèn Redstone, tránh trùng lặp, tối đa 5.");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        p.sendMessage(Text.colorize(prefix + "&aĐã thêm đèn xuất phát &7(" + target.getX() + ", " + target.getY() + ", " + target.getZ() + ")"));
+                        Text.msg(p, "&aĐã thêm đèn xuất phát &7(" + target.getX() + ", " + target.getY() + ", " + target.getZ() + ")");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
@@ -624,19 +624,19 @@ public class BoatRacingPlugin extends JavaPlugin {
                     }
                     case "setlaps" -> {
                         if (args.length < 3 || !args[2].matches("\\d+")) {
-                            p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " setup setlaps <số>"));
+                            Text.msg(p, "&cCách dùng: /" + label + " setup setlaps <số>");
                             return true;
                         }
                         int laps = Math.max(1, Integer.parseInt(args[2]));
                         raceManager.setTotalLaps(laps);
-                        p.sendMessage(Text.colorize(prefix + "&aĐã đặt số vòng là &f" + laps));
+                        Text.msg(p, "&aĐã đặt số vòng là &f" + laps);
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                         return true;
                     }
                     case "setpitstops" -> {
                         if (args.length < 3 || !args[2].matches("\\d+")) {
-                            p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " setup setpitstops <số>"));
+                            Text.msg(p, "&cCách dùng: /" + label + " setup setpitstops <số>");
                             return true;
                         }
                         int req = Math.max(0, Integer.parseInt(args[2]));
@@ -644,40 +644,40 @@ public class BoatRacingPlugin extends JavaPlugin {
                         // Persist to config as the global default
                         getConfig().set("racing.mandatory-pitstops", req);
                         saveConfig();
-                        p.sendMessage(Text.colorize(prefix + "&aĐã đặt số dừng pit bắt buộc là &f" + req));
+                        Text.msg(p, "&aĐã đặt số dừng pit bắt buộc là &f" + req);
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                         return true;
                     }
                     case "setpos" -> {
-                        if (args.length < 4) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " setup setpos <player> <slot|auto>")); return true; }
+                        if (args.length < 4) { Text.msg(p, "&cCách dùng: /" + label + " setup setpos <player> <slot|auto>"); return true; }
                         org.bukkit.OfflinePlayer off = resolveOffline(args[2]);
-                        if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cKhông tìm thấy người chơi.")); return true; }
+                        if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
                         String slotArg = args[3];
                         if (slotArg.equalsIgnoreCase("auto")) {
                             trackConfig.clearCustomStartSlot(off.getUniqueId());
-                            p.sendMessage(Text.colorize(prefix + "&aĐã xóa vị trí bắt đầu tùy chỉnh cho &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString())));
+                            Text.msg(p, "&aĐã xóa vị trí bắt đầu tùy chỉnh cho &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString()));
                         } else if (slotArg.matches("\\d+")) {
                             int oneBased = Integer.parseInt(slotArg);
-                            if (oneBased < 1 || oneBased > trackConfig.getStarts().size()) { p.sendMessage(Text.colorize(prefix + "&cVị trí không hợp lệ. Phạm vi: 1-" + trackConfig.getStarts().size())); return true; }
+                            if (oneBased < 1 || oneBased > trackConfig.getStarts().size()) { Text.msg(p, "&cVị trí không hợp lệ. Phạm vi: 1-" + trackConfig.getStarts().size()); return true; }
                             trackConfig.setCustomStartSlot(off.getUniqueId(), oneBased - 1);
-                            p.sendMessage(Text.colorize(prefix + "&aĐã gán vị trí bắt đầu tùy chỉnh cho &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString()) + " &7vào vị trí &f#" + oneBased));
+                            Text.msg(p, "&aĐã gán vị trí bắt đầu tùy chỉnh cho &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString()) + " &7vào vị trí &f#" + oneBased);
                         } else {
-                            p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " setup setpos <player> <slot|auto>"));
+                            Text.msg(p, "&cCách dùng: /" + label + " setup setpos <player> <slot|auto>");
                         }
                         return true;
                     }
                     case "clearpos" -> {
-                        if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " setup clearpos <player>")); return true; }
+                        if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " setup clearpos <player>"); return true; }
                         org.bukkit.OfflinePlayer off = resolveOffline(args[2]);
-                        if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cKhông tìm thấy người chơi.")); return true; }
+                        if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
                         trackConfig.clearCustomStartSlot(off.getUniqueId());
-                        p.sendMessage(Text.colorize(prefix + "&aĐã xóa vị trí bắt đầu tùy chỉnh cho &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString())));
+                        Text.msg(p, "&aĐã xóa vị trí bắt đầu tùy chỉnh cho &f" + (off.getName()!=null?off.getName():off.getUniqueId().toString()));
                         return true;
                     }
                     case "clearcheckpoints" -> {
                         trackConfig.clearCheckpoints();
-                        p.sendMessage(Text.colorize(prefix + "&aĐã xóa tất cả checkpoint."));
+                        Text.msg(p, "&aĐã xóa tất cả checkpoint.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
@@ -689,31 +689,31 @@ public class BoatRacingPlugin extends JavaPlugin {
                         boolean hasPit = trackConfig.getPitlane() != null;
                         int teamPitCount = trackConfig.getTeamPits().size();
                         int customStarts = trackConfig.getCustomStartSlots().size();
-                        p.sendMessage(Text.colorize(prefix + "&eCấu hình đường đua:"));
+                        Text.msg(p, "&eCấu hình đường đua:");
                         String tname = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
-                        p.sendMessage(Text.colorize("&7 - &fĐường đua: &e" + tname));
-                        p.sendMessage(Text.colorize("&7 - &fVị trí bắt đầu: &e" + starts));
-                        p.sendMessage(Text.colorize("&7 - &fĐèn bắt đầu: &e" + lights + "/5"));
-                        p.sendMessage(Text.colorize("&7 - &fVùng đích: &e" + (hasFinish ? "có" : "không")));
-                        p.sendMessage(Text.colorize("&7 - &fKhu pit (mặc định): &e" + (hasPit ? "có" : "không")));
-                        p.sendMessage(Text.colorize("&7 - &fKhu pit theo đội: &e" + (teamPitCount > 0 ? (teamPitCount + " đã cấu hình") : "không có")));
-                        p.sendMessage(Text.colorize("&7 - &fVị trí bắt đầu tùy chỉnh: &e" + (customStarts > 0 ? (customStarts + " người") : "không có")));
-                        p.sendMessage(Text.colorize("&7 - &fCheckpoints: &e" + cps));
-                        p.sendMessage(Text.colorize("&7 - &fSố dừng pit bắt buộc: &e" + raceManager.getMandatoryPitstops()));
+                        Text.tell(p, "&7 - &fĐường đua: &e" + tname);
+                        Text.tell(p, "&7 - &fVị trí bắt đầu: &e" + starts);
+                        Text.tell(p, "&7 - &fĐèn bắt đầu: &e" + lights + "/5");
+                        Text.tell(p, "&7 - &fVùng đích: &e" + (hasFinish ? "có" : "không"));
+                        Text.tell(p, "&7 - &fKhu pit (mặc định): &e" + (hasPit ? "có" : "không"));
+                        Text.tell(p, "&7 - &fKhu pit theo đội: &e" + (teamPitCount > 0 ? (teamPitCount + " đã cấu hình") : "không có"));
+                        Text.tell(p, "&7 - &fVị trí bắt đầu tùy chỉnh: &e" + (customStarts > 0 ? (customStarts + " người") : "không có"));
+                        Text.tell(p, "&7 - &fCheckpoints: &e" + cps);
+                        Text.tell(p, "&7 - &fSố dừng pit bắt buộc: &e" + raceManager.getMandatoryPitstops());
                     }
                     case "selinfo" -> {
                         java.util.List<String> dump = SelectionUtils.debugSelection(p);
-                        p.sendMessage(Text.colorize(prefix + "&eSelection info:"));
-                        for (String line : dump) p.sendMessage(Text.colorize("&7 - &f" + line));
+                        Text.msg(p, "&eSelection info:");
+                        for (String line : dump) Text.tell(p, "&7 - &f" + line);
                     }
-                    default -> p.sendMessage(Text.colorize(prefix + "&cUnknown setup subcommand. Use /" + label + " setup help"));
+                    default -> Text.msg(p, "&cUnknown setup subcommand. Use /" + label + " setup help");
                 }
                 return true;
             }
             // /boatracing admin
             if (args[0].equalsIgnoreCase("admin")) {
                 if (!p.hasPermission("boatracing.admin")) {
-                    p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó."));
+                    Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
                     return true;
                 }
                 if (args.length == 1) {
@@ -722,56 +722,56 @@ public class BoatRacingPlugin extends JavaPlugin {
                     return true;
                 }
                 if (args[1].equalsIgnoreCase("help")) {
-                    p.sendMessage(Text.colorize(prefix + "&eAdmin commands:"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin team create <name> [color] [firstMember]"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin team delete <name>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin team rename <old> <new>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin team color <name> <DyeColor>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin team add <name> <player>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin team remove <name> <player>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin player setteam <player> <team|none>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin player setnumber <player> <1-99>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin player setboat <player> <BoatType>"));
-                    p.sendMessage(Text.colorize("&7 - &f/" + label + " admin tracks &7(Manage named tracks via GUI)"));
+                    Text.msg(p, "&eAdmin commands:");
+                    Text.tell(p, "&7 - &f/" + label + " admin team create <name> [color] [firstMember]");
+                    Text.tell(p, "&7 - &f/" + label + " admin team delete <name>");
+                    Text.tell(p, "&7 - &f/" + label + " admin team rename <old> <new>");
+                    Text.tell(p, "&7 - &f/" + label + " admin team color <name> <DyeColor>");
+                    Text.tell(p, "&7 - &f/" + label + " admin team add <name> <player>");
+                    Text.tell(p, "&7 - &f/" + label + " admin team remove <name> <player>");
+                    Text.tell(p, "&7 - &f/" + label + " admin player setteam <player> <team|none>");
+                    Text.tell(p, "&7 - &f/" + label + " admin player setnumber <player> <1-99>");
+                    Text.tell(p, "&7 - &f/" + label + " admin player setboat <player> <BoatType>");
+                    Text.tell(p, "&7 - &f/" + label + " admin tracks &7(Manage named tracks via GUI)");
                     return true;
                 }
                 if (args[1].equalsIgnoreCase("tracks")) {
-                    if (!p.hasPermission("boatracing.setup")) { p.sendMessage(Text.colorize(prefix + "&cBạn không có quyền thực hiện điều đó.")); return true; }
+                    if (!p.hasPermission("boatracing.setup")) { Text.msg(p, "&cBạn không có quyền thực hiện điều đó."); return true; }
                     tracksGUI.open(p);
                     return true;
                 }
                 // admin team ...
                 if (args[1].equalsIgnoreCase("team")) {
-                    if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin team <create|delete|rename|color|add|remove>")); return true; }
+                    if (args.length < 3) { Text.msg(p, "&cCách dùng: /"+label+" admin team <create|delete|rename|color|add|remove>"); return true; }
                     String op = args[2].toLowerCase();
                     switch (op) {
                         case "create" -> {
-                            if (args.length < 4) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin team create <name> [color] [firstMember]")); return true; }
+                            if (args.length < 4) { Text.msg(p, "&cCách dùng: /"+label+" admin team create <name> [color] [firstMember]"); return true; }
                             String name = args[3];
                             org.bukkit.DyeColor color = org.bukkit.DyeColor.WHITE;
                             if (args.length >= 5) {
-                                try { color = org.bukkit.DyeColor.valueOf(args[4].toUpperCase()); } catch (Exception ex) { p.sendMessage(Text.colorize(prefix + "&cMàu không hợp lệ.")); return true; }
+                                try { color = org.bukkit.DyeColor.valueOf(args[4].toUpperCase()); } catch (Exception ex) { Text.msg(p, "&cMàu không hợp lệ."); return true; }
                             }
                             java.util.UUID firstMemberId = p.getUniqueId();
                             if (args.length >= 6) {
                                 org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[5]);
-                                if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cKhông tìm thấy người chơi.")); return true; }
+                                if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
                                 firstMemberId = off.getUniqueId();
                             }
-                            if (teamManager.findByName(name).isPresent()) { p.sendMessage(Text.colorize(prefix + "&cA team with that name already exists.")); return true; }
+                            if (teamManager.findByName(name).isPresent()) { Text.msg(p, "&cA team with that name already exists."); return true; }
                             teamManager.createTeam(firstMemberId, name, color);
-                            p.sendMessage(Text.colorize(prefix + "&aĐã tạo đội: &f" + name + " &7(màu: " + color.name() + ")"));
+                            Text.msg(p, "&aĐã tạo đội: &f" + name + " &7(màu: " + color.name() + ")");
                             return true;
                         }
                         case "delete" -> {
-                            if (args.length < 4) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin team delete <name>")); return true; }
+                            if (args.length < 4) { Text.msg(p, "&cCách dùng: /"+label+" admin team delete <name>"); return true; }
                             String name = args[3];
                             var ot = teamManager.findByName(name);
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cTeam not found."); return true; }
                             // Notify members before deletion
                             java.util.List<java.util.UUID> members = new java.util.ArrayList<>(ot.get().getMembers());
                             teamManager.removeTeam(ot.get());
-                            p.sendMessage(Text.colorize(prefix + "&aĐã xóa đội: &f" + name));
+                            Text.msg(p, "&aĐã xóa đội: &f" + name);
                             for (java.util.UUID m : members) {
                                 org.bukkit.OfflinePlayer memOp = Bukkit.getOfflinePlayer(m);
                                 if (memOp.isOnline() && memOp.getPlayer() != null) {
@@ -783,14 +783,14 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         case "rename" -> {
-                            if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin team rename <old> <new>")); return true; }
+                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team rename <old> <new>"); return true; }
                             var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cTeam not found."); return true; }
                             String newName = args[4];
-                            if (teamManager.findByName(newName).isPresent()) { p.sendMessage(Text.colorize(prefix + "&cA team with that name already exists.")); return true; }
+                            if (teamManager.findByName(newName).isPresent()) { Text.msg(p, "&cA team with that name already exists."); return true; }
                             ot.get().setName(newName);
                             teamManager.save();
-                            p.sendMessage(Text.colorize(prefix + "&aTeam renamed to &f" + newName));
+                            Text.msg(p, "&aTeam renamed to &f" + newName);
                             for (java.util.UUID m : ot.get().getMembers()) {
                                 org.bukkit.OfflinePlayer memOp = Bukkit.getOfflinePlayer(m);
                                 if (memOp.isOnline() && memOp.getPlayer() != null) {
@@ -802,14 +802,14 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         case "color" -> {
-                            if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin team color <name> <DyeColor>")); return true; }
+                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team color <name> <DyeColor>"); return true; }
                             var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cTeam not found."); return true; }
                             org.bukkit.DyeColor color;
-                            try { color = org.bukkit.DyeColor.valueOf(args[4].toUpperCase()); } catch (Exception ex) { p.sendMessage(Text.colorize(prefix + "&cMàu không hợp lệ.")); return true; }
+                            try { color = org.bukkit.DyeColor.valueOf(args[4].toUpperCase()); } catch (Exception ex) { Text.msg(p, "&cMàu không hợp lệ."); return true; }
                             ot.get().setColor(color);
                             teamManager.save();
-                            p.sendMessage(Text.colorize(prefix + "&aTeam color updated: &f" + color.name()));
+                            Text.msg(p, "&aTeam color updated: &f" + color.name());
                             for (java.util.UUID m : ot.get().getMembers()) {
                                 org.bukkit.OfflinePlayer memOp = Bukkit.getOfflinePlayer(m);
                                 if (memOp.isOnline() && memOp.getPlayer() != null) {
@@ -821,17 +821,17 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         case "add" -> {
-                            if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin team add <name> <player>")); return true; }
+                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team add <name> <player>"); return true; }
                             var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cTeam not found."); return true; }
                             org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[4]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found locally. Use UUID or ask the player to join once.")); return true; }
+                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cPlayer not found locally. Use UUID or ask the player to join once."); return true; }
                             // remove from previous team if any
                             teamManager.getTeamByMember(off.getUniqueId()).ifPresent(prev -> { prev.removeMember(off.getUniqueId()); });
                             boolean ok = teamManager.addMember(ot.get(), off.getUniqueId());
-                            if (!ok) { p.sendMessage(Text.colorize(prefix + "&cTeam is full (max " + teamManager.getMaxMembers() + ")")); return true; }
+                            if (!ok) { Text.msg(p, "&cTeam is full (max " + teamManager.getMaxMembers() + ")"); return true; }
                             teamManager.save();
-                            p.sendMessage(Text.colorize(prefix + "&aAdded &f" + off.getName() + " &ato team &f" + ot.get().getName()));
+                            Text.msg(p, "&aAdded &f" + off.getName() + " &ato team &f" + ot.get().getName());
                             if (off.isOnline() && off.getPlayer() != null) {
                                 off.getPlayer().sendMessage(Text.colorize(prefix + "&eQuản trị viên đã thêm bạn vào đội &f" + ot.get().getName() + "&e."));
                                 off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
@@ -840,14 +840,14 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         case "remove" -> {
-                            if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin team remove <name> <player>")); return true; }
+                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team remove <name> <player>"); return true; }
                             var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cTeam not found."); return true; }
                             org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[4]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cPlayer not found locally. Use UUID or ask the player to join once.")); return true; }
+                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cPlayer not found locally. Use UUID or ask the player to join once."); return true; }
                             boolean ok = teamManager.removeMember(ot.get(), off.getUniqueId());
-                            if (!ok) { p.sendMessage(Text.colorize(prefix + "&cPlayer is not a member of that team.")); return true; }
-                            p.sendMessage(Text.colorize(prefix + "&aRemoved &f" + off.getName() + " &afrom team &f" + ot.get().getName()));
+                            if (!ok) { Text.msg(p, "&cPlayer is not a member of that team."); return true; }
+                            Text.msg(p, "&aRemoved &f" + off.getName() + " &afrom team &f" + ot.get().getName());
                             teamManager.save();
                             if (off.isOnline() && off.getPlayer() != null) {
                                 off.getPlayer().sendMessage(Text.colorize(prefix + "&eBạn đã bị xóa khỏi đội &f" + ot.get().getName() + "&e."));
@@ -856,27 +856,27 @@ public class BoatRacingPlugin extends JavaPlugin {
                             p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                             return true;
                         }
-                        default -> { p.sendMessage(Text.colorize(prefix + "&cLệnh team không rõ.")); return true; }
+                        default -> { Text.msg(p, "&cLệnh team không rõ."); return true; }
                     }
                 }
                 // admin player ...
                 if (args[1].equalsIgnoreCase("player")) {
-                    if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin player <setteam|setnumber|setboat>")); return true; }
+                    if (args.length < 3) { Text.msg(p, "&cCách dùng: /"+label+" admin player <setteam|setnumber|setboat>"); return true; }
                     String op = args[2].toLowerCase();
                     switch (op) {
                         case "setteam" -> {
-                            if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin player setteam <player> <team|none>")); return true; }
+                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin player setteam <player> <team|none>"); return true; }
                             org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cKhông tìm thấy người chơi cục bộ. Dùng UUID hoặc yêu cầu người chơi tham gia một lần.")); return true; }
+                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi cục bộ. Dùng UUID hoặc yêu cầu người chơi tham gia một lần."); return true; }
                             String teamName = args[4];
                             teamManager.getTeamByMember(off.getUniqueId()).ifPresent(prev -> prev.removeMember(off.getUniqueId()));
                             if (!teamName.equalsIgnoreCase("none")) {
                                 var ot = teamManager.findByName(teamName);
-                                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
-                                if (!teamManager.addMember(ot.get(), off.getUniqueId())) { p.sendMessage(Text.colorize(prefix + "&cTeam is full (max " + teamManager.getMaxMembers() + ")")); return true; }
+                                if (ot.isEmpty()) { Text.msg(p, "&cTeam not found."); return true; }
+                                if (!teamManager.addMember(ot.get(), off.getUniqueId())) { Text.msg(p, "&cTeam is full (max " + teamManager.getMaxMembers() + ")"); return true; }
                             }
                             teamManager.save();
-                            p.sendMessage(Text.colorize(prefix + "&aPlayer &f" + off.getName() + " &aassigned to team &f" + (teamName.equalsIgnoreCase("none")?"none":teamName)));
+                            Text.msg(p, "&aPlayer &f" + off.getName() + " &aassigned to team &f" + (teamName.equalsIgnoreCase("none")?"none":teamName));
                             if (off.isOnline() && off.getPlayer() != null) {
                                 if (teamName.equalsIgnoreCase("none")) {
                                     off.getPlayer().sendMessage(Text.colorize(prefix + "&eBạn đã bị xóa khỏi đội của mình."));
@@ -890,18 +890,18 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         case "setnumber" -> {
-                            if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin player setnumber <player> <1-99>")); return true; }
+                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin player setnumber <player> <1-99>"); return true; }
                             org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cKhông tìm thấy người chơi.")); return true; }
+                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
                             int num;
-                            try { num = Integer.parseInt(args[4]); } catch (Exception ex) { p.sendMessage(Text.colorize(prefix + "&cSố không hợp lệ.")); return true; }
-                            if (num < 1 || num > 99) { p.sendMessage(Text.colorize(prefix + "&cSố phải là 1-99.")); return true; }
+                            try { num = Integer.parseInt(args[4]); } catch (Exception ex) { Text.msg(p, "&cSố không hợp lệ."); return true; }
+                            if (num < 1 || num > 99) { Text.msg(p, "&cSố phải là 1-99."); return true; }
                             var ot = teamManager.getTeamByMember(off.getUniqueId());
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cNgười chơi chưa ở trong đội.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cNgười chơi chưa ở trong đội."); return true; }
                             // Optional: global uniqueness check could go here
                             ot.get().setRacerNumber(off.getUniqueId(), num);
                             teamManager.save();
-                            p.sendMessage(Text.colorize(prefix + "&aSet racer number for &f" + off.getName() + " &ato &f" + num));
+                            Text.msg(p, "&aSet racer number for &f" + off.getName() + " &ato &f" + num);
                             if (off.isOnline() && off.getPlayer() != null) {
                                 off.getPlayer().sendMessage(Text.colorize(prefix + "&eQuản trị viên đã thay đổi số đua của bạn thành &f" + num + "&e."));
                                 off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
@@ -910,9 +910,9 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         case "setboat" -> {
-                            if (args.length < 5) { p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin player setboat <player> <BoatType>")); return true; }
+                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin player setboat <player> <BoatType>"); return true; }
                             org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
-                            if (off == null || off.getUniqueId() == null) { p.sendMessage(Text.colorize(prefix + "&cKhông tìm thấy người chơi.")); return true; }
+                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
                             String type = args[4].toUpperCase();
                             // Validate against allowed boats: boats, chest boats, and raft names
                             java.util.Set<String> allowed = new java.util.LinkedHashSet<>();
@@ -923,12 +923,12 @@ public class BoatRacingPlugin extends JavaPlugin {
                             // Also accept RAFT/CHEST_RAFT tokens even if not present as Materials
                             allowed.add("RAFT");
                             allowed.add("CHEST_RAFT");
-                            if (!allowed.contains(type)) { p.sendMessage(Text.colorize(prefix + "&cLoại tàu không hợp lệ.")); return true; }
+                            if (!allowed.contains(type)) { Text.msg(p, "&cLoại tàu không hợp lệ."); return true; }
                             var ot = teamManager.getTeamByMember(off.getUniqueId());
-                            if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cNgười chơi chưa ở trong đội.")); return true; }
+                            if (ot.isEmpty()) { Text.msg(p, "&cNgười chơi chưa ở trong đội."); return true; }
                             ot.get().setBoatType(off.getUniqueId(), type);
                             teamManager.save();
-                            p.sendMessage(Text.colorize(prefix + "&aSet boat type for &f" + off.getName() + " &ato &f" + type));
+                            Text.msg(p, "&aSet boat type for &f" + off.getName() + " &ato &f" + type);
                             if (off.isOnline() && off.getPlayer() != null) {
                                 off.getPlayer().sendMessage(Text.colorize(prefix + "&eQuản trị viên đã thay đổi loại tàu của bạn thành &f" + type + "&e."));
                                 off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
@@ -936,14 +936,14 @@ public class BoatRacingPlugin extends JavaPlugin {
                             p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                             return true;
                         }
-                        default -> { p.sendMessage(Text.colorize(prefix + "&cHành động player không hợp lệ.")); return true; }
+                        default -> { Text.msg(p, "&cHành động player không hợp lệ."); return true; }
                     }
                 }
-                p.sendMessage(Text.colorize(prefix + "&cCách dùng: /"+label+" admin help"));
+                Text.msg(p, "&cCách dùng: /"+label+" admin help");
                 return true;
             }
             if (!args[0].equalsIgnoreCase("teams")) {
-                p.sendMessage(Text.colorize(prefix + "&cCách dùng: /" + label + " teams|setup|reload|version"));
+                Text.msg(p, "&cCách dùng: /" + label + " teams|setup|reload|version");
                 return true;
             }
             // /boatracing teams
@@ -990,7 +990,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             // /boatracing teams rename <new name>
             if (args.length >= 2 && args[1].equalsIgnoreCase("rename")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
+                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
                 es.jaie55.boatracing.team.Team t = ot.get();
                 boolean allowRename = getConfig().getBoolean("player-actions.allow-team-rename", false);
                 if (!allowRename && !p.hasPermission("boatracing.admin")) { p.sendMessage(Text.colorize(prefix + "&cThis server has restricted team renaming. Only an administrator can rename teams.")); return true; }
@@ -1010,31 +1010,31 @@ public class BoatRacingPlugin extends JavaPlugin {
                 if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
                 es.jaie55.boatracing.team.Team t = ot.get();
                 boolean allowColor = getConfig().getBoolean("player-actions.allow-team-color", false);
-                if (!allowColor && !p.hasPermission("boatracing.admin")) { p.sendMessage(Text.colorize(prefix + "&cThis server has restricted team colors. Only an administrator can change team colors.")); return true; }
-                if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /boatracing teams color <dyeColor>")); return true; }
+                if (!allowColor && !p.hasPermission("boatracing.admin")) { Text.msg(p, "&cThis server has restricted team colors. Only an administrator can change team colors."); return true; }
+                if (args.length < 3) { Text.msg(p, "&cUsage: /boatracing teams color <dyeColor>"); return true; }
                 try {
                     org.bukkit.DyeColor dc = org.bukkit.DyeColor.valueOf(args[2].toUpperCase());
                     t.setColor(dc); teamManager.save();
-                    p.sendMessage(Text.colorize(prefix + "&aTeam color set to &e" + dc.name() + "&a."));
+                    Text.msg(p, "&aTeam color set to &e" + dc.name() + "&a.");
                 } catch (IllegalArgumentException ex) {
-                    p.sendMessage(Text.colorize(prefix + "&cInvalid color."));
+                    Text.msg(p, "&cInvalid color.");
                 }
                 return true;
             }
             // /boatracing teams join <team name>
             if (args.length >= 2 && args[1].equalsIgnoreCase("join")) {
                 if (teamManager.getTeamByMember(p.getUniqueId()).isPresent()) {
-                    p.sendMessage(Text.colorize(prefix + "&cYou are already in a team. Leave it first."));
+                    Text.msg(p, "&cYou are already in a team. Leave it first.");
                     return true;
                 }
-                if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /boatracing teams join <team name>")); return true; }
+                if (args.length < 3) { Text.msg(p, "&cUsage: /boatracing teams join <team name>"); return true; }
                 String name = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
                 es.jaie55.boatracing.team.Team target = teamManager.getTeams().stream()
                     .filter(t -> t.getName().equalsIgnoreCase(name)).findFirst().orElse(null);
-                if (target == null) { p.sendMessage(Text.colorize(prefix + "&cTeam not found.")); return true; }
-                if (target.getMembers().size() >= teamManager.getMaxMembers()) { p.sendMessage(Text.colorize(prefix + "&cThis team is full.")); return true; }
+                if (target == null) { Text.msg(p, "&cTeam not found."); return true; }
+                if (target.getMembers().size() >= teamManager.getMaxMembers()) { Text.msg(p, "&cThis team is full."); return true; }
                 target.addMember(p.getUniqueId()); teamManager.save();
-                p.sendMessage(Text.colorize(prefix + "&aYou joined &e" + target.getName() + "&a."));
+                Text.msg(p, "&aYou joined &e" + target.getName() + "&a.");
                 for (java.util.UUID m : target.getMembers()) {
                     if (m.equals(p.getUniqueId())) continue;
                     org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
@@ -1047,17 +1047,17 @@ public class BoatRacingPlugin extends JavaPlugin {
             // /boatracing teams leave (with confirm if team would be empty)
             if (args.length >= 2 && args[1].equalsIgnoreCase("leave")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
+                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
                 es.jaie55.boatracing.team.Team t = ot.get();
                 if (t.getMembers().size() <= 1) {
                     pendingDisband.add(p.getUniqueId());
-                    p.sendMessage(Text.colorize(prefix + "&eYou are the last member. Leaving will delete the team."));
-                    p.sendMessage(Text.colorize(prefix + "&7Type &b/"+label+" teams confirm &7to proceed or &b/"+label+" teams cancel &7to abort."));
+                    Text.msg(p, "&eYou are the last member. Leaving will delete the team.");
+                    Text.msg(p, "&7Type &b/"+label+" teams confirm &7to proceed or &b/"+label+" teams cancel &7to abort.");
                     return true;
                 }
                 t.removeMember(p.getUniqueId());
                 teamManager.save();
-                p.sendMessage(Text.colorize(prefix + "&aYou left the team."));
+                Text.msg(p, "&aYou left the team.");
                 for (java.util.UUID m : t.getMembers()) {
                     org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                     if (op.isOnline() && op.getPlayer() != null) {
@@ -1069,39 +1069,39 @@ public class BoatRacingPlugin extends JavaPlugin {
             // /boatracing teams kick <playerName> (with confirm)
             if (args.length >= 2 && args[1].equalsIgnoreCase("kick")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
-                p.sendMessage(Text.colorize(prefix + "&cThis action is admin-only. Use /"+label+" admin team remove <team> <player>."));
+                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
+                Text.msg(p, "&cThis action is admin-only. Use /"+label+" admin team remove <team> <player>.");
                 return true;
             }
             // /boatracing teams transfer <playerName>
             if (args.length >= 2 && args[1].equalsIgnoreCase("transfer")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
-                p.sendMessage(Text.colorize(prefix + "&cLeader system has been removed. Use admin commands if you need to manage teams."));
+                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
+                Text.msg(p, "&cLeader system has been removed. Use admin commands if you need to manage teams.");
                 return true;
             }
             // /boatracing teams boat <type>
             if (args.length >= 2 && args[1].equalsIgnoreCase("boat")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
-                if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /boatracing teams boat <type>")); return true; }
+                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
+                if (args.length < 3) { Text.msg(p, "&cUsage: /boatracing teams boat <type>"); return true; }
                 boolean allowBoat = getConfig().getBoolean("player-actions.allow-set-boat", true);
-                if (!allowBoat) { p.sendMessage(Text.colorize(prefix + "&cThis server has restricted boat changes. Only an administrator can set your boat.")); return true; }
+                if (!allowBoat) { Text.msg(p, "&cThis server has restricted boat changes. Only an administrator can set your boat."); return true; }
                 String type = args[2].toUpperCase();
                 // Accept RAFT tokens directly, otherwise require a valid BOAT material
                 if (type.equals("RAFT") || type.equals("CHEST_RAFT")) {
                     ot.get().setBoatType(p.getUniqueId(), type);
                     teamManager.save();
-                    p.sendMessage(Text.colorize(prefix + "&aYour boat set to &e" + type.toLowerCase() + "&a."));
+                    Text.msg(p, "&aYour boat set to &e" + type.toLowerCase() + "&a.");
                 } else {
                     try {
                         org.bukkit.Material m = org.bukkit.Material.valueOf(type);
                         if (!m.name().endsWith("BOAT")) throw new IllegalArgumentException();
                         ot.get().setBoatType(p.getUniqueId(), m.name());
                         teamManager.save();
-                        p.sendMessage(Text.colorize(prefix + "&aYour boat set to &e" + type.toLowerCase() + "&a."));
+                        Text.msg(p, "&aYour boat set to &e" + type.toLowerCase() + "&a.");
                     } catch (IllegalArgumentException ex) {
-                        p.sendMessage(Text.colorize(prefix + "&cLoại tàu không hợp lệ."));
+                        Text.msg(p, "&cLoại tàu không hợp lệ.");
                     }
                 }
                 return true;
@@ -1109,38 +1109,38 @@ public class BoatRacingPlugin extends JavaPlugin {
             // /boatracing teams number <1-99>
             if (args.length >= 2 && args[1].equalsIgnoreCase("number")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
-                if (args.length < 3) { p.sendMessage(Text.colorize(prefix + "&cUsage: /boatracing teams number <1-99>")); return true; }
+                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
+                if (args.length < 3) { Text.msg(p, "&cUsage: /boatracing teams number <1-99>"); return true; }
                 boolean allowNumber = getConfig().getBoolean("player-actions.allow-set-number", true);
-                if (!allowNumber) { p.sendMessage(Text.colorize(prefix + "&cThis server has restricted racer numbers. Only an administrator can set your racer number.")); return true; }
+                if (!allowNumber) { Text.msg(p, "&cThis server has restricted racer numbers. Only an administrator can set your racer number."); return true; }
                 String s = args[2];
-                if (!s.matches("\\d+")) { p.sendMessage(Text.colorize(prefix + "&cPlease enter digits only.")); return true; }
+                if (!s.matches("\\d+")) { Text.msg(p, "&cPlease enter digits only."); return true; }
                 int n = Integer.parseInt(s);
-                if (n < 1 || n > 99) { p.sendMessage(Text.colorize(prefix + "&cSố phải nằm trong khoảng 1 đến 99.")); return true; }
+                if (n < 1 || n > 99) { Text.msg(p, "&cSố phải nằm trong khoảng 1 đến 99."); return true; }
                 ot.get().setRacerNumber(p.getUniqueId(), n); teamManager.save();
-                p.sendMessage(Text.colorize(prefix + "&aYour racer # set to " + n + "."));
+                Text.msg(p, "&aYour racer # set to " + n + ".");
                 return true;
             }
             // /boatracing teams disband y /boatracing teams confirm
             if (args.length >= 2 && args[1].equalsIgnoreCase("disband")) {
                 java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
-                p.sendMessage(Text.colorize(prefix + "&cThis action is admin-only. Use /"+label+" admin team delete <team>."));
+                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
+                Text.msg(p, "&cThis action is admin-only. Use /"+label+" admin team delete <team>.");
                 return true;
             }
             if (args.length >= 2 && args[1].equalsIgnoreCase("confirm")) {
                 // Confirm pending dangerous actions (last-member leave -> disband)
                 if (pendingDisband.remove(p.getUniqueId())) {
                     java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                    if (ot.isEmpty()) { p.sendMessage(Text.colorize(prefix + "&cYou are not in a team.")); return true; }
+                    if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
                     es.jaie55.boatracing.team.Team t = ot.get();
                     // Proceed: remove member (self) and delete team since no members left
                     t.removeMember(p.getUniqueId());
                     teamManager.deleteTeam(t);
-                    p.sendMessage(Text.colorize(prefix + "&aYou left and the team was deleted (no members left)."));
+                    Text.msg(p, "&aYou left and the team was deleted (no members left).");
                     return true;
                 }
-                p.sendMessage(Text.colorize(prefix + "&cNothing to confirm."));
+                Text.msg(p, "&cNothing to confirm.");
                 return true;
             }
             if (args.length >= 2 && args[1].equalsIgnoreCase("cancel")) {
@@ -1149,10 +1149,10 @@ public class BoatRacingPlugin extends JavaPlugin {
                 if (pendingTransfer.remove(p.getUniqueId()) != null) { any = true; }
                 if (pendingKick.remove(p.getUniqueId()) != null) { any = true; }
                 if (!any) {
-                    p.sendMessage(Text.colorize(prefix + "&cNothing to cancel."));
+                    Text.msg(p, "&cNothing to cancel.");
                     return true;
                 }
-                        p.sendMessage(Text.colorize(prefix + "&aCancelled."));
+                        Text.msg(p, "&aCancelled.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.1f);
                 return true;
             }
@@ -1302,20 +1302,20 @@ public class BoatRacingPlugin extends JavaPlugin {
                         String current = getDescription().getVersion();
         if (!updateChecker.isChecked()) return;
         if (updateChecker.hasError()) {
-            p.sendMessage(Text.colorize(prefix + "&7Update check failed. See console for details."));
-            p.sendMessage(Text.colorize(prefix + "&7Releases: &f" + updateChecker.getLatestUrl()));
+            Text.msg(p, "&7Update check failed. See console for details.");
+            Text.msg(p, "&7Releases: &f" + updateChecker.getLatestUrl());
             return;
         }
         if (updateChecker.isOutdated()) {
             int behind = updateChecker.getBehindCount();
             String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
-            p.sendMessage(Text.colorize(prefix + "&eAn update for " + getName() + " is available. You are " + behind + " version(s) behind."));
-            p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
-            p.sendMessage(Text.colorize(prefix + "&eUpdate at &f" + updateChecker.getLatestUrl()));
+            Text.msg(p, "&eAn update for " + getName() + " is available. You are " + behind + " version(s) behind.");
+            Text.msg(p, "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e.");
+            Text.msg(p, "&eUpdate at &f" + updateChecker.getLatestUrl());
         } else {
             String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : current;
-            p.sendMessage(Text.colorize(prefix + "&aYou're running the latest version (&f" + current + "&a)."));
-            p.sendMessage(Text.colorize(prefix + "&7Latest: &f" + latest + " &7| Releases: &f" + updateChecker.getLatestUrl()));
+            Text.msg(p, "&aYou're running the latest version (&f" + current + "&a).");
+            Text.msg(p, "&7Latest: &f" + latest + " &7| Releases: &f" + updateChecker.getLatestUrl());
         }
     }
 

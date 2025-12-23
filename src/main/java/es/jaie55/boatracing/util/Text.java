@@ -1,11 +1,13 @@
 package es.jaie55.boatracing.util;
 
+import es.jaie55.boatracing.BoatRacingPlugin;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.kyori.adventure.text.format.TextDecoration;
+import org.bukkit.command.CommandSender;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -17,6 +19,26 @@ public final class Text {
     public static String colorize(String s) {
         if (s == null) return "";
         return s.replace('&', '§');
+    }
+
+    // Centralized prefix provider
+    public static String prefix() {
+        BoatRacingPlugin pl = BoatRacingPlugin.getInstance();
+        return pl != null ? pl.pref() : colorize("&6[BoatRacing] ");
+    }
+
+    // Send a colored, prefixed message to any CommandSender
+    public static void msg(CommandSender to, String legacyAmpersand) {
+        if (to == null) return;
+        String base = legacyAmpersand == null ? "" : legacyAmpersand;
+        to.sendMessage(colorize(prefix() + base));
+    }
+
+    // Send a colored message without prefix (utility for list/help lines)
+    public static void tell(CommandSender to, String legacyAmpersand) {
+        if (to == null) return;
+        String base = legacyAmpersand == null ? "" : legacyAmpersand;
+        to.sendMessage(colorize(base));
     }
 
     // Components (Adventure) from &-codes

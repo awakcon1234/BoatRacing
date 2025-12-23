@@ -1,6 +1,6 @@
 package es.jaie55.boatracing.track;
 
-import org.bukkit.ChatColor;
+import es.jaie55.boatracing.util.Text;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -28,11 +28,11 @@ public class WandListener implements Listener {
         switch (ev.getAction()) {
             case LEFT_CLICK_BLOCK, LEFT_CLICK_AIR -> {
                 if (ev.getClickedBlock() != null) SelectionManager.setCornerA(p, ev.getClickedBlock().getLocation());
-                p.sendMessage(ChatColor.translateAlternateColorCodes('&', "&aCorner A set."));
+                Text.msg(p, "&aCorner A set.");
             }
             case RIGHT_CLICK_BLOCK, RIGHT_CLICK_AIR -> {
                 if (ev.getClickedBlock() != null) SelectionManager.setCornerB(p, ev.getClickedBlock().getLocation());
-                p.sendMessage(ChatColor.translateAlternateColorCodes('&', "&aCorner B set."));
+                Text.msg(p, "&aCorner B set.");
             }
             default -> {}
         }
