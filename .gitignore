@@ -5,7 +5,9 @@
 !.gitignore
 
 # Allow essential project files
-!/pom.xml
+!/build.gradle
+!/settings.gradle
+!/gradle.properties
 !/README.md
 !/LICENSE
 
@@ -21,6 +23,7 @@
 /mvnw
 /mvnw.cmd
 /target/
+/build/
 /dependency-reduced-pom.xml
 /.classpath
 /.project

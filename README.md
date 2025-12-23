@@ -311,7 +311,7 @@ Legacy migration: if a legacy `plugins/BoatRacing/track.yml` is found on startup
 - Denial messages for protected actions are hardcoded in English.
 
 ## Build (developers)
-- Maven project; produces `BoatRacing.jar` shaded. Run `mvn -DskipTests clean package`.
+- Gradle project; produces `BoatRacing.jar` shaded. Run `gradle shadowJar`.
 
 ## License
 Distributed under the MIT License. See `LICENSE`.
