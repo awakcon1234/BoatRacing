@@ -1,38 +1,60 @@
-# Strict allowlist: ignore everything by default
-/*
+# .gitignore for a typical Gradle project
 
-# Keep the ignore file itself
-!.gitignore
+# Gradle build directories
+.gradle/
+build/
+**/build/
 
-# Allow essential project files
-!/build.gradle
-!/settings.gradle
-!/gradle.properties
-!/README.md
-!/LICENSE
+# Gradle wrapper - keep wrapper JAR and properties committed
+!gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
 
-# Allow source code
-!/src/**
+# Do not ignore wrapper scripts (they are source files)
+!gradlew
+!gradlew.bat
 
-# Ignore Maven wrapper (incl. properties)
+# Eclipse
+.classpath
+.project
+.settings/
 
-# Allow GitHub meta if present
-!/.github/**
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
 
-# Explicit excludes (redundant with the allowlist but documented)
-/mvnw
-/mvnw.cmd
-/target/
-/build/
-/dependency-reduced-pom.xml
-/.classpath
-/.project
-/.settings/
-/.vscode/
-/.project
-/.factorypath
-/.mvn/
- 
-# Allow QA checklist to be committed
-!/CHECKLIST.md
+# NetBeans
+nbproject/private/
+
+# VS Code
+.vscode/
+
+# Compiled class files
+*.class
+
+# Generated files
+/out/
+/dist/
+/tmp/
+
+# Logs
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Misc
+*.tmp
+*.swp
+
+# Keep README, license, src and build scripts in repository
+!README.md
+!LICENSE
+!src/**
+!build.gradle
+!settings.gradle
+!gradle.properties
+!CHECKLIST.md
 

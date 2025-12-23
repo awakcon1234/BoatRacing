@@ -26,6 +26,13 @@ dependencies {
     compileOnly 'io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT'
     implementation 'net.wesjd:anvilgui:1.10.8-SNAPSHOT'
     implementation 'org.bstats:bstats-bukkit:3.0.2'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+    testImplementation 'io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 tasks.withType(JavaCompile).configureEach {
