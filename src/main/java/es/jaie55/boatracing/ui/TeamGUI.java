@@ -367,7 +367,7 @@ public class TeamGUI implements Listener {
                     if (m.equals(p.getUniqueId())) continue;
                     org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                     if (op.isOnline() && op.getPlayer() != null) {
-                        op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã tham gia đội."));
+                        es.jaie55.boatracing.util.Text.msg(op.getPlayer(), "&e" + p.getName() + " đã tham gia đội.");
                     }
                 }
                 p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
@@ -471,7 +471,7 @@ public class TeamGUI implements Listener {
                 if (m.equals(p.getUniqueId())) continue;
                 org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                 if (op.isOnline() && op.getPlayer() != null) {
-                    op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã đổi màu đội thành " + chosen.name() + "."));
+                    es.jaie55.boatracing.util.Text.msg(op.getPlayer(), "&e" + p.getName() + " đã đổi màu đội thành " + chosen.name() + ".");
                 }
             }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
@@ -539,7 +539,7 @@ public class TeamGUI implements Listener {
                     if (op.isOnline()) {
                         Player mp = op.getPlayer();
                         if (mp != null) {
-                            mp.sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&eĐội của bạn đã bị giải tán."));
+                            es.jaie55.boatracing.util.Text.msg(mp, "&eĐội của bạn đã bị giải tán.");
                             mp.playSound(mp.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.8f, 0.8f);
                         }
                     }
@@ -574,7 +574,7 @@ public class TeamGUI implements Listener {
                     for (java.util.UUID m : team.getMembers()) {
                         org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                         if (op.isOnline() && op.getPlayer() != null) {
-                            op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã rời đội."));
+                            es.jaie55.boatracing.util.Text.msg(op.getPlayer(), "&e" + p.getName() + " đã rời đội.");
                         }
                     }
                 }
@@ -1071,7 +1071,7 @@ public class TeamGUI implements Listener {
                 if (m.equals(p.getUniqueId())) continue;
                 org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                 if (op.isOnline() && op.getPlayer() != null) {
-                    op.getPlayer().sendMessage(es.jaie55.boatracing.util.Text.colorize(es.jaie55.boatracing.util.Text.prefix() + "&e" + p.getName() + " đã đổi tên đội thành &e" + input + "&e."));
+                    es.jaie55.boatracing.util.Text.msg(op.getPlayer(), "&e" + p.getName() + " đã đổi tên đội thành &e" + input + "&e.");
                 }
             }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.4f);

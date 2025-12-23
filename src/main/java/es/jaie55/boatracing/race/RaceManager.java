@@ -27,7 +27,7 @@ public class RaceManager {
     private boolean registering = false;
     private final Set<UUID> registered = new HashSet<>();
     private int totalLaps = 3;
-    private int mandatoryPitstops = 0;
+    // Pit mechanic removed: no mandatory pitstops
 
     // runtime participant state
     private final java.util.Map<UUID, ParticipantState> participants = new java.util.HashMap<>();
@@ -56,12 +56,7 @@ public class RaceManager {
         ParticipantState s = participants.get(player.getUniqueId());
         if (s == null || s.finished) return;
 
-        // Pit detection
-        Region pit = trackConfig.getPitlane();
-        if (pit != null && pit.contains(to)) {
-            enterPit(player.getUniqueId());
-            Text.msg(player, "&aĐã tính dừng pit.");
-        }
+        // Pit mechanic removed
 
         // Checkpoints
         java.util.List<Region> checkpoints = trackConfig.getCheckpoints();
@@ -109,11 +104,6 @@ public class RaceManager {
     }
 
     ParticipantState getParticipantState(UUID uuid) { return participants.get(uuid); }
-    void enterPit(UUID uuid) {
-        ParticipantState s = participants.get(uuid);
-        if (s == null || s.finished) return;
-        s.pitDoneThisLap = true;
-    }
 
     // test helper: add a participant without needing a Player or a running race
     void addParticipantForTests(UUID uuid) {
@@ -124,14 +114,7 @@ public class RaceManager {
         ParticipantState s = participants.get(uuid);
         if (s == null || s.finished) return;
         s.currentLap++;
-        // Penalty if mandatory pitstops not made
-        if (getMandatoryPitstops() > 0 && !s.pitDoneThisLap) {
-            s.penaltySeconds += 30; // simple time penalty
-            Player p = participantPlayers.get(uuid);
-            if (p != null) Text.msg(p, "&cPhạt: thiếu dừng pit (+30s)");
-        }
-        // reset pit flag for next lap
-        s.pitDoneThisLap = false;
+        // Pit mechanic removed: no penalties or pit flags
 
         // Finished?
         if (s.currentLap >= getTotalLaps()) {
@@ -178,7 +161,7 @@ public class RaceManager {
         public final UUID id;
         public int currentLap = 0;
         public int nextCheckpointIndex = 0;
-        public boolean pitDoneThisLap = false;
+        // pit flags removed
         public boolean finished = false;
         public long finishTimeMillis = 0;
         public int finishPosition = 0;
@@ -298,6 +281,5 @@ public class RaceManager {
 
     public void setTotalLaps(int laps) { this.totalLaps = Math.max(1, laps); }
 
-    public int getMandatoryPitstops() { return Math.max(0, mandatoryPitstops); }
-    public void setMandatoryPitstops(int n) { this.mandatoryPitstops = Math.max(0, n); }
+    // Pit mechanic removed: no mandatory pitstops API
 }

@@ -28,40 +28,7 @@ public class RaceManagerTest {
         assertEquals(1, rm.getParticipantState(u).currentLap);
     }
 
-    @Test
-    public void testPitPenaltyWhenMissingPit() {
-        TrackConfig tc = new TrackConfig(new File("build/tmp"));
-
-        RaceManager rm = new RaceManager(tc);
-        UUID u = UUID.randomUUID();
-        rm.addParticipantForTests(u);
-        rm.setMandatoryPitstops(1);
-        rm.setTotalLaps(1);
-        rm.setTestCheckpointCount(1);
-
-        // complete checkpoint -> lap completion -> penalty applied
-        rm.checkpointReached(u, 0);
-        assertEquals(1, rm.getParticipantState(u).currentLap);
-        assertEquals(30, rm.getParticipantState(u).penaltySeconds);
-    }
-
-    @Test
-    public void testPitStopsPreventPenalty() {
-        TrackConfig tc = new TrackConfig(new File("build/tmp"));
-
-        RaceManager rm = new RaceManager(tc);
-        UUID u = UUID.randomUUID();
-        rm.addParticipantForTests(u);
-        rm.setMandatoryPitstops(1);
-        rm.setTotalLaps(1);
-        rm.setTestCheckpointCount(1);
-
-        // Enter pit before completing
-        rm.enterPit(u);
-        rm.checkpointReached(u, 0);
-        assertEquals(1, rm.getParticipantState(u).currentLap);
-        assertEquals(0, rm.getParticipantState(u).penaltySeconds);
-    }
+    // Pit mechanic removed: penalty tests omitted
 
     @Test
     public void testFinishPlayerSetsFinished() {

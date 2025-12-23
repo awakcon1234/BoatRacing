@@ -41,6 +41,12 @@ public final class Text {
         to.sendMessage(colorize(base));
     }
 
+    // Send a Component (Adventure) message
+    public static void send(CommandSender to, Component component) {
+        if (to == null || component == null) return;
+        to.sendMessage(component);
+    }
+
     // Components (Adventure) from &-codes
     public static Component c(String legacyAmpersand) {
         if (legacyAmpersand == null) return Component.empty();

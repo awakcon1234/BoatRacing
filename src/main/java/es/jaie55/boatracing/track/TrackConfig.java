@@ -89,7 +89,35 @@ public class TrackConfig {
                 }
             }
         }
-        // checkpoints, finish, pit not fully restored for simplicity (regions omitted)
+        // finish region
+        Object fobj = cfg.get("finish");
+        Region fin = regionFromObject(fobj);
+        if (fin != null) this.finish = fin;
+        // pitlane region
+        Object pobj = cfg.get("pit");
+        Region pit = regionFromObject(pobj);
+        if (pit != null) this.pitlane = pit;
+        // checkpoints list
+        List<?> cps = cfg.getList("checkpoints");
+        if (cps != null) {
+            for (Object o : cps) {
+                Region r = regionFromObject(o);
+                if (r != null) this.checkpoints.add(r);
+            }
+        }
+        // team pits map (uuid -> region)
+        Object tpObj = cfg.get("team-pits");
+        if (tpObj instanceof java.util.Map) {
+            java.util.Map<?,?> m = (java.util.Map<?,?>) tpObj;
+            for (java.util.Map.Entry<?,?> en : m.entrySet()) {
+                try {
+                    String key = String.valueOf(en.getKey());
+                    java.util.UUID id = java.util.UUID.fromString(key);
+                    Region r = regionFromObject(en.getValue());
+                    if (r != null) this.teamPits.put(id, r);
+                } catch (Throwable ignored) {}
+            }
+        }
         this.currentName = name;
         return true;
     }
@@ -114,6 +142,21 @@ public class TrackConfig {
                 ls.add(m);
             }
             cfg.set("lights", ls);
+            // regions
+            if (this.finish != null) cfg.set("finish", regionToMap(this.finish));
+            if (this.pitlane != null) cfg.set("pit", regionToMap(this.pitlane));
+            if (!this.checkpoints.isEmpty()) {
+                List<Map<String,Object>> cps = new ArrayList<>();
+                for (Region r : this.checkpoints) cps.add(regionToMap(r));
+                cfg.set("checkpoints", cps);
+            }
+            if (!this.teamPits.isEmpty()) {
+                Map<String,Object> map = new LinkedHashMap<>();
+                for (Map.Entry<java.util.UUID, Region> en : this.teamPits.entrySet()) {
+                    map.put(en.getKey().toString(), regionToMap(en.getValue()));
+                }
+                cfg.set("team-pits", map);
+            }
             cfg.save(f);
             this.currentName = name;
             return true;
@@ -153,4 +196,51 @@ public class TrackConfig {
     public Map<java.util.UUID, Integer> getCustomStartSlots() { return Collections.unmodifiableMap(customStartSlots); }
 
     public String getCurrentName() { return currentName; }
+
+    // Serialization helpers for Region
+    private static Map<String,Object> regionToMap(Region r) {
+        Map<String,Object> m = new LinkedHashMap<>();
+        m.put("world", r.getWorldName());
+        org.bukkit.util.BoundingBox b = r.getBox();
+        if (b != null) {
+            m.put("minX", b.getMinX()); m.put("minY", b.getMinY()); m.put("minZ", b.getMinZ());
+            m.put("maxX", b.getMaxX()); m.put("maxY", b.getMaxY()); m.put("maxZ", b.getMaxZ());
+        }
+        return m;
+    }
+
+    @SuppressWarnings({"rawtypes","unchecked"})
+    private static Region regionFromObject(Object obj) {
+        if (obj == null) return null;
+        java.util.Map m = null;
+        if (obj instanceof org.bukkit.configuration.ConfigurationSection cs) {
+            m = cs.getValues(false);
+        } else if (obj instanceof java.util.Map) {
+            m = (java.util.Map) obj;
+        }
+        if (m == null) return null;
+        try {
+            String w = (String) m.get("world");
+            Number minX = asNumber(m.get("minX"));
+            Number minY = asNumber(m.get("minY"));
+            Number minZ = asNumber(m.get("minZ"));
+            Number maxX = asNumber(m.get("maxX"));
+            Number maxY = asNumber(m.get("maxY"));
+            Number maxZ = asNumber(m.get("maxZ"));
+            if (w == null || minX == null || minY == null || minZ == null || maxX == null || maxY == null || maxZ == null) return null;
+            org.bukkit.util.BoundingBox box = new org.bukkit.util.BoundingBox(
+                minX.doubleValue(), minY.doubleValue(), minZ.doubleValue(),
+                maxX.doubleValue(), maxY.doubleValue(), maxZ.doubleValue()
+            );
+            return new Region(w, box);
+        } catch (Throwable ignored) { return null; }
+    }
+
+    private static Number asNumber(Object o) {
+        if (o instanceof Number) return (Number) o;
+        if (o instanceof String s) {
+            try { return Double.parseDouble(s); } catch (Exception ignored) { }
+        }
+        return null;
+    }
 }
