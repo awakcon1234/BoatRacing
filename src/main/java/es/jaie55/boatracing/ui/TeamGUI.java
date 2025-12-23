@@ -34,14 +34,14 @@ import java.util.UUID;
 
 public class TeamGUI implements Listener {
     private static final String BLANK = " ";
-    private static final Component TITLE = Text.title("Teams");
-    private static final Component TITLE_TEAM = Text.title("Team");
-    private static final String TEAM_TITLE_PREFIX = "Team • ";
-    private static final Component TITLE_MEMBER = Text.title("Your profile");
-    private static final Component TITLE_COLOR_PICKER = Text.title("Choose team color");
-    private static final Component TITLE_BOAT_PICKER = Text.title("Choose your boat");
-    private static final Component TITLE_DISBAND_CONFIRM = Text.title("Disband team?");
-    private static final Component TITLE_LEAVE_CONFIRM = Text.title("Leave team?");
+    private static final Component TITLE = Text.title("Đội");
+    private static final Component TITLE_TEAM = Text.title("Đội");
+    private static final String TEAM_TITLE_PREFIX = "Đội • ";
+    private static final Component TITLE_MEMBER = Text.title("Hồ sơ của bạn");
+    private static final Component TITLE_COLOR_PICKER = Text.title("Chọn màu đội");
+    private static final Component TITLE_BOAT_PICKER = Text.title("Chọn thuyền của bạn");
+    private static final Component TITLE_DISBAND_CONFIRM = Text.title("Giải tán đội?");
+    private static final Component TITLE_LEAVE_CONFIRM = Text.title("Rời đội?");
     // Resolve allowed boat/raft materials by name to avoid NoSuchFieldError on servers lacking newer enums
     private static final Material[] ALLOWED_BOATS = resolveAllowedBoats();
     
@@ -100,18 +100,18 @@ public class TeamGUI implements Listener {
                 meta.displayName(Text.item("&l" + t.getName()));
                 List<String> lore = new ArrayList<>();
                 // Members count
-                lore.add("&7Members: &f" + t.getMembers().size() + "/" + plugin.getTeamManager().getMaxMembers());
+                lore.add("&7Thành viên: &f" + t.getMembers().size() + "/" + plugin.getTeamManager().getMaxMembers());
                 // Members list (dropdown-like on hover)
                 if (!t.getMembers().isEmpty()) {
                     lore.add(" ");
-                    lore.add("&8Members:");
+                    lore.add("&8Thành viên:");
                     for (UUID uid : t.getMembers()) {
                         String name = Bukkit.getOfflinePlayer(uid).getName();
                         lore.add("&7- &f" + (name != null ? name : uid.toString().substring(0, 8)));
                     }
                 }
                 lore.add(" ");
-                lore.add("&eClick: &fOpen");
+                lore.add("&eBấm: &fMở");
                 meta.lore(Text.lore(lore));
                 PersistentDataContainer pdc = meta.getPersistentDataContainer();
                 pdc.set(KEY_TEAM_ID, PersistentDataType.STRING, t.getId().toString());
@@ -124,15 +124,15 @@ public class TeamGUI implements Listener {
         int base = size - 9;
         fillRow(inv, base, pane(Material.GRAY_STAINED_GLASS_PANE));
         boolean allowCreate = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
-        if (allowCreate) inv.setItem(base + 4, button(Material.ANVIL, Text.item("&a&lCreate team")));
+        if (allowCreate) inv.setItem(base + 4, button(Material.ANVIL, Text.item("&a&lTạo đội")));
         // Admin quick access
         if (p.hasPermission("boatracing.admin")) {
-            java.util.List<String> lore = java.util.Arrays.asList("&7Open the admin management panel.");
-            inv.setItem(base, buttonWithLore(Material.NETHER_STAR, Text.item("&d&lAdmin panel"), lore));
+            java.util.List<String> lore = java.util.Arrays.asList("&7Mở bảng quản trị.");
+            inv.setItem(base, buttonWithLore(Material.NETHER_STAR, Text.item("&d&lBảng quản trị"), lore));
         }
         // Refresh list
-        inv.setItem(base + 7, buttonWithLore(Material.CLOCK, Text.item("&e&lRefresh"), java.util.Arrays.asList("&7Reload this view and update the list.")));
-        inv.setItem(base + 8, button(Material.BARRIER, Text.item("&c&lClose")));
+        inv.setItem(base + 7, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), java.util.Arrays.asList("&7Tải lại trang và cập nhật danh sách.")));
+        inv.setItem(base + 8, button(Material.BARRIER, Text.item("&c&lĐóng")));
 
     p.openInventory(inv);
     p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
@@ -257,13 +257,13 @@ public class TeamGUI implements Listener {
     if (inMain && slot == base + 4) {
             boolean allowCreate2 = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
             if (!allowCreate2) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team creation. Only an administrator can create teams."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc tạo đội. Chỉ quản trị viên mới có thể tạo đội."));
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return;
             }
             TeamManager tm = plugin.getTeamManager();
             if (tm.getTeamByMember(p.getUniqueId()).isPresent()) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cYou are already in a team."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cBạn đã ở trong một đội."));
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.7f, 0.7f);
                 return;
             }
@@ -320,12 +320,12 @@ public class TeamGUI implements Listener {
                 boolean allowRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
                 boolean isAdmin = p.hasPermission("boatracing.admin");
                 if (!allowRename && !isAdmin) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team renaming. Only an administrator can rename teams."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi tên đội. Chỉ quản trị viên mới có thể đổi tên đội."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 if (!isAdmin && !team.isMember(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly team members can rename their team."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ thành viên của đội mới có thể đổi tên đội của mình."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -336,12 +336,12 @@ public class TeamGUI implements Listener {
                 boolean allowColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
                 boolean isAdmin = p.hasPermission("boatracing.admin");
                 if (!allowColor && !isAdmin) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team colors. Only an administrator can change team colors."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi màu đội. Chỉ quản trị viên mới có thể đổi màu đội."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 if (!isAdmin && !team.isMember(p.getUniqueId())) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cOnly team members can change their team color."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ thành viên của đội mới có thể đổi màu đội."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -350,24 +350,24 @@ public class TeamGUI implements Listener {
             } else if (it.getType() == Material.GREEN_CONCRETE) {
                 // Join team
                 if (team.getMembers().size() >= plugin.getTeamManager().getMaxMembers()) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis team is full."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cĐội này đã đầy."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 if (plugin.getTeamManager().getTeamByMember(p.getUniqueId()).isPresent()) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cYou are already in a team. Leave it first."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cBạn đã ở trong một đội. Hãy rời đội trước."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
                 team.addMember(p.getUniqueId());
                 plugin.getTeamManager().save();
-                p.sendMessage(Text.colorize(plugin.pref() + "&aYou joined " + team.getName()));
+                p.sendMessage(Text.colorize(plugin.pref() + "&aBạn đã tham gia đội " + team.getName()));
                 // Notify other team members
                 for (java.util.UUID m : team.getMembers()) {
                     if (m.equals(p.getUniqueId())) continue;
                     org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                     if (op.isOnline() && op.getPlayer() != null) {
-                        op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " joined the team."));
+                        op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã tham gia đội."));
                     }
                 }
                 p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
@@ -387,7 +387,7 @@ public class TeamGUI implements Listener {
                             openMemberProfile(p, team);
                             p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         } else {
-                            p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can manage other members."));
+                            p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ quản trị viên mới có thể quản lý thành viên khác."));
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                         }
                     }
@@ -397,7 +397,7 @@ public class TeamGUI implements Listener {
                 boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
                 boolean isAdmin = p.hasPermission("boatracing.admin");
                 if (!(isAdmin || (cfgDisband && team.isMember(p.getUniqueId())))) {
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team disband. Only an administrator can disband teams."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội."));
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return;
                 }
@@ -456,7 +456,7 @@ public class TeamGUI implements Listener {
             if (team == null) { p.closeInventory(); return; }
             boolean allowColor = plugin.getConfig().getBoolean("player-actions.allow-team-color", false);
             if (!allowColor && !p.hasPermission("boatracing.admin")) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team colors. Only an administrator can change team colors."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi màu đội. Chỉ quản trị viên mới có thể đổi màu đội."));
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return;
             }
@@ -465,13 +465,13 @@ public class TeamGUI implements Listener {
             if (chosen == null) return;
             team.setColor(chosen);
             plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aTeam color set to " + chosen.name() + "."));
+            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đặt màu đội thành " + chosen.name() + "."));
             // Notify other team members
             for (java.util.UUID m : team.getMembers()) {
                 if (m.equals(p.getUniqueId())) continue;
                 org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                 if (op.isOnline() && op.getPlayer() != null) {
-                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " changed the team color to " + chosen.name() + "."));
+                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã đổi màu đội thành " + chosen.name() + "."));
                 }
             }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
@@ -496,14 +496,14 @@ public class TeamGUI implements Listener {
             Material chosen = it.getType();
             boolean allowBoat = plugin.getConfig().getBoolean("player-actions.allow-set-boat", true);
             if (!allowBoat) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted boat changes. Only an administrator can set your boat."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi thuyền. Chỉ quản trị viên mới có thể đặt thuyền của bạn."));
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return;
             }
             if (!isBoatItem(chosen)) return;
             team.setBoatType(p.getUniqueId(), chosen.name());
             plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aBoat type set to " + chosen.name() + "."));
+            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đặt loại thuyền thành " + chosen.name() + "."));
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.3f);
             openMemberProfile(p, team);
     } else if (inDisbandConfirm) {
@@ -528,7 +528,7 @@ public class TeamGUI implements Listener {
                 boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
                 boolean allowed = p.hasPermission("boatracing.admin") || (cfgDisband && team.isMember(p.getUniqueId()));
                 if (!allowed) { 
-                    p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team disband. Only an administrator can disband teams.")); 
+                    p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội.")); 
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f); 
                     return; 
                 }
@@ -539,13 +539,13 @@ public class TeamGUI implements Listener {
                     if (op.isOnline()) {
                         Player mp = op.getPlayer();
                         if (mp != null) {
-                            mp.sendMessage(Text.colorize(plugin.pref() + "&eYour team was disbanded."));
+                            mp.sendMessage(Text.colorize(plugin.pref() + "&eĐội của bạn đã bị giải tán."));
                             mp.playSound(mp.getLocation(), org.bukkit.Sound.ENTITY_VILLAGER_NO, 0.8f, 0.8f);
                         }
                     }
                 }
                 plugin.getTeamManager().deleteTeam(team);
-                p.sendMessage(Text.colorize(plugin.pref() + "&aTeam disbanded."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&aĐã giải tán đội."));
                 p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_GENERIC_EXPLODE, 0.7f, 1.2f);
                 openMain(p);
             }
@@ -566,15 +566,15 @@ public class TeamGUI implements Listener {
                 team.removeMember(p.getUniqueId());
                 if (team.getMembers().isEmpty()) {
                     plugin.getTeamManager().deleteTeam(team);
-                    p.sendMessage(Text.colorize(plugin.pref() + "&aYou left and your team was deleted (no members left)."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&aBạn đã rời và đội của bạn đã bị xóa (không còn thành viên)."));
                 } else {
                     plugin.getTeamManager().save();
-                    p.sendMessage(Text.colorize(plugin.pref() + "&aYou left the team."));
+                    p.sendMessage(Text.colorize(plugin.pref() + "&aBạn đã rời đội."));
                     // Notify remaining members
                     for (java.util.UUID m : team.getMembers()) {
                         org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                         if (op.isOnline() && op.getPlayer() != null) {
-                            op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " left the team."));
+                            op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã rời đội."));
                         }
                     }
                 }
@@ -597,7 +597,7 @@ public class TeamGUI implements Listener {
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
             try { java.util.UUID.fromString(mid); } catch (Exception ex) { return; }
-            p.sendMessage(Text.colorize(plugin.pref() + "&cOnly admins can manage members. Use /boatracing admin team remove <team> <player>."));
+            p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ quản trị viên mới có thể quản lý thành viên. Dùng /boatracing admin team remove <team> <player>."));
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
             return;
             // Disabled buttons in no-leader mode
@@ -616,7 +616,7 @@ public class TeamGUI implements Listener {
             if (tid == null || mid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
-            p.sendMessage(Text.colorize(plugin.pref() + "&cLeader system has been removed."));
+            p.sendMessage(Text.colorize(plugin.pref() + "&cHệ thống trưởng nhóm đã bị loại bỏ."));
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
             Team teamBack = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
             if (teamBack != null) openTeamView(p, teamBack);
@@ -635,7 +635,7 @@ public class TeamGUI implements Listener {
             if (tid == null || mid == null) return;
             Team team = plugin.getTeamManager().getTeams().stream().filter(t -> t.getId().toString().equals(tid)).findFirst().orElse(null);
             if (team == null) return;
-            p.sendMessage(Text.colorize(plugin.pref() + "&cThis action is admin-only. Use /boatracing admin team remove <team> <player>."));
+            p.sendMessage(Text.colorize(plugin.pref() + "&cThao tác này chỉ dành cho quản trị viên. Dùng /boatracing admin team remove <team> <player>."));
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
             Team tb = plugin.getTeamManager().getTeamByMember(p.getUniqueId()).orElse(null);
             if (tb != null) openTeamView(p, tb);
@@ -650,7 +650,7 @@ public class TeamGUI implements Listener {
 
     private void openTeamView(Player p, Team team) {
     int size = 36; // more space to arrange buttons clearly
-    Inventory inv = Bukkit.createInventory(null, size, Text.title("Team • " + team.getName()));
+    Inventory inv = Bukkit.createInventory(null, size, Text.title("Đội • " + team.getName()));
 
         // Header banner with team info
         ItemStack header = new ItemStack(bannerForColor(team.getColor()));
@@ -660,10 +660,10 @@ public class TeamGUI implements Listener {
             bm.displayName(Text.item("&l" + team.getName()));
             List<String> lore = new ArrayList<>();
             // Leader info removed in no-leader mode
-            lore.add(Text.colorize("&7Members: &f" + team.getMembers().size() + "/" + plugin.getTeamManager().getMaxMembers()));
+            lore.add(Text.colorize("&7Thành viên: &f" + team.getMembers().size() + "/" + plugin.getTeamManager().getMaxMembers()));
             // Members list similar to main menu
             lore.add(" ");
-            lore.add("&8Members:");
+            lore.add("&8Thành viên:");
             for (UUID uid : team.getMembers()) {
                 String name = Bukkit.getOfflinePlayer(uid).getName();
                 int num = team.getRacerNumber(uid);
@@ -689,9 +689,9 @@ public class TeamGUI implements Listener {
                 sm.setOwningPlayer(Bukkit.getOfflinePlayer(m));
                 sm.displayName(Text.item((name != null ? name : m.toString())));
                 List<String> lore = new ArrayList<>();
-                lore.add(Text.colorize("&7Racer #: &f" + (team.getRacerNumber(m) == 0 ? "(unset)" : team.getRacerNumber(m))));
-                lore.add(Text.colorize("&7Boat: &f" + team.getBoatType(m)));
-                if (m.equals(p.getUniqueId())) lore.add(Text.colorize("&eClick: &fEdit your profile"));
+                lore.add(Text.colorize("&7Số tay đua: &f" + (team.getRacerNumber(m) == 0 ? "(chưa đặt)" : team.getRacerNumber(m))));
+                lore.add(Text.colorize("&7Thuyền: &f" + team.getBoatType(m)));
+                if (m.equals(p.getUniqueId())) lore.add(Text.colorize("&eBấm: &fChỉnh sửa hồ sơ"));
                 sm.lore(Text.lore(lore));
                 // Link back to team id for handling
                 sm.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
@@ -702,7 +702,7 @@ public class TeamGUI implements Listener {
 
     // Action buttons (bottom row): Back | (conditional) Rename | (conditional) Change Color
             int base = size - 9;
-            ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
+            ItemStack back = button(Material.ARROW, Text.item("&7« Quay lại"));
             ItemMeta backMeta = back.getItemMeta();
             if (backMeta != null) {
                 backMeta.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
@@ -719,11 +719,11 @@ public class TeamGUI implements Listener {
             ItemStack rename = new ItemStack(Material.PAPER);
             ItemMeta rim = rename.getItemMeta();
             if (rim != null) {
-                rim.displayName(Text.item("&e&lRename team"));
+                rim.displayName(Text.item("&e&lĐổi tên đội"));
                 List<String> rl = new ArrayList<>();
-                if (isAdmin) rl.add(Text.colorize("&8Admin only"));
-                else if (cfgRename && isMember) rl.add(Text.colorize("&7Members can rename (config)"));
-                else rl.add(Text.colorize("&8Locked"));
+                if (isAdmin) rl.add(Text.colorize("&8Chỉ quản trị viên"));
+                else if (cfgRename && isMember) rl.add(Text.colorize("&7Thành viên có thể đổi (cấu hình)"));
+                else rl.add(Text.colorize("&8Đã khóa"));
                 rim.lore(Text.lore(rl));
                 rim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 rename.setItemMeta(rim);
@@ -733,11 +733,11 @@ public class TeamGUI implements Listener {
             ItemStack color = new ItemStack(dyeFor(team.getColor()));
             ItemMeta cim = color.getItemMeta();
             if (cim != null) {
-                cim.displayName(Text.item("&b&lChange color"));
+                cim.displayName(Text.item("&b&lĐổi màu"));
                 List<String> cl = new ArrayList<>();
-                if (isAdmin) cl.add(Text.colorize("&8Admin only"));
-                else if (cfgColor && isMember) cl.add(Text.colorize("&7Members can change (config)"));
-                else cl.add(Text.colorize("&8Locked"));
+                if (isAdmin) cl.add(Text.colorize("&8Chỉ quản trị viên"));
+                else if (cfgColor && isMember) cl.add(Text.colorize("&7Thành viên có thể đổi (cấu hình)"));
+                else cl.add(Text.colorize("&8Đã khóa"));
                 cim.lore(Text.lore(cl));
                 cim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 color.setItemMeta(cim);
@@ -749,9 +749,9 @@ public class TeamGUI implements Listener {
                 ItemStack disband = new ItemStack(Material.TNT);
                 ItemMeta dim = disband.getItemMeta();
                 if (dim != null) {
-                    dim.displayName(Text.item("&c&lDisband team"));
+                    dim.displayName(Text.item("&c&lGiải tán đội"));
                     List<String> dl = new ArrayList<>();
-                    dl.add(Text.colorize("&cThis cannot be undone"));
+                    dl.add(Text.colorize("&cHành động này không thể hoàn tác"));
                     dim.lore(Text.lore(dl));
                     dim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                     disband.setItemMeta(dim);
@@ -765,7 +765,7 @@ public class TeamGUI implements Listener {
             ItemStack join = new ItemStack(Material.GREEN_CONCRETE);
             ItemMeta jim = join.getItemMeta();
             if (jim != null) {
-                jim.displayName(Text.item("&a&lJoin team"));
+                jim.displayName(Text.item("&a&lTham gia đội"));
                 jim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 join.setItemMeta(jim);
             }
@@ -777,7 +777,7 @@ public class TeamGUI implements Listener {
             ItemStack leave = new ItemStack(Material.RED_CONCRETE);
             ItemMeta lim = leave.getItemMeta();
             if (lim != null) {
-                lim.displayName(Text.item("&c&lLeave team"));
+                lim.displayName(Text.item("&c&lRời đội"));
                 lim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 leave.setItemMeta(lim);
             }
@@ -799,12 +799,12 @@ public class TeamGUI implements Listener {
         if (pim != null) {
             String teamName = team.getName();
             String playerName = p.getName();
-            pim.displayName(Text.item("&6&lYour profile"));
+            pim.displayName(Text.item("&6&lHồ sơ của bạn"));
             List<String> lore = new ArrayList<>();
-            lore.add(Text.colorize("&7Player: &f" + playerName));
-            lore.add(Text.colorize("&7Team: &f" + teamName));
-            lore.add(Text.colorize("&7Racer #: &f" + (team.getRacerNumber(p.getUniqueId()) == 0 ? "(unset)" : team.getRacerNumber(p.getUniqueId()))));
-            lore.add(Text.colorize("&7Boat: &f" + team.getBoatType(p.getUniqueId())));
+            lore.add(Text.colorize("&7Người chơi: &f" + playerName));
+            lore.add(Text.colorize("&7Đội: &f" + teamName));
+            lore.add(Text.colorize("&7Số tay đua: &f" + (team.getRacerNumber(p.getUniqueId()) == 0 ? "(chưa đặt)" : team.getRacerNumber(p.getUniqueId()))));
+            lore.add(Text.colorize("&7Thuyền: &f" + team.getBoatType(p.getUniqueId())));
             pim.lore(Text.lore(lore));
             profile.setItemMeta(pim);
         }
@@ -819,7 +819,7 @@ public class TeamGUI implements Listener {
         ItemStack racer = new ItemStack(Material.NAME_TAG);
         ItemMeta rim = racer.getItemMeta();
         if (rim != null) {
-            rim.displayName(Text.item("&eSet your racer #"));
+            rim.displayName(Text.item("&eĐặt số tay đua"));
             rim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
             racer.setItemMeta(rim);
         }
@@ -835,7 +835,7 @@ public class TeamGUI implements Listener {
         ItemStack boat = new ItemStack(current);
         ItemMeta bim = boat.getItemMeta();
         if (bim != null) {
-            bim.displayName(Text.item("&bChange boat type &7(Click)"));
+            bim.displayName(Text.item("&bĐổi loại thuyền &7(Bấm)"));
             bim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
             boat.setItemMeta(bim);
         }
@@ -847,7 +847,7 @@ public class TeamGUI implements Listener {
         inv.setItem(15, boat);
 
         // Back
-    ItemStack backBtn = button(Material.ARROW, Text.item("&7« Back"));
+    ItemStack backBtn = button(Material.ARROW, Text.item("&7« Quay lại"));
         ItemMeta backMeta = backBtn.getItemMeta();
         if (backMeta != null) {
             backMeta.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
@@ -875,7 +875,7 @@ public class TeamGUI implements Listener {
             if (im != null) {
                 im.displayName(Text.item("&f" + dc.name()));
         List<String> lore = new ArrayList<>();
-                lore.add(Text.colorize("&eClick: &fSet this color"));
+                lore.add(Text.colorize("&eBấm: &fChọn màu này"));
                 im.lore(Text.lore(lore));
                 im.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 banner.setItemMeta(im);
@@ -884,7 +884,7 @@ public class TeamGUI implements Listener {
         }
     // Footer decoration neutral
     fillRow(inv, size - 9, pane(Material.GRAY_STAINED_GLASS_PANE));
-    ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
+    ItemStack back = button(Material.ARROW, Text.item("&7« Quay lại"));
         ItemMeta bm = back.getItemMeta();
         if (bm != null) {
             bm.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
@@ -907,7 +907,7 @@ public class TeamGUI implements Listener {
             if (im != null) {
                 im.displayName(Text.item("&f" + niceMaterialName(m)));
         List<String> lore = new ArrayList<>();
-                lore.add(Text.colorize("&eClick: &fSelect"));
+                lore.add(Text.colorize("&eBấm: &fChọn"));
                 im.lore(Text.lore(lore));
                 im.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
                 it.setItemMeta(im);
@@ -916,7 +916,7 @@ public class TeamGUI implements Listener {
         }
     // Footer decoration neutral
     fillRow(inv, size - 9, pane(Material.GRAY_STAINED_GLASS_PANE));
-    ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
+    ItemStack back = button(Material.ARROW, Text.item("&7« Quay lại"));
         ItemMeta bm = back.getItemMeta();
         if (bm != null) {
             bm.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
@@ -934,10 +934,10 @@ public class TeamGUI implements Listener {
         ItemStack warn = new ItemStack(Material.BOOK);
         ItemMeta wim = warn.getItemMeta();
         if (wim != null) {
-            wim.displayName(Text.item("&c&lConfirm disband"));
+            wim.displayName(Text.item("&c&lXác nhận giải tán"));
             java.util.List<String> lore = new java.util.ArrayList<>();
-            lore.add(Text.colorize("&7This will delete the team."));
-            lore.add(Text.colorize("&7Other member(s) will be kicked."));
+            lore.add(Text.colorize("&7Thao tác này sẽ xóa đội."));
+            lore.add(Text.colorize("&7Các thành viên khác sẽ bị loại khỏi đội."));
             wim.lore(Text.lore(lore));
             wim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
             warn.setItemMeta(wim);
@@ -948,14 +948,14 @@ public class TeamGUI implements Listener {
         ItemStack yes = new ItemStack(Material.RED_CONCRETE);
         ItemMeta yim = yes.getItemMeta();
         if (yim != null) {
-            yim.displayName(Text.item("&c&lDisband now"));
+            yim.displayName(Text.item("&c&lGiải tán ngay"));
             yim.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
             yes.setItemMeta(yim);
         }
         inv.setItem(13, yes);
 
         // Back
-        ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
+        ItemStack back = button(Material.ARROW, Text.item("&7« Quay lại"));
         ItemMeta bm = back.getItemMeta();
         if (bm != null) {
             bm.getPersistentDataContainer().set(KEY_TEAM_ID, PersistentDataType.STRING, team.getId().toString());
@@ -975,13 +975,13 @@ public class TeamGUI implements Listener {
         ItemStack warn = new ItemStack(Material.BOOK);
         ItemMeta wim = warn.getItemMeta();
         if (wim != null) {
-            wim.displayName(Text.item("&c&lConfirm leave"));
+            wim.displayName(Text.item("&c&lXác nhận rời đội"));
             java.util.List<String> lore = new java.util.ArrayList<>();
-            lore.add(Text.colorize("&7You will leave your team."));
+            lore.add(Text.colorize("&7Bạn sẽ rời đội của mình."));
             if (team.getMembers().size() <= 1) {
-                lore.add(Text.colorize("&cIf you are the last member, the team will be deleted."));
+                lore.add(Text.colorize("&cNếu bạn là thành viên cuối cùng, đội sẽ bị xóa."));
             } else {
-                lore.add(Text.colorize("&7You can join again if there is a slot."));
+                lore.add(Text.colorize("&7Bạn có thể tham gia lại nếu còn chỗ."));
             }
             wim.lore(Text.lore(lore));
             warn.setItemMeta(wim);
@@ -992,13 +992,13 @@ public class TeamGUI implements Listener {
         ItemStack yes = new ItemStack(Material.RED_CONCRETE);
         ItemMeta yim = yes.getItemMeta();
         if (yim != null) {
-            yim.displayName(Text.item("&c&lLeave now"));
+            yim.displayName(Text.item("&c&lRời ngay"));
             yes.setItemMeta(yim);
         }
         inv.setItem(13, yes);
 
         // Back
-        ItemStack back = button(Material.ARROW, Text.item("&7« Back"));
+        ItemStack back = button(Material.ARROW, Text.item("&7« Quay lại"));
         inv.setItem(size - 9, back);
         fillEmptyWith(inv, pane(paneForColor(team.getColor())));
         p.openInventory(inv);
@@ -1008,13 +1008,13 @@ public class TeamGUI implements Listener {
 
     // Text input via AnvilGUI
     private void openAnvilForName(Player p, Team team) {
-        openAnvil(p, "name", team.getId(), "", "Team name");
+        openAnvil(p, "name", team.getId(), "", "Tên đội");
     }
     private void openAnvilForRacer(Player p, Team team) {
-        openAnvil(p, "racer", team.getId(), "", "Racer number");
+        openAnvil(p, "racer", team.getId(), "", "Số tay đua");
     }
     private void openAnvilForCreate(Player p) {
-        openAnvil(p, "create", null, "", "Team name");
+        openAnvil(p, "create", null, "", "Tên đội");
     }
     private void openAnvil(Player p, String action, UUID teamId, String initialText, String title) {
         ItemStack left = new ItemStack(Material.PAPER); // blank display name to avoid showing "Paper"
@@ -1039,15 +1039,15 @@ public class TeamGUI implements Listener {
     private java.util.List<AnvilGUI.ResponseAction> handleAnvilInput(Player p, String action, UUID teamId, String input) {
         if ("name".equals(action)) {
             Team team = getTeam(teamId);
-            if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cTeam not found.")); return java.util.Collections.emptyList(); }
+            if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cKhông tìm thấy đội.")); return java.util.Collections.emptyList(); }
             boolean allowRename = plugin.getConfig().getBoolean("player-actions.allow-team-rename", false);
             boolean isAdmin = p.hasPermission("boatracing.admin");
             if (!allowRename && !isAdmin) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team renaming. Only an administrator can rename teams."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đổi tên đội. Chỉ quản trị viên mới có thể đổi tên đội."));
                 return java.util.Collections.emptyList();
             }
             if (!isAdmin && !team.isMember(p.getUniqueId())) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cOnly team members can rename their team."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cChỉ thành viên của đội mới có thể đổi tên đội của mình."));
                 return java.util.Collections.emptyList();
             }
             String err = validateNameMessage(input);
@@ -1059,19 +1059,19 @@ public class TeamGUI implements Listener {
             }
             boolean exists = plugin.getTeamManager().getTeams().stream().anyMatch(t -> t != team && t.getName().equalsIgnoreCase(input));
             if (exists) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&cA team with that name already exists.")); 
+                p.sendMessage(Text.colorize(plugin.pref() + "&cĐã tồn tại đội với tên đó.")); 
                 String retry = input.isEmpty() ? BLANK : input;
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
             }
             team.setName(sanitizeName(input)); plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aTeam renamed to &e" + input + "&a."));
+            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đổi tên đội thành &e" + input + "&a."));
             // Notify other team members
             for (java.util.UUID m : team.getMembers()) {
                 if (m.equals(p.getUniqueId())) continue;
                 org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
                 if (op.isOnline() && op.getPlayer() != null) {
-                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " renamed the team to &e" + input + "&e."));
+                    op.getPlayer().sendMessage(Text.colorize(plugin.pref() + "&e" + p.getName() + " đã đổi tên đội thành &e" + input + "&e."));
                 }
             }
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.8f, 1.4f);
@@ -1081,10 +1081,10 @@ public class TeamGUI implements Listener {
             );
         } else if ("racer".equals(action)) {
             Team team = getTeam(teamId);
-            if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cTeam not found.")); return java.util.Collections.emptyList(); }
+            if (team == null) { p.sendMessage(Text.colorize(plugin.pref() + "&cKhông tìm thấy đội.")); return java.util.Collections.emptyList(); }
             boolean allowNumber = plugin.getConfig().getBoolean("player-actions.allow-set-number", true);
             if (!allowNumber) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted racer numbers. Only an administrator can set your racer number."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc đặt số tay đua. Chỉ quản trị viên mới có thể đặt số của bạn."));
                 return java.util.Collections.emptyList();
             }
             String err = validateNumberFormatRange(input);
@@ -1096,7 +1096,7 @@ public class TeamGUI implements Listener {
             }
             int num = Integer.parseInt(input);
             team.setRacerNumber(p.getUniqueId(), num); plugin.getTeamManager().save();
-            p.sendMessage(Text.colorize(plugin.pref() + "&aYour racer # set to " + num + "."));
+            p.sendMessage(Text.colorize(plugin.pref() + "&aĐã đặt số tay đua của bạn thành " + num + "."));
             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.9f, 1.5f);
             return java.util.Arrays.asList(
                 AnvilGUI.ResponseAction.close(),
@@ -1104,12 +1104,12 @@ public class TeamGUI implements Listener {
             );
         } else if ("create".equals(action)) {
             if (plugin.getTeamManager().getTeamByMember(p.getUniqueId()).isPresent()) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&cYou are already in a team. Leave it first.")); 
+                p.sendMessage(Text.colorize(plugin.pref() + "&cBạn đã ở trong một đội. Hãy rời đội trước.")); 
                 return null; 
             }
             boolean allowCreate = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
             if (!allowCreate) {
-                p.sendMessage(Text.colorize(plugin.pref() + "&cThis server has restricted team creation. Only an administrator can create teams."));
+                p.sendMessage(Text.colorize(plugin.pref() + "&cMáy chủ này đã hạn chế việc tạo đội. Chỉ quản trị viên mới có thể tạo đội."));
                 return java.util.Collections.emptyList();
             }
             String err = validateNameMessage(input);
@@ -1121,7 +1121,7 @@ public class TeamGUI implements Listener {
             }
             boolean exists = plugin.getTeamManager().getTeams().stream().anyMatch(t -> t.getName().equalsIgnoreCase(input));
             if (exists) { 
-                p.sendMessage(Text.colorize(plugin.pref() + "&cA team with that name already exists.")); 
+                p.sendMessage(Text.colorize(plugin.pref() + "&cĐã tồn tại đội với tên đó.")); 
                 p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                 return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(input));
             }
@@ -1198,18 +1198,18 @@ public class TeamGUI implements Listener {
 
     public static String validateNameMessage(String raw) {
         String s = raw == null ? "" : raw.trim();
-        if (s.isEmpty()) return "Name cannot be empty.";
-        if (s.length() > 20) return "Name is too long (max 20).";
+        if (s.isEmpty()) return "Tên không được để trống.";
+        if (s.length() > 20) return "Tên quá dài (tối đa 20).";
         // Allow letters, numbers, spaces, - _
-        if (!s.matches("[A-Za-z0-9 _-]+")) return "Only letters, numbers, spaces, '-' and '_' allowed.";
+        if (!s.matches("[A-Za-z0-9 _-]+")) return "Chỉ cho phép chữ, số, khoảng trắng, '-' và '_'.";
         return null;
     }
 
     private String validateNumberFormatRange(String raw) {
         String s = raw == null ? "" : raw.trim();
-        if (!s.matches("\\d+")) return "Please enter digits only.";
+        if (!s.matches("\\d+")) return "Vui lòng chỉ nhập chữ số.";
         int n = Integer.parseInt(s);
-        if (n < 1 || n > 99) return "Number must be between 1 and 99.";
+        if (n < 1 || n > 99) return "Số phải từ 1 đến 99.";
         return null;
     }
 }

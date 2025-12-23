@@ -56,6 +56,6 @@ public final class Text {
         Component base = c(labelLegacy).decoration(TextDecoration.ITALIC, false);
         return base
             .clickEvent(ClickEvent.suggestCommand(command))
-            .hoverEvent(HoverEvent.showText(c("&7Click to paste: &b" + command)));
+            .hoverEvent(HoverEvent.showText(c("&7Bấm để dán: &b" + command)));
     }
 }

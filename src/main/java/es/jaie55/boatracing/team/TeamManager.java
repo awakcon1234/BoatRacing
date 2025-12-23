@@ -55,7 +55,7 @@ public class TeamManager {
     Team team = new Team(id, name, color, leader.getUniqueId());
         teams.put(id, team);
         save();
-        leader.sendMessage(Text.colorize(plugin.pref() + "&aCreated team '" + name + "'"));
+        leader.sendMessage(Text.colorize(plugin.pref() + "&aĐã tạo đội '" + name + "'"));
         return team;
     }
 
@@ -229,7 +229,7 @@ public class TeamManager {
             if (migrated) {
                 // Persist migrated data into racers.yml
                 save();
-                try { plugin.getLogger().info("Migrated racer numbers and boat types from old config.yml into racers.yml"); } catch (Throwable ignored) {}
+                try { plugin.getLogger().info("Đã di chuyển số tay đua và loại thuyền từ config.yml cũ sang racers.yml"); } catch (Throwable ignored) {}
             }
         }
     }
@@ -249,6 +249,6 @@ public class TeamManager {
     }
 
     private void saveYaml(YamlConfiguration cfg, File file) {
-        try { cfg.save(file); } catch (IOException e) { plugin.getLogger().warning("Failed to save " + file.getName() + ": " + e.getMessage()); }
+        try { cfg.save(file); } catch (IOException e) { plugin.getLogger().warning("Lưu " + file.getName() + ": thất bại: " + e.getMessage()); }
     }
 }

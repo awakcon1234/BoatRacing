@@ -55,7 +55,7 @@ public class UpdateChecker {
             } catch (Exception ex) {
                 error = true;
                 if (!errorLoggedOnce) {
-                    plugin.getLogger().warning("Update check failed: " + ex.getMessage());
+                    plugin.getLogger().warning("Kiểm tra cập nhật thất bại: " + ex.getMessage());
                     errorLoggedOnce = true;
                 }
             }

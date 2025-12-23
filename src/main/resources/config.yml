@@ -49,4 +49,4 @@ racing:
 
   # Registration announce message template
   # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command
-  registration-announce: "&6[BoatRacing] &eNew race on &f{track}&e (&f{laps}&e laps). &7Join with &f{cmd}"
+  registration-announce: "&6[BoatRacing] &eCuộc đua mới tại &f{track}&e (&f{laps}&e vòng). &7Tham gia bằng &f{cmd}"

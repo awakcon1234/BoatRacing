@@ -32,9 +32,9 @@ public class UpdateNotifier implements Listener {
             int behind = checker.getBehindCount();
             String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
             String current = plugin.getDescription().getVersion();
-            p.sendMessage(Text.colorize(prefix + "&eYou're " + behind + " version(s) out of date!"));
-            p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
-            p.sendMessage(Text.colorize(prefix + "&eDownload: &b" + checker.getLatestUrl()));
+            p.sendMessage(Text.colorize(prefix + "&eBạn đang chậm &f" + behind + "&e phiên bản!"));
+            p.sendMessage(Text.colorize(prefix + "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e."));
+            p.sendMessage(Text.colorize(prefix + "&eTải về: &b" + checker.getLatestUrl()));
         } else if (checker != null) {
             // If result is stale or not yet checked, trigger a quick check (throttled)
             long now = System.currentTimeMillis();
@@ -46,9 +46,9 @@ public class UpdateNotifier implements Listener {
                         int behind = checker.getBehindCount();
                         String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
                         String current = plugin.getDescription().getVersion();
-                        p.sendMessage(Text.colorize(prefix + "&eYou're " + behind + " version(s) out of date!"));
-                        p.sendMessage(Text.colorize(prefix + "&eYou are running &6" + current + "&e, the latest version is &6" + latest + "&e."));
-                        p.sendMessage(Text.colorize(prefix + "&eDownload: &b" + checker.getLatestUrl()));
+                        p.sendMessage(Text.colorize(prefix + "&eBạn đang chậm &f" + behind + "&e phiên bản!"));
+                        p.sendMessage(Text.colorize(prefix + "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e."));
+                        p.sendMessage(Text.colorize(prefix + "&eTải về: &b" + checker.getLatestUrl()));
                     }
                 }, 20L * 5);
             }

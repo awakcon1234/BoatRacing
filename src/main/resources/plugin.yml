@@ -3,16 +3,16 @@ main: es.jaie55.boatracing.BoatRacingPlugin
 version: ${project.version}
 api-version: '1.19'
 authors: [Jaie55]
-description: An F1‑style ice boat racing plugin for Bukkit/Spigot with a clean, vanilla‑like GUI. Compatible with Paper/Purpur. Manage teams, configure tracks with the built‑in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
+description: Plugin đua thuyền băng phong cách F1 cho Bukkit/Spigot với giao diện đơn giản, giống vanilla. Tương thích Paper/Purpur. Quản lý đội, cấu hình đường đua bằng công cụ chọn BoatRacing tích hợp, chạy các cuộc đua tính thời gian với điểm kiểm tra, phạt khu vực pit và trình hướng dẫn thiết lập.
 website: https://modrinth.com/plugin/boatracing
 commands:
   boatracing:
-    description: BoatRacing base command
+    description: Lệnh gốc của BoatRacing
     usage: /<command> teams|race|setup|admin|reload|version
     permission: boatracing.use
 permissions:
   boatracing.*:
-    description: Grant ALL BoatRacing permissions
+    description: Cấp TẤT CẢ quyền của BoatRacing
     default: false
     children:
       boatracing.use: true
@@ -27,7 +27,7 @@ permissions:
       boatracing.race.status: true
       boatracing.race.admin: true
   boatracing.use:
-    description: Meta permission for BoatRacing base usage
+    description: Quyền meta cho việc dùng cơ bản BoatRacing
     default: true
     children:
       boatracing.teams: true
@@ -36,22 +36,22 @@ permissions:
       boatracing.race.leave: true
       boatracing.race.status: true
   boatracing.teams:
-    description: Use /boatracing teams
+    description: Dùng /boatracing teams
     default: true
   boatracing.version:
-    description: Use /boatracing version
+    description: Dùng /boatracing version
     default: true
   boatracing.reload:
-    description: Reload BoatRacing plugin configuration and data
+    description: Tải lại cấu hình và dữ liệu plugin BoatRacing
     default: op
   boatracing.update:
-    description: Receive in-game update notifications
+    description: Nhận thông báo cập nhật trong game
     default: op
   boatracing.setup:
-    description: Configure tracks and regions (admins)
+    description: Cấu hình đường đua và vùng (quản trị)
     default: op
   boatracing.admin:
-    description: Administer teams and players (create/rename teams, assign members, set numbers/boats)
+    description: Quản trị đội và người chơi (tạo/đổi tên đội, gán thành viên, đặt số/thuyền)
     default: op
     children:
       boatracing.use: true
@@ -65,14 +65,14 @@ permissions:
       boatracing.race.status: true
       boatracing.race.admin: true
   boatracing.race.join:
-    description: Join a race registration
+    description: Tham gia đăng ký đua
     default: true
   boatracing.race.leave:
-    description: Leave a race registration
+    description: Rời đăng ký đua
     default: true
   boatracing.race.status:
-    description: View race status for a track
+    description: Xem trạng thái đua của một đường đua
     default: true
   boatracing.race.admin:
-    description: Manage races (open/start/force/stop)
+    description: Quản lý cuộc đua (mở/bắt đầu/cưỡng chế/dừng)
     default: op
