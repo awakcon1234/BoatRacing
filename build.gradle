@@ -51,9 +51,6 @@ tasks.withType(Jar).configureEach {
 shadowJar {
     archiveBaseName.set('BoatRacing')
     archiveVersion.set('')
-    minimize(false)
-    relocate 'net.wesjd.anvilgui', 'es.jaie55.boatracing.anvilgui'
-    relocate 'org.bstats', 'es.jaie55.boatracing.bstats'
 }
 
 tasks.build { dependsOn tasks.shadowJar }
