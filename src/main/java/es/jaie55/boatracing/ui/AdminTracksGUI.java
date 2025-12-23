@@ -29,6 +29,8 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 public class AdminTracksGUI implements Listener {
     private static final Component TITLE = Text.title("Quản lý đường đua");
@@ -37,6 +39,8 @@ public class AdminTracksGUI implements Listener {
     private final TrackLibrary lib;
     private final NamespacedKey KEY_ACTION;
     private final NamespacedKey KEY_TRACK;
+    // Per-player visualization task ids for centerline debug drawing
+    private final Map<java.util.UUID, Integer> vizTasks = new HashMap<>();
 
     private enum Action {
         PICK_TRACK,
@@ -52,7 +56,9 @@ public class AdminTracksGUI implements Listener {
         CLEAR_LIGHTS,
         REFRESH,
         BACK,
-        CLOSE
+        CLOSE,
+        BUILD_PATH,
+        TOGGLE_VIZ,
     }
 
     public AdminTracksGUI(BoatRacingPlugin plugin, TrackLibrary trackLibrary) {
@@ -83,6 +89,11 @@ public class AdminTracksGUI implements Listener {
                 List.of("&7Nhập tên mới để lưu"), true));
         inv.setItem(16, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), Action.REFRESH,
                 List.of("&7Cập nhật thông tin"), true));
+        boolean vizOn = vizTasks.containsKey(p.getUniqueId());
+        inv.setItem(15, buttonWithLore(vizOn ? Material.AMETHYST_SHARD : Material.GLASS,
+            Text.item((vizOn?"&d&lẨn":"&d&lHiện") + " đường giữa"), Action.TOGGLE_VIZ,
+            List.of(vizOn?"&7Tắt hiển thị đường giữa bằng hạt": "&7Hiện đường giữa bằng hạt (debug)",
+                "&8Mẹo: chỉ hiện các nút trong phạm vi 64m"), true));
 
         // Editing tools
         inv.setItem(18, buttonWithLore(Material.OAK_BOAT, Text.item("&aThêm Start"), Action.ADD_START,
@@ -100,10 +111,12 @@ public class AdminTracksGUI implements Listener {
                 List.of("&7Xóa tất cả checkpoint"), true));
         inv.setItem(25, buttonWithLore(Material.FLINT_AND_STEEL, Text.item("&cXóa Đèn"), Action.CLEAR_LIGHTS,
                 List.of("&7Xóa tất cả đèn xuất phát"), true));
+        inv.setItem(26, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
+            List.of("&7Tạo đường giữa bằng A* trên băng."), true));
 
         // Close
-        inv.setItem(26, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
-                List.of("&7Đóng trình quản lý đường đua"), true));
+        inv.setItem(21, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
+            List.of("&7Đóng trình quản lý đường đua"), true));
 
         p.openInventory(inv);
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
@@ -118,6 +131,7 @@ public class AdminTracksGUI implements Listener {
         int cps = cfg.getCheckpoints().size();
         boolean hasFinish = cfg.getFinish() != null;
         boolean hasPit = cfg.getPitlane() != null; // mechanic disabled, still displayed for info
+        int pathNodes = cfg.getCenterline().size();
         ItemStack it = new ItemStack(Material.PAPER);
         ItemMeta im = it.getItemMeta();
         if (im != null) {
@@ -128,6 +142,7 @@ public class AdminTracksGUI implements Listener {
             lore.add("&7Đích: &f" + (hasFinish?"có":"không"));
             // pit removed from gameplay; optional to display
             lore.add("&7Checkpoints: &f" + cps);
+            lore.add("&7Đường giữa: &f" + pathNodes + " nút");
             if (!cfg.isReady()) lore.add("&cChưa sẵn sàng: &7" + String.join(", ", cfg.missingRequirements()));
             im.lore(Text.lore(lore));
             it.setItemMeta(im);
@@ -279,6 +294,8 @@ public class AdminTracksGUI implements Listener {
             case ADD_LIGHT -> doAddLight(p);
             case CLEAR_LIGHTS -> { plugin.getTrackConfig().clearLights(); Text.msg(p, "&aĐã xóa tất cả đèn." ); open(p);} 
             case REFRESH -> open(p);
+            case BUILD_PATH -> doBuildPath(p);
+            case TOGGLE_VIZ -> doToggleViz(p);
             case BACK -> open(p);
             case CLOSE -> p.closeInventory();
         }
@@ -356,6 +373,70 @@ public class AdminTracksGUI implements Listener {
         Text.msg(p, "&aĐã thêm đèn tại &f(" + target.getX() + ", " + target.getY() + ", " + target.getZ() + ")");
         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
         open(p);
+    }
+
+    private void doBuildPath(Player p) {
+        var cfg = plugin.getTrackConfig();
+        if (!cfg.isReady()) {
+            Text.msg(p, "&cĐường đua chưa sẵn sàng (cần Start và Finish).");
+            return;
+        }
+        Text.msg(p, "&7Đang xây dựng đường giữa...");
+        // Run sync (small corridors). For large tracks, offload to async and schedule block checks on main thread chunk by chunk.
+        java.util.List<org.bukkit.Location> nodes = es.jaie55.boatracing.track.CenterlineBuilder.build(cfg, 8);
+        if (nodes == null || nodes.isEmpty()) {
+            Text.msg(p, "&cKhông thể tìm đường giữa. Hãy đảm bảo đường là băng liền mạch giữa các checkpoint.");
+            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+            return;
+        }
+        cfg.setCenterline(nodes);
+        // save immediately under current name if any
+        if (plugin.getTrackLibrary().getCurrent() != null) cfg.save(plugin.getTrackLibrary().getCurrent());
+        Text.msg(p, "&aĐã tạo đường giữa với &f" + nodes.size() + " &anút.");
+        p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.2f);
+        open(p);
+    }
+
+    private void doToggleViz(Player p) {
+        java.util.UUID id = p.getUniqueId();
+        Integer taskId = vizTasks.remove(id);
+        if (taskId != null) {
+            try { Bukkit.getScheduler().cancelTask(taskId); } catch (Throwable ignored) {}
+            Text.msg(p, "&7Đã tắt hiển thị đường giữa.");
+            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 0.9f);
+            open(p);
+            return;
+        }
+        // Start a new repeating visualizer (every 10 ticks)
+        int newId = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            List<org.bukkit.Location> nodes = plugin.getTrackConfig().getCenterline();
+            if (nodes.isEmpty()) return;
+            if (!p.isOnline()) return;
+            org.bukkit.World pw = p.getWorld();
+            org.bukkit.Location pl = p.getLocation();
+            double maxDistSq = 64.0 * 64.0;
+            // sample every k nodes to reduce spam
+            int step = Math.max(1, nodes.size() / 200); // cap around ~200 particles
+            for (int i = 0; i < nodes.size(); i += step) {
+                org.bukkit.Location n = nodes.get(i);
+                if (n.getWorld() != null && n.getWorld().equals(pw) && n.distanceSquared(pl) <= maxDistSq) {
+                    pw.spawnParticle(org.bukkit.Particle.END_ROD, n.getX(), n.getY() + 0.2, n.getZ(), 1, 0, 0, 0, 0);
+                }
+            }
+        }, 0L, 10L).getTaskId();
+        vizTasks.put(id, newId);
+        Text.msg(p, "&aĐã bật hiển thị đường giữa.");
+        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+        open(p);
+    }
+
+    @org.bukkit.event.EventHandler
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
+        java.util.UUID id = e.getPlayer().getUniqueId();
+        Integer taskId = vizTasks.remove(id);
+        if (taskId != null) {
+            try { Bukkit.getScheduler().cancelTask(taskId); } catch (Throwable ignored) {}
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)

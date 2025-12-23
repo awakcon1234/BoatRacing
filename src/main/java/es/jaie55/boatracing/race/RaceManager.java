@@ -32,6 +32,10 @@ public class RaceManager {
     // runtime participant state
     private final java.util.Map<UUID, ParticipantState> participants = new java.util.HashMap<>();
     private final java.util.Map<UUID, Player> participantPlayers = new java.util.HashMap<>();
+    // Centerline-based live position
+    private java.util.List<org.bukkit.Location> path = java.util.Collections.emptyList();
+    private int[] gateIndex = new int[0]; // indices along path for each checkpoint and finish
+    private boolean pathReady = false;
 
     public RaceManager(Plugin plugin, TrackConfig trackConfig) {
         this.plugin = plugin;
@@ -82,6 +86,12 @@ public class RaceManager {
                     handleLapCompletion(player.getUniqueId());
                 }
             }
+        }
+
+        // Update live path index for player (for live positions)
+        if (pathReady) {
+            int seed = s.lastPathIndex;
+            s.lastPathIndex = nearestPathIndex(to, seed, 40);
         }
     }
 
@@ -166,6 +176,7 @@ public class RaceManager {
         public long finishTimeMillis = 0;
         public int finishPosition = 0;
         public int penaltySeconds = 0;
+        public int lastPathIndex = 0; // nearest node index along centerline for live positions
 
         public ParticipantState(UUID id) { this.id = id; }
     }
@@ -239,6 +250,8 @@ public class RaceManager {
                     participants.put(p.getUniqueId(), st);
                     participantPlayers.put(p.getUniqueId(), p);
                 }
+                // Initialize centerline path for live positions
+                initPathForLivePositions();
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     for (Player p : placed) {
                         p.sendTitle("", "§aGo!", 5, 20, 5);
@@ -282,4 +295,100 @@ public class RaceManager {
     public void setTotalLaps(int laps) { this.totalLaps = Math.max(1, laps); }
 
     // Pit mechanic removed: no mandatory pitstops API
+
+    // ===================== Live position calculation =====================
+    private void initPathForLivePositions() {
+        java.util.List<org.bukkit.Location> cl = trackConfig.getCenterline();
+        if (cl == null || cl.isEmpty()) { pathReady = false; path = java.util.Collections.emptyList(); gateIndex = new int[0]; return; }
+        path = cl;
+        // Build gates: checkpoint centers and finish mapped to nearest index
+        java.util.List<Region> cps = trackConfig.getCheckpoints();
+        int gates = (cps == null ? 0 : cps.size()) + 1; // + finish
+        gateIndex = new int[gates];
+        int seed = 0;
+        if (cps != null) {
+            for (int i = 0; i < cps.size(); i++) {
+                org.bukkit.Location c = centerOf(cps.get(i));
+                seed = nearestPathIndex(c, seed, Math.max(100, path.size()));
+                gateIndex[i] = seed;
+            }
+        }
+        // finish gate
+        org.bukkit.Location fin = centerOf(trackConfig.getFinish());
+        seed = nearestPathIndex(fin, seed, Math.max(100, path.size()));
+        if (gateIndex.length > 0) gateIndex[gateIndex.length - 1] = seed;
+        pathReady = true;
+    }
+
+    private static org.bukkit.Location centerOf(Region r) {
+        org.bukkit.util.BoundingBox b = r.getBox();
+        org.bukkit.World w = org.bukkit.Bukkit.getWorld(r.getWorldName());
+        return new org.bukkit.Location(w, b.getCenterX(), b.getCenterY(), b.getCenterZ());
+    }
+
+    private int nearestPathIndex(org.bukkit.Location pos, int seed, int window) {
+        if (path == null || path.isEmpty() || pos == null || pos.getWorld() == null) return 0;
+        int n = path.size();
+        int bestIdx = Math.max(0, Math.min(seed, n - 1));
+        double best = Double.POSITIVE_INFINITY;
+        int from = Math.max(0, bestIdx - window);
+        int to = Math.min(n - 1, bestIdx + window);
+        org.bukkit.World w = pos.getWorld();
+        for (int i = from; i <= to; i++) {
+            org.bukkit.Location node = path.get(i);
+            if (node.getWorld() == null || !node.getWorld().equals(w)) continue;
+            double d = node.distanceSquared(pos);
+            if (d < best) { best = d; bestIdx = i; }
+        }
+        return bestIdx;
+    }
+
+    private double normalizedIndexClamped(ParticipantState s) {
+        if (!pathReady || path.isEmpty()) return 0.0;
+        int idx = Math.max(0, Math.min(s.lastPathIndex, path.size() - 1));
+        // Clamp upper bound to next gate to avoid showing progress beyond next checkpoint
+        int nextGate = (gateIndex == null || gateIndex.length == 0) ? (path.size() - 1)
+                : (s.nextCheckpointIndex < gateIndex.length ? gateIndex[s.nextCheckpointIndex] : path.size() - 1);
+        if (idx > nextGate) idx = nextGate;
+        return (path.size() <= 1) ? 0.0 : ((double) idx) / (double) (path.size() - 1);
+    }
+
+    private double liveProgressValue(UUID id) {
+        ParticipantState s = participants.get(id);
+        if (s == null) return 0.0;
+        if (s.finished) return getTotalLaps();
+        double intra = normalizedIndexClamped(s);
+        return (double) s.currentLap + intra;
+    }
+
+    public java.util.List<UUID> getLiveOrder() {
+        java.util.List<UUID> ids = new java.util.ArrayList<>(participants.keySet());
+        // finished racers first by finishTime, then unfinished by live progress desc
+        ids.sort((a,b) -> {
+            ParticipantState sa = participants.get(a);
+            ParticipantState sb = participants.get(b);
+            boolean fa = sa != null && sa.finished;
+            boolean fb = sb != null && sb.finished;
+            if (fa && fb) {
+                long ta = sa.finishTimeMillis;
+                long tb = sb.finishTimeMillis;
+                return Long.compare(ta, tb);
+            }
+            if (fa) return -1;
+            if (fb) return 1;
+            // both unfinished: compare lap first, then path progress
+            int lapCmp = Integer.compare(sb.currentLap, sa.currentLap);
+            if (lapCmp != 0) return lapCmp;
+            double pa = liveProgressValue(a) - sa.currentLap;
+            double pb = liveProgressValue(b) - sb.currentLap;
+            int cmp = Double.compare(pb, pa);
+            if (cmp != 0) return cmp;
+            // tie-breaker: next checkpoint index (further along)
+            int cpCmp = Integer.compare(sb.nextCheckpointIndex, sa.nextCheckpointIndex);
+            if (cpCmp != 0) return cpCmp;
+            // final tie-breaker: UUID (stable)
+            return a.compareTo(b);
+        });
+        return ids;
+    }
 }

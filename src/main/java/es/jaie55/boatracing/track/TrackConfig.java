@@ -19,6 +19,8 @@ public class TrackConfig {
     private Region pitlane;
     private final Map<java.util.UUID, Region> teamPits = new HashMap<>();
     private final Map<java.util.UUID, Integer> customStartSlots = new HashMap<>();
+    // Centerline polyline nodes across the entire course (optional, built by path builder)
+    private final List<org.bukkit.Location> centerline = new ArrayList<>();
     private final File tracksDir;
     private String currentName = null;
 
@@ -52,6 +54,7 @@ public class TrackConfig {
         this.lights.clear();
         this.checkpoints.clear();
         this.finish = null; this.pitlane = null; this.teamPits.clear(); this.customStartSlots.clear();
+        this.centerline.clear();
         // starts
         List<?> s = cfg.getList("starts");
         if (s != null) {
@@ -118,6 +121,23 @@ public class TrackConfig {
                 } catch (Throwable ignored) {}
             }
         }
+        // centerline nodes
+        java.util.List<?> cl = cfg.getList("centerline");
+        if (cl != null) {
+            for (Object o : cl) {
+                if (o instanceof java.util.Map) {
+                    java.util.Map m = (java.util.Map) o;
+                    try {
+                        String w = (String) m.get("world");
+                        double x = asNumber(m.get("x")).doubleValue();
+                        double y = asNumber(m.get("y")).doubleValue();
+                        double z = asNumber(m.get("z")).doubleValue();
+                        org.bukkit.World ww = org.bukkit.Bukkit.getWorld(w);
+                        if (ww != null) this.centerline.add(new org.bukkit.Location(ww, x, y, z));
+                    } catch (Throwable ignored) {}
+                }
+            }
+        }
         this.currentName = name;
         return true;
     }
@@ -156,6 +176,16 @@ public class TrackConfig {
                     map.put(en.getKey().toString(), regionToMap(en.getValue()));
                 }
                 cfg.set("team-pits", map);
+            }
+            if (!this.centerline.isEmpty()) {
+                java.util.List<java.util.Map<String,Object>> cl = new java.util.ArrayList<>();
+                for (org.bukkit.Location loc : this.centerline) {
+                    java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
+                    m.put("world", loc.getWorld().getName());
+                    m.put("x", loc.getX()); m.put("y", loc.getY()); m.put("z", loc.getZ());
+                    cl.add(m);
+                }
+                cfg.set("centerline", cl);
             }
             cfg.save(f);
             this.currentName = name;
@@ -196,6 +226,21 @@ public class TrackConfig {
     public Map<java.util.UUID, Integer> getCustomStartSlots() { return Collections.unmodifiableMap(customStartSlots); }
 
     public String getCurrentName() { return currentName; }
+    public java.util.List<org.bukkit.Location> getCenterline() { return java.util.Collections.unmodifiableList(centerline); }
+    public void setCenterline(java.util.List<org.bukkit.Location> nodes) {
+        this.centerline.clear();
+        if (nodes != null) this.centerline.addAll(nodes);
+    }
+    public void clearCenterline() { this.centerline.clear(); }
+
+    public org.bukkit.Location getStartCenter() {
+        if (starts.isEmpty()) return null;
+        double x = 0, y = 0, z = 0; String world = null;
+        for (org.bukkit.Location l : starts) { x += l.getX(); y += l.getY(); z += l.getZ(); if (world == null && l.getWorld()!=null) world = l.getWorld().getName(); }
+        x /= starts.size(); y /= starts.size(); z /= starts.size();
+        org.bukkit.World w = world != null ? org.bukkit.Bukkit.getWorld(world) : (starts.get(0).getWorld());
+        return w != null ? new org.bukkit.Location(w, x, y, z) : null;
+    }
 
     // Serialization helpers for Region
     private static Map<String,Object> regionToMap(Region r) {
