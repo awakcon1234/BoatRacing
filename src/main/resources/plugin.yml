@@ -3,7 +3,7 @@ main: es.jaie55.boatracing.BoatRacingPlugin
 version: ${project.version}
 api-version: '1.21'
 authors: [Jaie55]
-description: Plugin đua thuyền băng phong cách F1 cho Bukkit/Spigot với giao diện đơn giản, giống vanilla. Tương thích Paper/Purpur. Quản lý đội, cấu hình đường đua bằng công cụ chọn BoatRacing tích hợp, chạy các cuộc đua tính thời gian với điểm kiểm tra, phạt khu vực pit và trình hướng dẫn thiết lập.
+description: Plugin đua thuyền băng phong cách F1 cho Bukkit/Spigot với giao diện đơn giản, giống vanilla. Tương thích Paper/Purpur. Cấu hình đường đua bằng công cụ chọn BoatRacing tích hợp, chạy các cuộc đua tính thời gian với điểm kiểm tra và trình hướng dẫn thiết lập.
 website: https://modrinth.com/plugin/boatracing
 commands:
   boatracing:
@@ -17,7 +17,6 @@ permissions:
     default: false
     children:
       boatracing.use: true
-      boatracing.teams: true
       boatracing.version: true
       boatracing.reload: true
       boatracing.update: true
@@ -31,14 +30,10 @@ permissions:
     description: Quyền meta cho việc dùng cơ bản BoatRacing
     default: true
     children:
-      boatracing.teams: true
       boatracing.version: true
       boatracing.race.join: true
       boatracing.race.leave: true
       boatracing.race.status: true
-  boatracing.teams:
-    description: Dùng /boatracing teams
-    default: true
   boatracing.version:
     description: Dùng /boatracing version
     default: true
@@ -52,11 +47,10 @@ permissions:
     description: Cấu hình đường đua và vùng (quản trị)
     default: op
   boatracing.admin:
-    description: Quản trị đội và người chơi (tạo/đổi tên đội, gán thành viên, đặt số/thuyền)
+    description: Quản trị đường đua và cuộc đua
     default: op
     children:
       boatracing.use: true
-      boatracing.teams: true
       boatracing.version: true
       boatracing.reload: true
       boatracing.update: true

@@ -1,11 +1,6 @@
 prefix: "&6[BoatRacing] "
-max-members-per-team: 2
 player-actions:
   # Allow non-admin players to perform these actions
-  allow-team-create: true
-  allow-team-rename: false
-  allow-team-color: false
-  allow-team-disband: false
   allow-set-boat: true
   allow-set-number: true
 bstats:
@@ -19,13 +14,9 @@ updates:
   notify-admins: true
 racing:
   laps: 3
-  mandatory-pitstops: 0  # Number of mandatory pit stops per racer per race; 0 to disable
-  pit-penalty-seconds: 5.0
   registration-seconds: 300
   # Time penalty applied if a racer moves forward before the countdown ends (in seconds)
   false-start-penalty-seconds: 3.0
-  # Enable/disable time penalty when entering the pit area during the race
-  enable-pit-penalty: true
   # Enable/disable false start penalty during the light countdown
   enable-false-start-penalty: true
   # Delay between all 5 lights lit and 'lights out' (seconds); allows a brief suspense before GO
@@ -39,12 +30,10 @@ racing:
       show-position: true    # rank number at line start
       show-lap: true         # L X/Y
       show-checkpoints: true # CP A/B (hidden if no checkpoints configured)
-      show-pitstops: true    # PIT A/B (hidden if mandatory-pitstops is 0)
       show-name: true        # player name at end of line
     actionbar:
       show-lap: true
       show-checkpoints: true
-      show-pitstops: true
       show-time: true
 
   # Registration announce message template

@@ -1,43 +1,4 @@
-package es.jaie55.boatracing.ui;
-
-import es.jaie55.boatracing.BoatRacingPlugin;
-import es.jaie55.boatracing.team.Team;
-import es.jaie55.boatracing.team.TeamManager;
-import org.bukkit.Bukkit;
-import es.jaie55.boatracing.util.Text;
-import org.bukkit.DyeColor;
-import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.entity.HumanEntity;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
-import org.bukkit.event.Listener;
-import org.bukkit.event.EventPriority;
-import org.bukkit.event.inventory.ClickType;
-import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCloseEvent;
-import org.bukkit.event.inventory.InventoryDragEvent;
-import org.bukkit.inventory.Inventory;
-import org.bukkit.inventory.ItemFlag;
-import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.BannerMeta;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.inventory.meta.SkullMeta;
-import org.bukkit.persistence.PersistentDataContainer;
-import org.bukkit.persistence.PersistentDataType;
-import net.kyori.adventure.text.Component;
-import net.wesjd.anvilgui.AnvilGUI;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-
-public class TeamGUI implements Listener {
-    private static final String BLANK = " ";
-    private static final Component TITLE = Text.title("Đội");
-    private static final Component TITLE_TEAM = Text.title("Đội");
-    private static final String TEAM_TITLE_PREFIX = "Đội • ";
-    private static final Component TITLE_MEMBER = Text.title("Hồ sơ của bạn");
+/* Team GUI removed
     private static final Component TITLE_COLOR_PICKER = Text.title("Chọn màu đội");
     private static final Component TITLE_BOAT_PICKER = Text.title("Chọn thuyền của bạn");
     private static final Component TITLE_DISBAND_CONFIRM = Text.title("Giải tán đội?");
@@ -1212,4 +1173,4 @@ public class TeamGUI implements Listener {
         if (n < 1 || n > 99) return "Số phải từ 1 đến 99.";
         return null;
     }
-}
+*/

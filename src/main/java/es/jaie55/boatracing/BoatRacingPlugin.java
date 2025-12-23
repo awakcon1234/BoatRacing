@@ -13,8 +13,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
-import es.jaie55.boatracing.team.TeamManager;
-import es.jaie55.boatracing.ui.TeamGUI;
 import es.jaie55.boatracing.util.Text;
 import es.jaie55.boatracing.update.UpdateChecker;
 import es.jaie55.boatracing.update.UpdateNotifier;
@@ -29,8 +27,6 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 public class BoatRacingPlugin extends JavaPlugin {
     private static BoatRacingPlugin instance;
-    private TeamManager teamManager;
-    private TeamGUI teamGUI;
     private es.jaie55.boatracing.ui.AdminGUI adminGUI;
     private es.jaie55.boatracing.ui.AdminRaceGUI adminRaceGUI;
     private es.jaie55.boatracing.profile.PlayerProfileManager profileManager;
@@ -44,17 +40,12 @@ public class BoatRacingPlugin extends JavaPlugin {
     private es.jaie55.boatracing.ui.AdminTracksGUI tracksGUI;
     // Last latest-version announced in console due to 5-minute silent checks (to avoid duplicate prints)
     private volatile String lastConsoleAnnouncedVersion = null;
-    // Track pending disband confirmations per player
-    private final java.util.Set<java.util.UUID> pendingDisband = new java.util.HashSet<>();
-    private final java.util.Map<java.util.UUID, java.util.UUID> pendingTransfer = new java.util.HashMap<>();
-    private final java.util.Map<java.util.UUID, java.util.UUID> pendingKick = new java.util.HashMap<>();
+    // Team and pit features removed
 
     public static BoatRacingPlugin getInstance() { return instance; }
-    public TeamManager getTeamManager() { return teamManager; }
     public String pref() { return prefix; }
     public es.jaie55.boatracing.ui.AdminGUI getAdminGUI() { return adminGUI; }
     public es.jaie55.boatracing.ui.AdminRaceGUI getAdminRaceGUI() { return adminRaceGUI; }
-    public es.jaie55.boatracing.ui.TeamGUI getTeamGUI() { return teamGUI; }
     public es.jaie55.boatracing.profile.PlayerProfileManager getProfileManager() { return profileManager; }
     public es.jaie55.boatracing.ui.ProfileGUI getProfileGUI() { return profileGUI; }
     public RaceManager getRaceManager() { return raceManager; }
@@ -74,8 +65,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             getLogger().warning("Failed to merge default config values: " + t.getMessage());
         }
         this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
-        this.teamManager = new TeamManager(this);
-    this.teamGUI = new TeamGUI(this);
+        // Team and pit features removed
     this.adminGUI = new es.jaie55.boatracing.ui.AdminGUI(this);
     this.adminRaceGUI = new es.jaie55.boatracing.ui.AdminRaceGUI(this);
     this.profileManager = new es.jaie55.boatracing.profile.PlayerProfileManager(getDataFolder());
@@ -85,7 +75,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.raceManager = new RaceManager(this, trackConfig);
     this.setupWizard = new SetupWizard(this);
     this.tracksGUI = new es.jaie55.boatracing.ui.AdminTracksGUI(this, trackLibrary);
-    Bukkit.getPluginManager().registerEvents(teamGUI, this);
+    // Team GUI removed
     Bukkit.getPluginManager().registerEvents(adminGUI, this);
     Bukkit.getPluginManager().registerEvents(tracksGUI, this);
     Bukkit.getPluginManager().registerEvents(adminRaceGUI, this);
@@ -232,7 +222,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (teamManager != null) teamManager.save();
+        // Nothing to persist
     }
 
     @Override
@@ -295,14 +285,12 @@ public class BoatRacingPlugin extends JavaPlugin {
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return true;
                 }
-                // Persist current state, reload config and data
-                if (teamManager != null) teamManager.save();
+                // Reload config and data
                 reloadConfig();
                 // After reload, also merge any new defaults into config.yml
                 try { mergeConfigDefaults(); } catch (Throwable ignored) {}
                 this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
-                // Recreate team manager to re-read data and settings
-                this.teamManager = new TeamManager(this);
+                // Team features removed; nothing to re-create
                 // ViaVersion integration removed; nothing to re-apply
                 Text.msg(p, "&aĐã tải lại plugin.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
@@ -689,15 +677,6 @@ public class BoatRacingPlugin extends JavaPlugin {
                 }
                 if (args[1].equalsIgnoreCase("help")) {
                     Text.msg(p, "&eLệnh quản trị:");
-                    Text.tell(p, "&7 - &f/" + label + " admin team create <name> [color] [firstMember]");
-                    Text.tell(p, "&7 - &f/" + label + " admin team delete <name>");
-                    Text.tell(p, "&7 - &f/" + label + " admin team rename <old> <new>");
-                    Text.tell(p, "&7 - &f/" + label + " admin team color <name> <DyeColor>");
-                    Text.tell(p, "&7 - &f/" + label + " admin team add <name> <player>");
-                    Text.tell(p, "&7 - &f/" + label + " admin team remove <name> <player>");
-                    Text.tell(p, "&7 - &f/" + label + " admin player setteam <player> <team|none>");
-                    Text.tell(p, "&7 - &f/" + label + " admin player setnumber <player> <1-99>");
-                    Text.tell(p, "&7 - &f/" + label + " admin player setboat <player> <BoatType>");
                     Text.tell(p, "&7 - &f/" + label + " admin tracks &7(Quản lý đường đua qua GUI)");
                     return true;
                 }
@@ -706,424 +685,12 @@ public class BoatRacingPlugin extends JavaPlugin {
                     tracksGUI.open(p);
                     return true;
                 }
-                // admin team ...
-                if (args[1].equalsIgnoreCase("team")) {
-                    if (args.length < 3) { Text.msg(p, "&cCách dùng: /"+label+" admin team <create|delete|rename|color|add|remove>"); return true; }
-                    String op = args[2].toLowerCase();
-                    switch (op) {
-                        case "create" -> {
-                            if (args.length < 4) { Text.msg(p, "&cCách dùng: /"+label+" admin team create <name> [color] [firstMember]"); return true; }
-                            String name = args[3];
-                            org.bukkit.DyeColor color = org.bukkit.DyeColor.WHITE;
-                            if (args.length >= 5) {
-                                try { color = org.bukkit.DyeColor.valueOf(args[4].toUpperCase()); } catch (Exception ex) { Text.msg(p, "&cMàu không hợp lệ."); return true; }
-                            }
-                            java.util.UUID firstMemberId = p.getUniqueId();
-                            if (args.length >= 6) {
-                                org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[5]);
-                                if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
-                                firstMemberId = off.getUniqueId();
-                            }
-                            if (teamManager.findByName(name).isPresent()) { Text.msg(p, "&cA team with that name already exists."); return true; }
-                            teamManager.createTeam(firstMemberId, name, color);
-                            Text.msg(p, "&aĐã tạo đội: &f" + name + " &7(màu: " + color.name() + ")");
-                            return true;
-                        }
-                        case "delete" -> {
-                            if (args.length < 4) { Text.msg(p, "&cCách dùng: /"+label+" admin team delete <name>"); return true; }
-                            String name = args[3];
-                            var ot = teamManager.findByName(name);
-                            if (ot.isEmpty()) { Text.msg(p, "&cKhông tìm thấy đội."); return true; }
-                            // Notify members before deletion
-                            java.util.List<java.util.UUID> members = new java.util.ArrayList<>(ot.get().getMembers());
-                            teamManager.removeTeam(ot.get());
-                            Text.msg(p, "&aĐã xóa đội: &f" + name);
-                            for (java.util.UUID m : members) {
-                                org.bukkit.OfflinePlayer memOp = Bukkit.getOfflinePlayer(m);
-                                if (memOp.isOnline() && memOp.getPlayer() != null) {
-                                    Text.msg(memOp.getPlayer(), "&eĐội của bạn đã bị xóa.");
-                                    memOp.getPlayer().playSound(memOp.getPlayer().getLocation(), org.bukkit.Sound.BLOCK_ANVIL_LAND, 0.6f, 0.9f);
-                                }
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        case "rename" -> {
-                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team rename <old> <new>"); return true; }
-                            var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { Text.msg(p, "&cKhông tìm thấy đội."); return true; }
-                            String newName = args[4];
-                            if (teamManager.findByName(newName).isPresent()) { Text.msg(p, "&cA team with that name already exists."); return true; }
-                            ot.get().setName(newName);
-                            teamManager.save();
-                            Text.msg(p, "&aTeam renamed to &f" + newName);
-                            for (java.util.UUID m : ot.get().getMembers()) {
-                                org.bukkit.OfflinePlayer memOp = Bukkit.getOfflinePlayer(m);
-                                if (memOp.isOnline() && memOp.getPlayer() != null) {
-                                    Text.msg(memOp.getPlayer(), "&eQuản trị viên đã đổi tên đội của bạn thành &f" + newName + "&e.");
-                                    memOp.getPlayer().playSound(memOp.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                                }
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        case "color" -> {
-                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team color <name> <DyeColor>"); return true; }
-                            var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { Text.msg(p, "&cKhông tìm thấy đội."); return true; }
-                            org.bukkit.DyeColor color;
-                            try { color = org.bukkit.DyeColor.valueOf(args[4].toUpperCase()); } catch (Exception ex) { Text.msg(p, "&cMàu không hợp lệ."); return true; }
-                            ot.get().setColor(color);
-                            teamManager.save();
-                            Text.msg(p, "&aTeam color updated: &f" + color.name());
-                            for (java.util.UUID m : ot.get().getMembers()) {
-                                org.bukkit.OfflinePlayer memOp = Bukkit.getOfflinePlayer(m);
-                                if (memOp.isOnline() && memOp.getPlayer() != null) {
-                                    Text.msg(memOp.getPlayer(), "&eQuản trị viên đã thay đổi màu đội của bạn thành &f" + color.name() + "&e.");
-                                    memOp.getPlayer().playSound(memOp.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                                }
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        case "add" -> {
-                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team add <name> <player>"); return true; }
-                            var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { Text.msg(p, "&cTeam not found."); return true; }
-                            org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[4]);
-                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi cục bộ. Dùng UUID hoặc yêu cầu người chơi vào máy chủ một lần."); return true; }
-                            // remove from previous team if any
-                            teamManager.getTeamByMember(off.getUniqueId()).ifPresent(prev -> { prev.removeMember(off.getUniqueId()); });
-                            boolean ok = teamManager.addMember(ot.get(), off.getUniqueId());
-                            if (!ok) { Text.msg(p, "&cTeam is full (max " + teamManager.getMaxMembers() + ")"); return true; }
-                            teamManager.save();
-                            Text.msg(p, "&aAdded &f" + off.getName() + " &ato team &f" + ot.get().getName());
-                            if (off.isOnline() && off.getPlayer() != null) {
-                                Text.msg(off.getPlayer(), "&eQuản trị viên đã thêm bạn vào đội &f" + ot.get().getName() + "&e.");
-                                off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        case "remove" -> {
-                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin team remove <name> <player>"); return true; }
-                            var ot = teamManager.findByName(args[3]);
-                            if (ot.isEmpty()) { Text.msg(p, "&cKhông tìm thấy đội."); return true; }
-                            org.bukkit.OfflinePlayer off = Bukkit.getOfflinePlayer(args[4]);
-                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi cục bộ. Dùng UUID hoặc yêu cầu người chơi vào máy chủ một lần."); return true; }
-                            boolean ok = teamManager.removeMember(ot.get(), off.getUniqueId());
-                            if (!ok) { Text.msg(p, "&cPlayer is not a member of that team."); return true; }
-                            Text.msg(p, "&aRemoved &f" + off.getName() + " &afrom team &f" + ot.get().getName());
-                            teamManager.save();
-                            if (off.isOnline() && off.getPlayer() != null) {
-                                Text.msg(off.getPlayer(), "&eBạn đã bị xóa khỏi đội &f" + ot.get().getName() + "&e.");
-                                off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        default -> { Text.msg(p, "&cLệnh team không rõ."); return true; }
-                    }
-                }
-                // admin player ...
-                if (args[1].equalsIgnoreCase("player")) {
-                    if (args.length < 3) { Text.msg(p, "&cCách dùng: /"+label+" admin player <setteam|setnumber|setboat>"); return true; }
-                    String op = args[2].toLowerCase();
-                    switch (op) {
-                        case "setteam" -> {
-                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin player setteam <player> <team|none>"); return true; }
-                            org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
-                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi cục bộ. Dùng UUID hoặc yêu cầu người chơi tham gia một lần."); return true; }
-                            String teamName = args[4];
-                            teamManager.getTeamByMember(off.getUniqueId()).ifPresent(prev -> prev.removeMember(off.getUniqueId()));
-                            if (!teamName.equalsIgnoreCase("none")) {
-                                var ot = teamManager.findByName(teamName);
-                                if (ot.isEmpty()) { Text.msg(p, "&cKhông tìm thấy đội."); return true; }
-                                if (!teamManager.addMember(ot.get(), off.getUniqueId())) { Text.msg(p, "&cTeam is full (max " + teamManager.getMaxMembers() + ")"); return true; }
-                            }
-                            teamManager.save();
-                            Text.msg(p, "&aPlayer &f" + off.getName() + " &aassigned to team &f" + (teamName.equalsIgnoreCase("none")?"none":teamName));
-                            if (off.isOnline() && off.getPlayer() != null) {
-                                if (teamName.equalsIgnoreCase("none")) {
-                                    Text.msg(off.getPlayer(), "&eBạn đã bị xóa khỏi đội của mình.");
-                                    off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                                } else {
-                                    Text.msg(off.getPlayer(), "&eQuản trị viên đã phân bạn vào đội &f" + teamName + "&e.");
-                                    off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                                }
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        case "setnumber" -> {
-                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin player setnumber <player> <1-99>"); return true; }
-                            org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
-                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
-                            int num;
-                            try { num = Integer.parseInt(args[4]); } catch (Exception ex) { Text.msg(p, "&cSố không hợp lệ."); return true; }
-                            if (num < 1 || num > 99) { Text.msg(p, "&cSố phải là 1-99."); return true; }
-                            var ot = teamManager.getTeamByMember(off.getUniqueId());
-                            if (ot.isEmpty()) { Text.msg(p, "&cNgười chơi chưa ở trong đội."); return true; }
-                            // Optional: global uniqueness check could go here
-                            ot.get().setRacerNumber(off.getUniqueId(), num);
-                            teamManager.save();
-                            Text.msg(p, "&aĐã đặt số tay đua cho &f" + off.getName() + " &athành &f" + num);
-                            if (off.isOnline() && off.getPlayer() != null) {
-                                Text.msg(off.getPlayer(), "&eQuản trị viên đã thay đổi số đua của bạn thành &f" + num + "&e.");
-                                off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        case "setboat" -> {
-                            if (args.length < 5) { Text.msg(p, "&cCách dùng: /"+label+" admin player setboat <player> <BoatType>"); return true; }
-                            org.bukkit.OfflinePlayer off = resolveOffline(args[3]);
-                            if (off == null || off.getUniqueId() == null) { Text.msg(p, "&cKhông tìm thấy người chơi."); return true; }
-                            String type = args[4].toUpperCase();
-                            // Validate against allowed boats: boats, chest boats, and raft names
-                            java.util.Set<String> allowed = new java.util.LinkedHashSet<>();
-                            for (org.bukkit.Material m : org.bukkit.Material.values()) {
-                                String n = m.name();
-                                if (n.endsWith("_BOAT") || n.endsWith("_CHEST_BOAT")) allowed.add(n);
-                            }
-                            // Also accept RAFT/CHEST_RAFT tokens even if not present as Materials
-                            allowed.add("RAFT");
-                            allowed.add("CHEST_RAFT");
-                            if (!allowed.contains(type)) { Text.msg(p, "&cLoại tàu không hợp lệ."); return true; }
-                            var ot = teamManager.getTeamByMember(off.getUniqueId());
-                            if (ot.isEmpty()) { Text.msg(p, "&cNgười chơi chưa ở trong đội."); return true; }
-                            ot.get().setBoatType(off.getUniqueId(), type);
-                            teamManager.save();
-                            Text.msg(p, "&aĐã đặt loại thuyền cho &f" + off.getName() + " &athành &f" + type);
-                            if (off.isOnline() && off.getPlayer() != null) {
-                                Text.msg(off.getPlayer(), "&eQuản trị viên đã thay đổi loại tàu của bạn thành &f" + type + "&e.");
-                                off.getPlayer().playSound(off.getPlayer().getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                            }
-                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                            return true;
-                        }
-                        default -> { Text.msg(p, "&cHành động player không hợp lệ."); return true; }
-                    }
-                }
+                // Only tracks admin remains
                 Text.msg(p, "&cCách dùng: /"+label+" admin help");
                 return true;
             }
-            if (!args[0].equalsIgnoreCase("teams")) {
-                Text.msg(p, "&cCách dùng: /" + label + " profile|race|setup|reload|version");
-                return true;
-            }
-            // /boatracing teams
-            if (args.length == 1) {
-                if (!p.hasPermission("boatracing.teams")) {
-                    Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
-                    p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                    return true;
-                }
-                teamGUI.openMain(p);
-                return true;
-            }
-            // /boatracing teams create <name>
-            if (!p.hasPermission("boatracing.teams")) {
-                Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
-                p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
-                return true;
-            }
-            if (args.length >= 2 && args[1].equalsIgnoreCase("create")) {
-                boolean allowCreate = getConfig().getBoolean("player-actions.allow-team-create", true);
-                if (!allowCreate) { Text.msg(p, "&cMáy chủ này đã hạn chế việc tạo đội. Chỉ quản trị viên mới có thể tạo đội."); return true; }
-                if (teamManager.getTeamByMember(p.getUniqueId()).isPresent()) {
-                    Text.msg(p, "&cYou are already in a team. Leave it first.");
-                    return true;
-                }
-                if (args.length < 3) {
-                    Text.msg(p, "&cCách dùng: /boatracing teams create <name>");
-                    return true;
-                }
-                String name = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
-                String err = es.jaie55.boatracing.ui.TeamGUI.validateNameMessage(name);
-                if (err != null) {
-                    Text.msg(p, "&c" + err);
-                    return true;
-                }
-                boolean exists = teamManager.getTeams().stream().anyMatch(t -> t.getName().equalsIgnoreCase(name));
-                if (exists) {
-                    Text.msg(p, "&cA team with that name already exists.");
-                    return true;
-                }
-                teamManager.createTeam(p, name, org.bukkit.DyeColor.WHITE);
-                return true;
-            }
-            // /boatracing teams rename <new name>
-            if (args.length >= 2 && args[1].equalsIgnoreCase("rename")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                es.jaie55.boatracing.team.Team t = ot.get();
-                boolean allowRename = getConfig().getBoolean("player-actions.allow-team-rename", false);
-                if (!allowRename && !p.hasPermission("boatracing.admin")) { Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi tên đội. Chỉ quản trị viên mới có thể đổi tên đội."); return true; }
-                if (args.length < 3) { Text.msg(p, "&cCách dùng: /boatracing teams rename <new name>"); return true; }
-                String name = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
-                String err = es.jaie55.boatracing.ui.TeamGUI.validateNameMessage(name);
-                if (err != null) { Text.msg(p, "&c" + err); return true; }
-                boolean exists = teamManager.getTeams().stream().anyMatch(tt -> tt != t && tt.getName().equalsIgnoreCase(name));
-                if (exists) { Text.msg(p, "&cA team with that name already exists."); return true; }
-                t.setName(name); teamManager.save();
-                Text.msg(p, "&aTeam renamed to &e" + name + "&a.");
-                return true;
-            }
-            // /boatracing teams color <dyeColor>
-            if (args.length >= 2 && args[1].equalsIgnoreCase("color")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                es.jaie55.boatracing.team.Team t = ot.get();
-                boolean allowColor = getConfig().getBoolean("player-actions.allow-team-color", false);
-                if (!allowColor && !p.hasPermission("boatracing.admin")) { Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi màu đội. Chỉ quản trị viên mới có thể đổi màu đội."); return true; }
-                if (args.length < 3) { Text.msg(p, "&cCách dùng: /boatracing teams color <dyeColor>"); return true; }
-                try {
-                    org.bukkit.DyeColor dc = org.bukkit.DyeColor.valueOf(args[2].toUpperCase());
-                    t.setColor(dc); teamManager.save();
-                    Text.msg(p, "&aTeam color set to &e" + dc.name() + "&a.");
-                } catch (IllegalArgumentException ex) {
-                    Text.msg(p, "&cMàu không hợp lệ.");
-                }
-                return true;
-            }
-            // /boatracing teams join <team name>
-            if (args.length >= 2 && args[1].equalsIgnoreCase("join")) {
-                if (teamManager.getTeamByMember(p.getUniqueId()).isPresent()) {
-                    Text.msg(p, "&cYou are already in a team. Leave it first.");
-                    return true;
-                }
-                if (args.length < 3) { Text.msg(p, "&cCách dùng: /boatracing teams join <tên đội>"); return true; }
-                String name = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
-                es.jaie55.boatracing.team.Team target = teamManager.getTeams().stream()
-                    .filter(t -> t.getName().equalsIgnoreCase(name)).findFirst().orElse(null);
-                if (target == null) { Text.msg(p, "&cKhông tìm thấy đội."); return true; }
-                if (target.getMembers().size() >= teamManager.getMaxMembers()) { Text.msg(p, "&cThis team is full."); return true; }
-                target.addMember(p.getUniqueId()); teamManager.save();
-                Text.msg(p, "&aBạn đã tham gia đội &e" + target.getName() + "&a.");
-                for (java.util.UUID m : target.getMembers()) {
-                    if (m.equals(p.getUniqueId())) continue;
-                    org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
-                    if (op.isOnline() && op.getPlayer() != null) {
-                        Text.msg(op.getPlayer(), "&e" + p.getName() + " joined the team.");
-                    }
-                }
-                return true;
-            }
-            // /boatracing teams leave (with confirm if team would be empty)
-            if (args.length >= 2 && args[1].equalsIgnoreCase("leave")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                es.jaie55.boatracing.team.Team t = ot.get();
-                if (t.getMembers().size() <= 1) {
-                    pendingDisband.add(p.getUniqueId());
-                    Text.msg(p, "&eYou are the last member. Leaving will delete the team.");
-                    Text.msg(p, "&7Type &b/"+label+" teams confirm &7to proceed or &b/"+label+" teams cancel &7to abort.");
-                    return true;
-                }
-                t.removeMember(p.getUniqueId());
-                teamManager.save();
-                Text.msg(p, "&aBạn đã rời đội.");
-                for (java.util.UUID m : t.getMembers()) {
-                    org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(m);
-                    if (op.isOnline() && op.getPlayer() != null) {
-                        Text.msg(op.getPlayer(), "&e" + p.getName() + " đã rời đội.");
-                    }
-                }
-                return true;
-            }
-            // /boatracing teams kick <playerName> (with confirm)
-            if (args.length >= 2 && args[1].equalsIgnoreCase("kick")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                Text.msg(p, "&cThao tác này chỉ dành cho quản trị viên. Dùng /"+label+" admin team remove <team> <player>.");
-                return true;
-            }
-            // /boatracing teams transfer <playerName>
-            if (args.length >= 2 && args[1].equalsIgnoreCase("transfer")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                Text.msg(p, "&cHệ thống trưởng nhóm đã bị loại bỏ. Hãy dùng lệnh quản trị để quản lý đội.");
-                return true;
-            }
-            // /boatracing teams boat <type>
-            if (args.length >= 2 && args[1].equalsIgnoreCase("boat")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                if (args.length < 3) { Text.msg(p, "&cCách dùng: /boatracing teams boat <loại>"); return true; }
-                boolean allowBoat = getConfig().getBoolean("player-actions.allow-set-boat", true);
-                if (!allowBoat) { Text.msg(p, "&cMáy chủ này đã hạn chế việc đổi thuyền. Chỉ quản trị viên mới có thể đặt thuyền cho bạn."); return true; }
-                String type = args[2].toUpperCase();
-                // Accept RAFT tokens directly, otherwise require a valid BOAT material
-                if (type.equals("RAFT") || type.equals("CHEST_RAFT")) {
-                    ot.get().setBoatType(p.getUniqueId(), type);
-                    teamManager.save();
-                    Text.msg(p, "&aĐã đặt loại thuyền của bạn thành &e" + type.toLowerCase() + "&a.");
-                } else {
-                    try {
-                        org.bukkit.Material m = org.bukkit.Material.valueOf(type);
-                        if (!m.name().endsWith("BOAT")) throw new IllegalArgumentException();
-                        ot.get().setBoatType(p.getUniqueId(), m.name());
-                        teamManager.save();
-                        Text.msg(p, "&aĐã đặt loại thuyền của bạn thành &e" + type.toLowerCase() + "&a.");
-                    } catch (IllegalArgumentException ex) {
-                        Text.msg(p, "&cLoại tàu không hợp lệ.");
-                    }
-                }
-                return true;
-            }
-            // /boatracing teams number <1-99>
-            if (args.length >= 2 && args[1].equalsIgnoreCase("number")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                if (args.length < 3) { Text.msg(p, "&cCách dùng: /boatracing teams number <1-99>"); return true; }
-                boolean allowNumber = getConfig().getBoolean("player-actions.allow-set-number", true);
-                if (!allowNumber) { Text.msg(p, "&cMáy chủ này đã hạn chế số tay đua. Chỉ quản trị viên mới có thể đặt số cho bạn."); return true; }
-                String s = args[2];
-                if (!s.matches("\\d+")) { Text.msg(p, "&cVui lòng chỉ nhập số."); return true; }
-                int n = Integer.parseInt(s);
-                if (n < 1 || n > 99) { Text.msg(p, "&cSố phải nằm trong khoảng 1 đến 99."); return true; }
-                ot.get().setRacerNumber(p.getUniqueId(), n); teamManager.save();
-                Text.msg(p, "&aĐã đặt số tay đua của bạn thành " + n + ".");
-                return true;
-            }
-            // /boatracing teams disband y /boatracing teams confirm
-            if (args.length >= 2 && args[1].equalsIgnoreCase("disband")) {
-                java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                Text.msg(p, "&cThao tác này chỉ dành cho quản trị viên. Dùng /"+label+" admin team delete <team>.");
-                return true;
-            }
-            if (args.length >= 2 && args[1].equalsIgnoreCase("confirm")) {
-                // Confirm pending dangerous actions (last-member leave -> disband)
-                if (pendingDisband.remove(p.getUniqueId())) {
-                    java.util.Optional<es.jaie55.boatracing.team.Team> ot = teamManager.getTeamByMember(p.getUniqueId());
-                    if (ot.isEmpty()) { Text.msg(p, "&cYou are not in a team."); return true; }
-                    es.jaie55.boatracing.team.Team t = ot.get();
-                    // Proceed: remove member (self) and delete team since no members left
-                    t.removeMember(p.getUniqueId());
-                    teamManager.deleteTeam(t);
-                    Text.msg(p, "&aYou left and the team was deleted (no members left).");
-                    return true;
-                }
-                Text.msg(p, "&cNothing to confirm.");
-                return true;
-            }
-            if (args.length >= 2 && args[1].equalsIgnoreCase("cancel")) {
-                boolean any = false;
-                if (pendingDisband.remove(p.getUniqueId())) { any = true; }
-                if (pendingTransfer.remove(p.getUniqueId()) != null) { any = true; }
-                if (pendingKick.remove(p.getUniqueId()) != null) { any = true; }
-                if (!any) {
-                    Text.msg(p, "&cNothing to cancel.");
-                    return true;
-                }
-                        Text.msg(p, "&aCancelled.");
-                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.1f);
-                return true;
-            }
-            // default fallback
-            Text.msg(p, "&cLệnh con không hợp lệ. Sử dụng: /boatracing version|reload|setup hoặc /boatracing teams [create|rename|color|join|leave|kick|boat|number|transfer|disband|confirm|cancel]");
+            // default fallback (teams removed)
+            Text.msg(p, "&cLệnh con không hợp lệ. Sử dụng: /boatracing version|reload|setup|race");
             return true;
         }
         return true;
@@ -1159,16 +726,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("admin")) {
                 if (!sender.hasPermission("boatracing.admin")) return java.util.Collections.emptyList();
-                if (args.length == 2) return java.util.Arrays.asList("help","team","player");
-                if (args.length == 3 && args[1].equalsIgnoreCase("team")) return java.util.Arrays.asList("create","delete","rename","color","add","remove");
-                if (args.length == 3 && args[1].equalsIgnoreCase("player")) return java.util.Arrays.asList("setteam","setnumber","setboat");
-                if (args.length == 5 && args[2].equalsIgnoreCase("setboat")) {
-                    return java.util.Arrays.asList(
-                        "oak_boat","spruce_boat","birch_boat","jungle_boat","acacia_boat","dark_oak_boat","mangrove_boat","cherry_boat","pale_oak_boat",
-                        "oak_chest_boat","spruce_chest_boat","birch_chest_boat","jungle_chest_boat","acacia_chest_boat","dark_oak_chest_boat","mangrove_chest_boat","cherry_chest_boat","pale_oak_chest_boat",
-                        "bamboo_raft","bamboo_chest_raft"
-                    );
-                }
+                if (args.length == 2) return java.util.Arrays.asList("help","tracks");
                 return java.util.Collections.emptyList();
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("race")) {
@@ -1196,21 +754,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","setpit","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
-                if (args.length >= 3 && args[1].equalsIgnoreCase("setpit")) {
-                    // Build current partial input (join tokens from index 2)
-                    String partial = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length)).toLowerCase();
-                    boolean startedQuote = args[2] != null && (args[2].startsWith("\"") || args[2].startsWith("'"));
-                    java.util.List<String> names = new java.util.ArrayList<>();
-                    for (es.jaie55.boatracing.team.Team t : teamManager.getTeams()) {
-                        String name = t.getName();
-                        if (name == null) continue;
-                        String quoted = '"' + name + '"';
-                        String cand = startedQuote ? quoted : name;
-                        if (cand.toLowerCase().startsWith(partial)) names.add(cand);
-                    }
-                    return names;
-                }
+                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
                 if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
                     // Suggest player names (online + known offline)
                     String prefName = args[2] == null ? "" : args[2].toLowerCase();
@@ -1236,30 +780,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 // Do not expose wizard subcommands in tab-completion; single entrypoint UX
                 return Collections.emptyList();
             }
-            if (args.length >= 2 && args[0].equalsIgnoreCase("teams")) {
-                if (!sender.hasPermission("boatracing.teams")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("create", "rename", "color", "join", "leave", "boat", "number", "confirm", "cancel");
-                // Autocomplete team names for 'join'
-                if (args.length >= 3 && args[1].equalsIgnoreCase("join")) {
-                    String prefix = args[2].toLowerCase();
-                    java.util.List<String> names = new java.util.ArrayList<>();
-                    for (es.jaie55.boatracing.team.Team t : teamManager.getTeams()) {
-                        String name = t.getName();
-                        if (name != null && name.toLowerCase().startsWith(prefix)) names.add(name);
-                    }
-                    return names;
-                }
-                if (args.length >= 3 && args[1].equalsIgnoreCase("create")) return Collections.emptyList();
-                if (args.length >= 3 && args[1].equalsIgnoreCase("color")) return java.util.Arrays.stream(org.bukkit.DyeColor.values()).map(Enum::name).map(String::toLowerCase).toList();
-                if (args.length >= 3 && args[1].equalsIgnoreCase("boat")) return Arrays.asList(
-                    // Normal boats first
-                    "oak_boat","spruce_boat","birch_boat","jungle_boat","acacia_boat","dark_oak_boat","mangrove_boat","cherry_boat","pale_oak_boat",
-                    // Then chest-boat variants
-                    "oak_chest_boat","spruce_chest_boat","birch_chest_boat","jungle_chest_boat","acacia_chest_boat","dark_oak_chest_boat","mangrove_chest_boat","cherry_chest_boat","pale_oak_chest_boat",
-                    // Rafts (bamboo)
-                    "bamboo_raft","bamboo_chest_raft"
-                );
-            }
+            // teams tab-completion removed
             return Collections.emptyList();
         }
         return Collections.emptyList();
