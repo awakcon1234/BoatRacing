@@ -9,7 +9,7 @@ import java.util.logging.Logger;
 
 /**
  * Builds a centerline polyline for a track using constrained A* along allowed surface blocks.
- * Phase 1: simple 2D path on a fixed Y level between segment endpoints (start center -> checkpoints -> finish).
+ * Surface-following A* that can move up/down for sloped tracks.
  */
 public final class CenterlineBuilder {
     private CenterlineBuilder() {}
@@ -60,13 +60,29 @@ public final class CenterlineBuilder {
             }
         }
 
+        // Compute global bounds across all waypoints (used as a fallback if a segment detours far outside its local rectangle).
+        int globalMinX = Integer.MAX_VALUE, globalMaxX = Integer.MIN_VALUE;
+        int globalMinZ = Integer.MAX_VALUE, globalMaxZ = Integer.MIN_VALUE;
+        for (Location wp : waypoints) {
+            globalMinX = Math.min(globalMinX, wp.getBlockX());
+            globalMaxX = Math.max(globalMaxX, wp.getBlockX());
+            globalMinZ = Math.min(globalMinZ, wp.getBlockZ());
+            globalMaxZ = Math.max(globalMaxZ, wp.getBlockZ());
+        }
+        int globalPad = Math.max(32, corridorMargin * 4);
+        globalMinX -= globalPad; globalMaxX += globalPad;
+        globalMinZ -= globalPad; globalMaxZ += globalPad;
+        if (verbose) {
+            info(logger, "Centerline global bounds: x=" + globalMinX + ".." + globalMaxX + " z=" + globalMinZ + ".." + globalMaxZ + " (pad=" + globalPad + ")");
+        }
+
         // Build segments
         List<Location> centerline = new ArrayList<>();
         for (int i = 0; i < waypoints.size() - 1; i++) {
             Location a = waypoints.get(i);
             Location b = waypoints.get(i + 1);
             if (verbose) info(logger, "A* segment " + i + ": " + fmt(a) + " -> " + fmt(b));
-            List<Location> segment = aStar2DWithRetries(a, b, corridorMargin, 64, logger, "segment#" + i, verbose);
+            List<Location> segment = aStar2DWithRetries(a, b, corridorMargin, 64, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, "segment#" + i, verbose);
             if (segment == null || segment.isEmpty()) {
                 warn(logger, "Centerline build failed: A* returned no path for segment#" + i +
                         " (" + fmt(a) + " -> " + fmt(b) + ")");
@@ -133,8 +149,21 @@ public final class CenterlineBuilder {
         return Integer.MIN_VALUE;
     }
 
-    // Simple 2D A* path on fixed Y plane across allowed blocks within corridor
-    private static List<Location> aStar2DWithRetries(Location a, Location b, int baseMargin, int maxMargin, Logger logger, String label, boolean verbose) {
+    // Surface-following A* across allowed blocks within corridor.
+    // It can change Y by scanning the neighbor column around the current surface Y.
+    private static List<Location> aStar2DWithRetries(
+            Location a,
+            Location b,
+            int baseMargin,
+            int maxMargin,
+            int globalMinX,
+            int globalMaxX,
+            int globalMinZ,
+            int globalMaxZ,
+            Logger logger,
+            String label,
+            boolean verbose
+    ) {
         int margin = Math.max(0, baseMargin);
         int cap = Math.max(margin, maxMargin);
 
@@ -143,13 +172,26 @@ public final class CenterlineBuilder {
             if (verbose) info(logger, "A* " + label + " attempt: margin=" + margin);
             List<Location> result = aStar2D(a, b, margin, logger, label, verbose);
             if (result != null && !result.isEmpty()) return result;
-            if (margin >= cap) return null;
+            if (margin >= cap) break;
             // grow (8 -> 16 -> 32 -> 64)
             margin = (margin == 0) ? 8 : Math.min(cap, margin * 2);
         }
+
+        // Fallback: allow detours outside the segment rectangle by using global bounds.
+        if (verbose) info(logger, "A* " + label + " fallback: trying global bounds search");
+        return aStar2DInBounds(a, b, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, label + "(global)", verbose);
     }
 
     private static List<Location> aStar2D(Location a, Location b, int margin, Logger logger, String label, boolean verbose) {
+        // Corridor bounds based on segment endpoints
+        int minX = Math.min(a.getBlockX(), b.getBlockX()) - margin;
+        int maxX = Math.max(a.getBlockX(), b.getBlockX()) + margin;
+        int minZ = Math.min(a.getBlockZ(), b.getBlockZ()) - margin;
+        int maxZ = Math.max(a.getBlockZ(), b.getBlockZ()) + margin;
+        return aStar2DInBounds(a, b, minX, maxX, minZ, maxZ, logger, label, verbose);
+    }
+
+    private static List<Location> aStar2DInBounds(Location a, Location b, int minX, int maxX, int minZ, int maxZ, Logger logger, String label, boolean verbose) {
         World w = a.getWorld();
         if (w == null || b.getWorld() == null || !w.equals(b.getWorld())) {
             warn(logger, "A* " + label + " aborted: world mismatch (a=" + fmt(a) + ", b=" + fmt(b) + ")");
@@ -157,27 +199,42 @@ public final class CenterlineBuilder {
         }
 
         // Waypoints are stored one block ABOVE the surface (surfaceY + 1).
-        // A* must path on the surface itself, otherwise it reads AIR and aborts.
-        int y = Math.min(a.getBlockY(), b.getBlockY()) - 1;
-        if (y < w.getMinHeight()) y = w.getMinHeight();
-        // Corridor bounds
-        int minX = Math.min(a.getBlockX(), b.getBlockX()) - margin;
-        int maxX = Math.max(a.getBlockX(), b.getBlockX()) + margin;
-        int minZ = Math.min(a.getBlockZ(), b.getBlockZ()) - margin;
-        int maxZ = Math.max(a.getBlockZ(), b.getBlockZ()) + margin;
+        // Determine surface Y for start/goal and allow movement across slopes.
+        int startHintY = a.getBlockY() - 1;
+        int goalHintY = b.getBlockY() - 1;
+        int startY = findSurfaceYNear(w, a.getBlockX(), a.getBlockZ(), startHintY, 8);
+        int goalY = findSurfaceYNear(w, b.getBlockX(), b.getBlockZ(), goalHintY, 8);
+        if (startY == Integer.MIN_VALUE || goalY == Integer.MIN_VALUE) {
+            warn(logger, "A* " + label + " aborted: could not resolve surface Y. startHint=" + startHintY + " -> " + startY +
+                    ", goalHint=" + goalHintY + " -> " + goalY);
+            return null;
+        }
+        // bounds provided by caller
 
-        // Ensure start/target are on allowed surface at same y
-        Material aType = w.getBlockAt(a.getBlockX(), y, a.getBlockZ()).getType();
-        Material bType = w.getBlockAt(b.getBlockX(), y, b.getBlockZ()).getType();
+        // Ensure start/target are on allowed surface and have clearance above
+        Material aType = w.getBlockAt(a.getBlockX(), startY, a.getBlockZ()).getType();
+        Material bType = w.getBlockAt(b.getBlockX(), goalY, b.getBlockZ()).getType();
+        if (verbose) {
+            Material aAbove = w.getBlockAt(a.getBlockX(), startY + 1, a.getBlockZ()).getType();
+            Material bAbove = w.getBlockAt(b.getBlockX(), goalY + 1, b.getBlockZ()).getType();
+            info(logger, "A* " + label + " endpoints: startSurface=" + aType + "@" + w.getName() + "(" + a.getBlockX() + "," + startY + "," + a.getBlockZ() + ") above=" + aAbove +
+                " | goalSurface=" + bType + "@" + w.getName() + "(" + b.getBlockX() + "," + goalY + "," + b.getBlockZ() + ") above=" + bAbove);
+        }
         if (!ALLOWED.contains(aType) || !ALLOWED.contains(bType)) {
-            warn(logger, "A* " + label + " aborted: endpoints not on allowed surface at y=" + y +
-                " aType=" + aType + " bType=" + bType +
-                " (allowed=" + ALLOWED + ")");
+            warn(logger, "A* " + label + " aborted: endpoints not on allowed surface. startY=" + startY + " aType=" + aType +
+                    ", goalY=" + goalY + " bType=" + bType +
+                    " (allowed=" + ALLOWED + ")");
+            return null;
+        }
+        if (!isClearAbove(w, a.getBlockX(), startY, a.getBlockZ()) || !isClearAbove(w, b.getBlockX(), goalY, b.getBlockZ())) {
+            warn(logger, "A* " + label + " aborted: no clearance above surface at endpoints. startClear=" +
+                    isClearAbove(w, a.getBlockX(), startY, a.getBlockZ()) + ", goalClear=" +
+                    isClearAbove(w, b.getBlockX(), goalY, b.getBlockZ()));
             return null;
         }
 
-        Node start = new Node(a.getBlockX(), y, a.getBlockZ());
-        Node goal = new Node(b.getBlockX(), y, b.getBlockZ());
+        Node start = new Node(a.getBlockX(), startY, a.getBlockZ());
+        Node goal = new Node(b.getBlockX(), goalY, b.getBlockZ());
 
         java.util.PriorityQueue<Node> open = new java.util.PriorityQueue<>(Comparator.comparingDouble(n -> n.f));
         java.util.Map<Long, Node> all = new java.util.HashMap<>();
@@ -188,9 +245,24 @@ public final class CenterlineBuilder {
         all.put(key(start.x, start.y, start.z), start);
 
         int expanded = 0;
+        final int maxStepUpDown = 2;
+        final int surfaceScan = 12;
+        java.util.Map<Long, Integer> surfaceCache = new java.util.HashMap<>(); // key(x,0,z) -> surfaceY
+
+        // Debug counters (reported only on failure)
+        int skippedOutOfBounds = 0;
+        int skippedNoSurface = 0;
+        int skippedTooSteep = 0;
+        int skippedNotAllowed = 0;
+        int skippedNoClearance = 0;
+        int skippedClosed = 0;
+        int skippedImprovement = 0;
+        java.util.List<String> samples = verbose ? new java.util.ArrayList<>() : java.util.Collections.emptyList();
+        final int maxSamples = 12;
+
         while (!open.isEmpty()) {
             Node cur = open.poll();
-            if (cur.x == goal.x && cur.z == goal.z) {
+            if (cur.x == goal.x && cur.z == goal.z && Math.abs(cur.y - goal.y) <= maxStepUpDown) {
                 if (verbose) info(logger, "A* " + label + " success: expanded=" + expanded + " visited=" + all.size());
                 return reconstruct(w, cur);
             }
@@ -199,14 +271,58 @@ public final class CenterlineBuilder {
             for (int[] d : DIRS) {
                 int nx = cur.x + d[0];
                 int nz = cur.z + d[1];
-                if (nx < minX || nx > maxX || nz < minZ || nz > maxZ) continue;
-                Block bl = w.getBlockAt(nx, y, nz);
-                if (!ALLOWED.contains(bl.getType())) continue;
-                long k = key(nx, y, nz);
+                double stepCost = d[2] / 10.0;
+                if (nx < minX || nx > maxX || nz < minZ || nz > maxZ) { skippedOutOfBounds++; continue; }
+
+                int ny = cachedSurfaceY(w, nx, nz, cur.y, surfaceScan, surfaceCache);
+                if (ny == Integer.MIN_VALUE) {
+                    skippedNoSurface++;
+                    if (samples.size() < maxSamples) {
+                        int highest = w.getHighestBlockYAt(nx, nz);
+                        Material atHint = safeType(w, nx, cur.y, nz);
+                        Material atHintMinus1 = safeType(w, nx, cur.y - 1, nz);
+                        Material atHintPlus1 = safeType(w, nx, cur.y + 1, nz);
+                        Material atTop = safeType(w, nx, highest, nz);
+                        Material atTopMinus1 = safeType(w, nx, highest - 1, nz);
+                        samples.add("no allowed surface near " + w.getName() + "(" + nx + ",? ," + nz + ") yHint=" + cur.y +
+                                " samples: hint=" + atHint + ", hint-1=" + atHintMinus1 + ", hint+1=" + atHintPlus1 +
+                                ", topY=" + highest + " top=" + atTop + ", top-1=" + atTopMinus1);
+                    }
+                    continue;
+                }
+                if (Math.abs(ny - cur.y) > maxStepUpDown) {
+                    skippedTooSteep++;
+                    if (samples.size() < maxSamples) {
+                        samples.add("too steep at " + w.getName() + "(" + nx + "," + ny + "," + nz + ") fromY=" + cur.y + " (dy=" + Math.abs(ny - cur.y) + ")");
+                    }
+                    continue;
+                }
+
+                Block bl = w.getBlockAt(nx, ny, nz);
+                Material t = bl.getType();
+                if (!ALLOWED.contains(t)) {
+                    skippedNotAllowed++;
+                    if (samples.size() < maxSamples) {
+                        samples.add("expected ice at " + w.getName() + "(" + nx + "," + ny + "," + nz + ") but found " + t);
+                    }
+                    continue;
+                }
+                if (!isClearAbove(w, nx, ny, nz)) {
+                    skippedNoClearance++;
+                    if (samples.size() < maxSamples) {
+                        Material above = w.getBlockAt(nx, ny + 1, nz).getType();
+                        samples.add("no clearance above " + w.getName() + "(" + nx + "," + ny + "," + nz + ") above=" + above);
+                    }
+                    continue;
+                }
+
+                long k = key(nx, ny, nz);
                 Node nb = all.get(k);
-                if (nb == null) { nb = new Node(nx, y, nz); all.put(k, nb); }
-                if (nb.closed) continue;
-                double tg = cur.g + 1.0; // uniform cost
+                if (nb == null) { nb = new Node(nx, ny, nz); all.put(k, nb); }
+                if (nb.closed) { skippedClosed++; continue; }
+
+                int dy = Math.abs(ny - cur.y);
+                double tg = cur.g + stepCost + (0.2 * dy); // prefer smooth slopes
                 if (tg < nb.g) {
                     nb.parent = cur;
                     nb.g = tg;
@@ -214,20 +330,40 @@ public final class CenterlineBuilder {
                     // update in PQ
                     open.remove(nb);
                     open.add(nb);
+                } else {
+                    skippedImprovement++;
                 }
             }
         }
         warn(logger, "A* " + label + " failed: no path. expanded=" + expanded + " visited=" + all.size() +
-                " corridor=[x:" + minX + ".." + maxX + ", z:" + minZ + ".." + maxZ + "] y=" + y +
-                " from=" + fmt(a) + " to=" + fmt(b) + " allowed=" + ALLOWED);
+            " corridor=[x:" + minX + ".." + maxX + ", z:" + minZ + ".." + maxZ + "]" +
+            " startY=" + startY + " goalY=" + goalY +
+            " from=" + fmt(a) + " to=" + fmt(b) + " allowed=" + ALLOWED);
+        if (verbose) {
+            info(logger, "A* " + label + " skipCounts: outOfBounds=" + skippedOutOfBounds +
+                    " noSurface=" + skippedNoSurface +
+                    " tooSteep=" + skippedTooSteep +
+                    " notAllowed=" + skippedNotAllowed +
+                    " noClearance=" + skippedNoClearance +
+                    " closed=" + skippedClosed +
+                    " noImprove=" + skippedImprovement);
+            for (String s : samples) {
+                info(logger, "A* " + label + " sample: " + s);
+            }
+        }
         return null; // no path
     }
 
-    private static final int[][] DIRS = new int[][] { {1,0},{-1,0},{0,1},{0,-1} };
+        // 8-direction movement (cardinal cost=1.0, diagonal cost≈1.4)
+        // Cost is encoded as tenths in the third element to avoid doubles in the array.
+        private static final int[][] DIRS = new int[][] {
+            { 1, 0, 10 }, { -1, 0, 10 }, { 0, 1, 10 }, { 0, -1, 10 },
+            { 1, 1, 14 }, { 1, -1, 14 }, { -1, 1, 14 }, { -1, -1, 14 }
+        };
 
     private static double h(Node a, Node b) {
-        int dx = a.x - b.x; int dz = a.z - b.z;
-        return Math.sqrt(dx*dx + dz*dz);
+        int dx = a.x - b.x; int dz = a.z - b.z; int dy = a.y - b.y;
+        return Math.sqrt(dx*dx + dz*dz + (dy*dy * 0.25));
     }
 
     private static long key(int x, int y, int z) { return (((long)x & 0x3FFFFFF) << 38) | (((long)z & 0x3FFFFFF) << 12) | (y & 0xFFF); }
@@ -240,6 +376,47 @@ public final class CenterlineBuilder {
             n = n.parent;
         }
         return out;
+    }
+
+    private static int cachedSurfaceY(World w, int x, int z, int yHint, int scan, java.util.Map<Long, Integer> cache) {
+        long k = key(x, 0, z);
+        Integer cached = cache.get(k);
+        if (cached != null) return cached;
+        int y = findSurfaceYNear(w, x, z, yHint, scan);
+        cache.put(k, y);
+        return y;
+    }
+
+    private static int findSurfaceYNear(World w, int x, int z, int yHint, int maxDelta) {
+        if (w == null) return Integer.MIN_VALUE;
+        int hint = Math.min(w.getMaxHeight() - 1, Math.max(w.getMinHeight(), yHint));
+        for (int dy = 0; dy <= maxDelta; dy++) {
+            int y1 = hint - dy;
+            int y2 = hint + dy;
+            if (y1 >= w.getMinHeight()) {
+                if (ALLOWED.contains(w.getBlockAt(x, y1, z).getType())) return y1;
+            }
+            if (y2 <= w.getMaxHeight() - 1) {
+                if (ALLOWED.contains(w.getBlockAt(x, y2, z).getType())) return y2;
+            }
+        }
+
+        // Fallback: look downward from the highest block in this column.
+        // This prevents false "no surface" when the hint Y is off.
+        int top = w.getHighestBlockYAt(x, z);
+        int min = w.getMinHeight();
+        int maxSteps = 128;
+        for (int yy = top; yy >= min && (top - yy) <= maxSteps; yy--) {
+            if (ALLOWED.contains(w.getBlockAt(x, yy, z).getType())) return yy;
+        }
+        return Integer.MIN_VALUE;
+    }
+
+    private static boolean isClearAbove(World w, int x, int surfaceY, int z) {
+        int y = surfaceY + 1;
+        if (w == null) return false;
+        if (y < w.getMinHeight() || y > w.getMaxHeight() - 1) return false;
+        return w.getBlockAt(x, y, z).getType().isAir();
     }
 
     private static void appendDecimated(List<Location> dst, List<Location> src, double minStep) {
