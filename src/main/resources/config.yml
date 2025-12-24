@@ -17,15 +17,56 @@ racing:
 
   # Scoreboard & ActionBar customization
   ui:
-    scoreboard:
-      show-position: true    # rank number at line start
-      show-lap: true         # L X/Y
-      show-checkpoints: true # CP A/B (hidden if no checkpoints configured)
-      show-name: true        # player name at end of line
-    actionbar:
-      show-lap: true
-      show-checkpoints: true
-      show-time: true
+    # Customizable scoreboard templates (MiniMessage + %PlaceholderAPI% + %plugin_placeholders%)
+    # Available plugin placeholders vary by context, typical ones:
+    #   {player_name} {color} {icon} {number} {wins} {completed}
+    #   {track} {laps} {joined} {max}
+    #   {timer} {lap_current} {lap_total} {position} {progress}
+    # For 'completed': {finish_pos} {finish_time} for finished racers; same {position} {progress} for unfinished racers.
+    templates:
+      lobby:
+        title: "<gold>BoatRacing"
+        lines:
+          - "<yellow>Hồ sơ của bạn"
+          - "<gray>Tên: <<%racer_color%>>%racer_name%"
+          - "<gray>Màu: <white>%racer_color%"
+          - "<gray>Biểu tượng: <white>%icon%"
+          - "<gray>Số đua: <white>%number%"
+          - "<yellow>Thành tích"
+          - "<gray>Hoàn thành: <white>%completed%"
+          - "<gray>Chiến thắng: <white>%wins%"
+      waiting:
+        title: "<gold>Đang chờ"
+        lines:
+          - "<yellow>Thông tin đường"
+          - "<gray>Đường: <white>%track%"
+          - "<gray>Vòng: <white>%laps%"
+          - "<gray>Người chơi: <white>%joined%/%max%"
+          - "<yellow>Tay đua"
+          - "<gray>Tên: <<%racer_color%>>%racer_name%"
+          - "<gray>Màu: <white>%racer_color%"
+          - "<gray>Biểu tượng: <white>%icon%"
+          - "<gray>Số đua: <white>%number%"
+          - "<gray>Bắt đầu: <white>đang chờ..."
+      racing:
+        title: "<gold>Đang đua"
+        lines:
+          - "<gray>Đường: <white>%track%"
+          - "<gray>Thời gian: <white>%timer%"
+          - "<gray>Vòng: <white>%lap_current%/%lap_total%"
+          - "<gray>Vị trí: <white>%position%/%joined%"
+          - "<gray>Tiến độ: <white>%progress%%"
+      completed:
+        title: "<gold>Kết quả"
+        header:
+          - "<yellow>Về đích"
+        finished_line: "<white>%finish_pos%) %racer_name%"
+        finished_time_line: "<gray>  thời gian: <white>%finish_time%"
+        unfinished_header: "<yellow>Đang đua"
+        unfinished_line: "<white>%position%) %racer_name%"
+        unfinished_progress_line: "<gray>  tiến độ: <white>%progress%%"
+        max_finished_lines: 8
+        max_unfinished_lines: 6
 
   # Registration announce message template
   # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command

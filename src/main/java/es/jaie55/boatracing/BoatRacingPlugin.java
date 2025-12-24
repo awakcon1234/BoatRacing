@@ -74,10 +74,10 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.adminRaceGUI = new es.jaie55.boatracing.ui.AdminRaceGUI(this);
     this.profileManager = new es.jaie55.boatracing.profile.PlayerProfileManager(getDataFolder());
     this.profileGUI = new es.jaie55.boatracing.ui.ProfileGUI(this);
-    this.scoreboardService = new es.jaie55.boatracing.ui.ScoreboardService(this);
     this.trackConfig = new TrackConfig(getDataFolder());
     this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
     this.raceManager = new RaceManager(this, trackConfig);
+    this.scoreboardService = new es.jaie55.boatracing.ui.ScoreboardService(this);
     this.setupWizard = new SetupWizard(this);
     this.tracksGUI = new es.jaie55.boatracing.ui.AdminTracksGUI(this, trackLibrary);
     // Team GUI removed
@@ -85,7 +85,14 @@ public class BoatRacingPlugin extends JavaPlugin {
     Bukkit.getPluginManager().registerEvents(tracksGUI, this);
     Bukkit.getPluginManager().registerEvents(adminRaceGUI, this);
     Bukkit.getPluginManager().registerEvents(profileGUI, this);
-    try { scoreboardService.start(); } catch (Throwable ignored) {}
+    try {
+        if (scoreboardService != null) {
+            scoreboardService.start();
+            boolean sbDebug = getConfig().getBoolean("scoreboard.debug", false);
+            scoreboardService.setDebug(sbDebug);
+            if (sbDebug) getLogger().info("[SB] Debug enabled via config");
+        }
+    } catch (Throwable ignored) {}
     
     es.jaie55.boatracing.track.SelectionManager.init(this);
     Bukkit.getPluginManager().registerEvents(new es.jaie55.boatracing.track.WandListener(this), this);
@@ -175,7 +182,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             if (args[0].equalsIgnoreCase("scoreboard") || args[0].equalsIgnoreCase("sb")) {
                 if (!p.hasPermission("boatracing.admin")) { Text.msg(p, "&cBạn không có quyền thực hiện điều đó."); return true; }
                 if (args.length < 2) {
-                    Text.msg(p, "&eDùng: /"+label+" scoreboard <on|off|tick>");
+                    Text.msg(p, "&eDùng: /"+label+" scoreboard <on|off|tick|debug on|debug off>");
                     return true;
                 }
                 String sub = args[1].toLowerCase();
@@ -190,6 +197,12 @@ public class BoatRacingPlugin extends JavaPlugin {
                         Text.msg(p, "&aScoreboard tắt.");
                     }
                     case "tick" -> { try { es.jaie55.boatracing.ui.ScoreboardService svc = scoreboardService; if (svc != null) svc.forceTick(); Text.msg(p, "&aĐã cập nhật."); } catch (Throwable ignored) {} }
+                    case "debug" -> {
+                        if (args.length < 3) { Text.msg(p, "&eDùng: /"+label+" scoreboard debug <on|off>"); return true; }
+                        boolean enable = args[2].equalsIgnoreCase("on");
+                        try { scoreboardService.setDebug(enable); } catch (Throwable ignored) {}
+                        Text.msg(p, enable ? "&aBật debug scoreboard." : "&aTắt debug scoreboard.");
+                    }
                     default -> Text.msg(p, "&eDùng: /"+label+" scoreboard <on|off|tick>");
                 }
                 return true;

@@ -8,7 +8,7 @@ website: https://modrinth.com/plugin/boatracing
 commands:
   boatracing:
     description: Lệnh gốc của BoatRacing
-    usage: /<command> profile|race|setup|admin|reload|version
+    usage: /<command> profile|race|setup|admin|reload|version|scoreboard
     aliases: [br, race]
     permission: boatracing.use
 permissions:
