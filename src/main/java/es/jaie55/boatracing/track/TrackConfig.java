@@ -16,6 +16,8 @@ public class TrackConfig {
     private final List<Block> lights = new ArrayList<>();
     private final List<Region> checkpoints = new ArrayList<>();
     private Region finish;
+    // Optional overall track bounding box (set via setup pos1/pos2 + setbounds)
+    private Region bounds;
     private Region pitlane;
     private final Map<java.util.UUID, Region> teamPits = new HashMap<>();
     private final Map<java.util.UUID, Integer> customStartSlots = new HashMap<>();
@@ -53,7 +55,7 @@ public class TrackConfig {
         this.starts.clear();
         this.lights.clear();
         this.checkpoints.clear();
-        this.finish = null; this.pitlane = null; this.teamPits.clear(); this.customStartSlots.clear();
+        this.finish = null; this.bounds = null; this.pitlane = null; this.teamPits.clear(); this.customStartSlots.clear();
         this.centerline.clear();
         // starts
         List<?> s = cfg.getList("starts");
@@ -105,6 +107,10 @@ public class TrackConfig {
         Object fobj = cfg.get("finish");
         Region fin = regionFromObject(fobj);
         if (fin != null) this.finish = fin;
+        // optional bounds region
+        Object bobj = cfg.get("bounds");
+        Region b = regionFromObject(bobj);
+        if (b != null) this.bounds = b;
         // pitlane region
         Object pobj = cfg.get("pit");
         Region pit = regionFromObject(pobj);
@@ -174,6 +180,7 @@ public class TrackConfig {
             cfg.set("lights", ls);
             // regions
             if (this.finish != null) cfg.set("finish", regionToMap(this.finish));
+            if (this.bounds != null) cfg.set("bounds", regionToMap(this.bounds));
             if (this.pitlane != null) cfg.set("pit", regionToMap(this.pitlane));
             if (!this.checkpoints.isEmpty()) {
                 List<Map<String,Object>> cps = new ArrayList<>();
@@ -239,6 +246,9 @@ public class TrackConfig {
     // Finish / pit
     public void setFinish(Region r) { this.finish = r; }
     public Region getFinish() { return finish; }
+    // Bounds
+    public void setBounds(Region r) { this.bounds = r; }
+    public Region getBounds() { return bounds; }
     public void setPitlane(Region r) { this.pitlane = r; }
     public Region getPitlane() { return pitlane; }
 

@@ -47,6 +47,7 @@ public class AdminTracksGUI implements Listener {
         NEW_TRACK,
         SAVE,
         SAVE_AS,
+        SET_BOUNDS,
         ADD_START,
         CLEAR_STARTS,
         SET_FINISH,
@@ -100,18 +101,20 @@ public class AdminTracksGUI implements Listener {
                 List.of("&7Thêm vị trí hiện tại làm vị trí bắt đầu"), true));
         inv.setItem(19, buttonWithLore(Material.BARRIER, Text.item("&cXóa Start"), Action.CLEAR_STARTS,
                 List.of("&7Xóa tất cả vị trí bắt đầu"), true));
-        inv.setItem(20, buttonWithLore(Material.WHITE_BANNER, Text.item("&6Đặt Đích"), Action.SET_FINISH,
+        inv.setItem(20, buttonWithLore(Material.BEACON, Text.item("&bĐặt Vùng bao"), Action.SET_BOUNDS,
+            List.of("&7Dùng selection để đặt vùng bao (bounds)"), true));
+        inv.setItem(21, buttonWithLore(Material.WHITE_BANNER, Text.item("&6Đặt Đích"), Action.SET_FINISH,
                 List.of("&7Dùng selection để đặt vùng đích"), true));
         // Pit mechanic disabled: hide pit button
-        inv.setItem(22, buttonWithLore(Material.LODESTONE, Text.item("&aThêm Checkpoint"), Action.ADD_CHECKPOINT,
+        inv.setItem(23, buttonWithLore(Material.LODESTONE, Text.item("&aThêm Checkpoint"), Action.ADD_CHECKPOINT,
                 List.of("&7Dùng selection để thêm checkpoint"), true));
-        inv.setItem(23, buttonWithLore(Material.REDSTONE_LAMP, Text.item("&6Thêm Đèn"), Action.ADD_LIGHT,
+        inv.setItem(24, buttonWithLore(Material.REDSTONE_LAMP, Text.item("&6Thêm Đèn"), Action.ADD_LIGHT,
                 List.of("&7Nhìn vào Đèn Redstone và bấm"), true));
-        inv.setItem(24, buttonWithLore(Material.LAVA_BUCKET, Text.item("&cXóa Checkpoint"), Action.CLEAR_CHECKPOINTS,
+        inv.setItem(25, buttonWithLore(Material.LAVA_BUCKET, Text.item("&cXóa Checkpoint"), Action.CLEAR_CHECKPOINTS,
                 List.of("&7Xóa tất cả checkpoint"), true));
-        inv.setItem(25, buttonWithLore(Material.FLINT_AND_STEEL, Text.item("&cXóa Đèn"), Action.CLEAR_LIGHTS,
+        inv.setItem(26, buttonWithLore(Material.FLINT_AND_STEEL, Text.item("&cXóa Đèn"), Action.CLEAR_LIGHTS,
                 List.of("&7Xóa tất cả đèn xuất phát"), true));
-        inv.setItem(26, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
+        inv.setItem(22, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
             List.of("&7Tạo đường giữa bằng A* trên băng."), true));
 
         // Close
@@ -130,6 +133,7 @@ public class AdminTracksGUI implements Listener {
         int lights = cfg.getLights().size();
         int cps = cfg.getCheckpoints().size();
         boolean hasFinish = cfg.getFinish() != null;
+        boolean hasBounds = cfg.getBounds() != null;
         boolean hasPit = cfg.getPitlane() != null; // mechanic disabled, still displayed for info
         int pathNodes = cfg.getCenterline().size();
         ItemStack it = new ItemStack(Material.PAPER);
@@ -140,6 +144,7 @@ public class AdminTracksGUI implements Listener {
             lore.add("&7Starts: &f" + starts);
             lore.add("&7Đèn: &f" + lights + "/5");
             lore.add("&7Đích: &f" + (hasFinish?"có":"không"));
+            lore.add("&7Vùng bao: &f" + (hasBounds?"có":"không"));
             // pit removed from gameplay; optional to display
             lore.add("&7Checkpoints: &f" + cps);
             lore.add("&7Đường giữa: &f" + pathNodes + " nút");
@@ -285,6 +290,7 @@ public class AdminTracksGUI implements Listener {
             case NEW_TRACK -> promptNewTrack(p);
             case SAVE -> doSave(p);
             case SAVE_AS -> promptSaveAs(p);
+            case SET_BOUNDS -> doSetBounds(p);
             case ADD_START -> doAddStart(p);
             case CLEAR_STARTS -> { plugin.getTrackConfig().clearStarts(); Text.msg(p, "&aĐã xóa tất cả start."); open(p);} 
             case SET_FINISH -> doSetFinish(p);
@@ -339,6 +345,20 @@ public class AdminTracksGUI implements Listener {
         Region r = new Region(sel.worldName, sel.box);
         plugin.getTrackConfig().setFinish(r);
         Text.msg(p, "&aĐã đặt vùng đích.");
+        p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f);
+        open(p);
+    }
+
+    private void doSetBounds(Player p) {
+        SelectionUtils.SelectionDetails sel = SelectionUtils.getSelectionDetailed(p);
+        if (sel == null) {
+            Text.msg(p, "&cKhông có selection hợp lệ. Dùng wand để chọn 2 góc.");
+            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+            return;
+        }
+        Region r = new Region(sel.worldName, sel.box);
+        plugin.getTrackConfig().setBounds(r);
+        Text.msg(p, "&aĐã đặt vùng bao (bounds) cho đường đua.");
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f);
         open(p);
     }

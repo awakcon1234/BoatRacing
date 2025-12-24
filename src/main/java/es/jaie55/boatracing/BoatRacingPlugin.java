@@ -435,6 +435,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                     Text.tell(p, "&7 - &f/" + label + " setup clearstarts &7(Xóa tất cả vị trí bắt đầu)");
                     Text.tell(p, "&7 - &f/" + label + " setup pos1 &7(Đặt góc A = vị trí hiện tại)");
                     Text.tell(p, "&7 - &f/" + label + " setup pos2 &7(Đặt góc B = vị trí hiện tại)");
+                    Text.tell(p, "&7 - &f/" + label + " setup setbounds &7(Đặt vùng bao đường đua từ selection hiện tại)");
                     Text.tell(p, "&7 - &f/" + label + " setup setfinish &7(Sử dụng selection của bạn để đặt vùng vạch đích)");
                     // pit mechanic removed
                     Text.tell(p, "&7 - &f/" + label + " setup addcheckpoint &7(Thêm checkpoint từ selection; có thể thêm nhiều. Thứ tự quan trọng)");
@@ -463,6 +464,20 @@ public class BoatRacingPlugin extends JavaPlugin {
                         es.jaie55.boatracing.track.SelectionManager.setCornerB(p, p.getLocation());
                         Text.msg(p, "&aĐã đặt &fGóc B &a= &f" + p.getWorld().getName() + " &7(" + p.getLocation().getBlockX() + ", " + p.getLocation().getBlockY() + ", " + p.getLocation().getBlockZ() + ")");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.3f);
+                        return true;
+                    }
+                    case "setbounds" -> {
+                        es.jaie55.boatracing.track.SelectionUtils.SelectionDetails sel = es.jaie55.boatracing.track.SelectionUtils.getSelectionDetailed(p);
+                        if (sel == null) {
+                            Text.msg(p, "&cKhông có selection hợp lệ. Dùng &f/" + label + " setup pos1 &7và &f" + label + " setup pos2 &7hoặc dùng wand.");
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        es.jaie55.boatracing.track.Region r = new es.jaie55.boatracing.track.Region(sel.worldName, sel.box);
+                        trackConfig.setBounds(r);
+                        Text.msg(p, "&aĐã đặt vùng bao cho đường đua.");
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
+                        if (setupWizard != null) setupWizard.afterAction(p);
                         return true;
                     }
                     case "wand" -> {
@@ -729,7 +744,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","pos1","pos2","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
+                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","pos1","pos2","setbounds","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
                 if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
                     // Suggest player names (online + known offline)
                     String prefName = args[2] == null ? "" : args[2].toLowerCase();
