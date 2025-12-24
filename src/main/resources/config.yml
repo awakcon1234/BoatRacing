@@ -6,6 +6,11 @@ player-actions:
 racing:
   laps: 3
   registration-seconds: 30
+
+  # Debug toggles (logs to console). Keep these off unless troubleshooting.
+  debug:
+    teleport: false
+    checkpoints: false
   # Time penalty applied if a racer moves forward before the countdown ends (in seconds)
   false-start-penalty-seconds: 3.0
   # Enable/disable false start penalty during the light countdown
@@ -17,6 +22,9 @@ racing:
 
   # Scoreboard & ActionBar customization
   ui:
+    # How often to update scoreboard + actionbar (in server ticks). Lower = faster but more CPU.
+    # Recommended: 5 (0.25s) or 10 (0.5s)
+    update-ticks: 5
     # Customizable scoreboard templates (MiniMessage + %PlaceholderAPI% + %plugin_placeholders%)
     # Available plugin placeholders vary by context, typical ones:
     #   {player_name} {color} {icon} {number} {wins} {completed}

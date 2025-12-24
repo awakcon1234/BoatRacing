@@ -13,6 +13,7 @@ import net.megavex.scoreboardlibrary.api.ScoreboardLibrary;
 import net.megavex.scoreboardlibrary.api.sidebar.Sidebar;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 public class ScoreboardService {
@@ -27,6 +28,7 @@ public class ScoreboardService {
     private volatile boolean debug = false;
     // Per-player last locations used to compute speed
     private final java.util.Map<java.util.UUID, org.bukkit.Location> lastLocations = new java.util.HashMap<>();
+    private final java.util.Map<java.util.UUID, Long> lastLocationTimes = new java.util.HashMap<>();
     // Store last computed blocks-per-second (bps). Derive km/h or bph when needed.
     private final java.util.Map<java.util.UUID, Double> lastBps = new java.util.HashMap<>();
 
@@ -45,7 +47,12 @@ public class ScoreboardService {
             plugin.getLogger().warning("ScoreboardLibrary not available: " + t.getMessage());
             lib = null;
         }
-        taskId = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 0L, 20L).getTaskId();
+        int period = cfgIntAny(
+            java.util.List.of("racing.ui.update-ticks", "scoreboard.update-ticks"),
+            5
+        );
+        period = Math.max(1, period);
+        taskId = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 0L, period).getTaskId();
         log("ScoreboardService started. taskId=" + taskId);
         // Always print a one-time info so admins know how to enable debug
         plugin.getLogger().info("[SB] ScoreboardService started (libLoaded=" + (lib != null) + "). Toggle debug: /boatracing sb debug on");
@@ -75,31 +82,57 @@ public class ScoreboardService {
 
     private void tick() {
         if (rm == null) { log("tick: rm=null, waiting for initialization"); return; }
-        log("tick: online=" + Bukkit.getOnlinePlayers().size() + ", running=" + rm.isRunning() + ", registering=" + rm.isRegistering() + ", libLoaded=" + (lib != null));
+        boolean running = rm.isRunning();
+        boolean registering = rm.isRegistering();
+        long nowMs = System.currentTimeMillis();
+        log("tick: online=" + Bukkit.getOnlinePlayers().size() + ", running=" + running + ", registering=" + registering + ", libLoaded=" + (lib != null));
+
+        TickContext ctx = new TickContext();
+        ctx.running = running;
+        ctx.registering = registering;
+        if (running) {
+            ctx.liveOrder = rm.getLiveOrder();
+            ctx.positionById = new java.util.HashMap<>();
+            for (int i = 0; i < ctx.liveOrder.size(); i++) ctx.positionById.put(ctx.liveOrder.get(i), i + 1);
+        } else {
+            ctx.liveOrder = java.util.List.of();
+            ctx.positionById = java.util.Map.of();
+        }
+        if (!running && !registering) {
+            ctx.standings = rm.getStandings();
+            ctx.anyFinished = ctx.standings.stream().anyMatch(s -> s.finished);
+        } else {
+            ctx.standings = java.util.List.of();
+            ctx.anyFinished = false;
+        }
+
         for (Player p : Bukkit.getOnlinePlayers()) {
             try {
-                // compute speed (blocks per second) based on movement since last tick (~1s)
+                // compute speed (blocks per second) based on movement since last tick (variable rate)
                 org.bukkit.Location now = p.getLocation();
                 org.bukkit.Location prev = lastLocations.get(p.getUniqueId());
-                if (prev != null && prev.getWorld() != null && now.getWorld() != null && prev.getWorld().equals(now.getWorld())) {
-                    double dist = now.distance(prev); // blocks
-                    double bps = dist; // since tick ~1s
-                    lastBps.put(p.getUniqueId(), bps);
-                } else {
-                    lastBps.put(p.getUniqueId(), 0.0);
+                Long prevT = lastLocationTimes.get(p.getUniqueId());
+                double bps = 0.0;
+                if (prev != null && prevT != null && prev.getWorld() != null && now.getWorld() != null && prev.getWorld().equals(now.getWorld())) {
+                    long dtMs = Math.max(0L, nowMs - prevT);
+                    if (dtMs > 0L) {
+                        double dist = now.distance(prev); // blocks
+                        bps = dist / (dtMs / 1000.0);
+                    }
                 }
+                lastBps.put(p.getUniqueId(), bps);
                 lastLocations.put(p.getUniqueId(), now);
+                lastLocationTimes.put(p.getUniqueId(), nowMs);
 
-                updateFor(p);
+                updateFor(p, ctx);
             } catch (Throwable ignored) {}
         }
     }
 
-    private void updateFor(Player p) {
-        if (rm.isRunning()) { setState(p, "RACING"); applyRacingBoard(p); applyActionBarForRacing(p); return; }
-        if (rm.isRegistering()) { setState(p, "WAITING"); applyWaitingBoard(p); applyActionBarForWaiting(p); return; }
-        boolean anyFinished = rm.getStandings().stream().anyMatch(s -> s.finished);
-        if (anyFinished) { setState(p, "COMPLETED"); applyCompletedBoard(p); clearActionBar(p); return; }
+    private void updateFor(Player p, TickContext ctx) {
+        if (ctx.running) { setState(p, "RACING"); applyRacingBoard(p, ctx); applyActionBarForRacing(p, ctx); return; }
+        if (ctx.registering) { setState(p, "WAITING"); applyWaitingBoard(p); applyActionBarForWaiting(p); return; }
+        if (ctx.anyFinished) { setState(p, "COMPLETED"); applyCompletedBoard(p, ctx); clearActionBar(p); return; }
         setState(p, "LOBBY");
         applyLobbyBoard(p); clearActionBar(p);
     }
@@ -153,7 +186,7 @@ public class ScoreboardService {
         applySidebarComponents(p, sb, title, lines);
     }
 
-    private void applyRacingBoard(Player p) {
+    private void applyRacingBoard(Player p, TickContext ctx) {
         Sidebar sb = ensureSidebar(p);
         Component title = parse(p, cfgString("scoreboard.templates.racing.title", "<gold>Đang đua"), java.util.Map.of());
         String track = plugin.getTrackLibrary().getCurrent() != null ? plugin.getTrackLibrary().getCurrent() : "(unsaved)";
@@ -164,11 +197,12 @@ public class ScoreboardService {
         var st = rm.getParticipantState(p.getUniqueId());
         java.util.List<Component> lines;
         if (st != null) {
-            java.util.List<java.util.UUID> order = rm.getLiveOrder();
-            int pos = Math.max(1, order.indexOf(p.getUniqueId()) + 1);
-            int percent = (int) Math.round(rm.getLapProgressRatio(p.getUniqueId()) * 100.0);
+            int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
+            double progressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
             ph.put("lap_current", String.valueOf(st.currentLap+1)); ph.put("lap_total", String.valueOf(laps));
-            ph.put("position", String.valueOf(pos)); ph.put("joined", String.valueOf(order.size())); ph.put("progress", String.valueOf(percent));
+            ph.put("position", String.valueOf(pos)); ph.put("joined", String.valueOf(ctx.liveOrder.size()));
+            ph.put("progress", fmt2(progressPct));
+            ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
             int totalCp = plugin.getTrackConfig().getCheckpoints().size();
             int passedCp = (st.nextCheckpointIndex);
             ph.put("checkpoint_passed", String.valueOf(passedCp));
@@ -189,10 +223,10 @@ public class ScoreboardService {
         applySidebarComponents(p, sb, title, lines);
     }
 
-    private void applyCompletedBoard(Player p) {
+    private void applyCompletedBoard(Player p, TickContext ctx) {
         Sidebar sb = ensureSidebar(p);
         Component title = parse(p, cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"), java.util.Map.of());
-        java.util.List<RaceManager.ParticipantState> standings = rm.getStandings();
+        java.util.List<RaceManager.ParticipantState> standings = ctx.standings;
         java.util.List<Component> lines = new java.util.ArrayList<>();
         // Header
         for (String line : cfgStringList("scoreboard.templates.completed.header", java.util.List.of("<yellow>Về đích"))) {
@@ -217,14 +251,17 @@ public class ScoreboardService {
         List<UUID> order = rm.getLiveOrder();
         int limit = cfgInt("scoreboard.templates.completed.max_unfinished_lines", 6);
         int count = 0;
+        int posCounter = 0;
         for (UUID id : order) {
             RaceManager.ParticipantState s = rm.getParticipantState(id);
             if (s == null || s.finished) continue;
-            int pos = order.indexOf(id) + 1;
+            posCounter++;
+            int pos = posCounter;
             String name = nameOf(id);
-            int percent = (int) Math.round(rm.getLapProgressRatio(id) * 100.0);
+            double progressPct = rm.getLapProgressRatio(id) * 100.0;
             java.util.Map<String,String> ph = new java.util.HashMap<>();
-            ph.put("racer_name", name); ph.put("position", String.valueOf(pos)); ph.put("progress", String.valueOf(percent));
+            ph.put("racer_name", name); ph.put("position", String.valueOf(pos)); ph.put("progress", fmt2(progressPct));
+            ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
             lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_line", "<white>%position%) %racer_name%"), ph));
             lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_progress_line", "<gray>  tiến độ: <white>%progress%%"), ph));
             count += 2;
@@ -267,18 +304,17 @@ public class ScoreboardService {
         log("Applied waiting actionbar to " + p.getName() + " tpl='" + tpl + "'");
     }
 
-    private void applyActionBarForRacing(Player p) {
+    private void applyActionBarForRacing(Player p, TickContext ctx) {
         if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
         // Default template uses the dynamic %speed_color% placeholder as a MiniMessage tag name
         // so that servers can get auto-colored speed without touching config
         String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>");
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         var st = rm.getParticipantState(p.getUniqueId());
-        java.util.List<java.util.UUID> order = rm.getLiveOrder();
-        int pos = Math.max(1, order.indexOf(p.getUniqueId()) + 1);
+        int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
         int lapCurrent = st == null ? 0 : (st.currentLap + 1);
         int lapTotal = rm.getTotalLaps();
-        int percent = (int) Math.round(rm.getLapProgressRatio(p.getUniqueId()) * 100.0);
+        double progressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
         int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
         int totalCp = plugin.getTrackConfig().getCheckpoints().size();
         int passedCp = (st == null ? 0 : st.nextCheckpointIndex);
@@ -290,24 +326,51 @@ public class ScoreboardService {
         String unit = (unitPref != null && !unitPref.isEmpty()) ? unitPref.toLowerCase() : cfgString("scoreboard.speed.unit", "kmh").toLowerCase();
         String speedVal;
         String speedUnit;
-        if ("bps".equals(unit)) { speedVal = String.valueOf(Math.round(bps)); speedUnit = "bps"; }
-        else if ("bph".equals(unit)) { speedVal = String.valueOf(Math.round(bph)); speedUnit = "bph"; }
-        else { speedVal = String.valueOf(Math.round(kmh)); speedUnit = "km/h"; unit = "kmh"; }
+        if ("bps".equals(unit)) { speedVal = fmt2(bps); speedUnit = "bps"; }
+        else if ("bph".equals(unit)) { speedVal = fmt2(bph); speedUnit = "bph"; }
+        else { speedVal = fmt2(kmh); speedUnit = "km/h"; unit = "kmh"; }
         String speedColor = resolveSpeedColorByUnit(bps, unit);
         ph.put("position", String.valueOf(pos)); ph.put("racer_name", p.getName()); ph.put("lap_current", String.valueOf(lapCurrent)); ph.put("lap_total", String.valueOf(lapTotal));
-        ph.put("progress", String.valueOf(percent)); ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp));
+        ph.put("progress", fmt2(progressPct));
+        ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
+        ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp));
         ph.put("checkpoint_passed", String.valueOf(passedCp));
         // Speed placeholders (configurable unit + back-compat)
         ph.put("speed", speedVal);
         ph.put("speed_unit", speedUnit);
-        ph.put("speed_bps", String.valueOf(Math.round(bps)));
-        ph.put("speed_kmh", String.valueOf(Math.round(kmh)));
-        ph.put("speed_bph", String.valueOf(Math.round(bph)));
+        ph.put("speed_bps", fmt2(bps));
+        ph.put("speed_kmh", fmt2(kmh));
+        ph.put("speed_bph", fmt2(bph));
         // color placeholder
         ph.put("speed_color", speedColor);
         Component c = parse(p, tpl, ph);
         sendActionBar(p, c);
-        log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed(bps)=" + Math.round(bps) + " unit=" + unit);
+        log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed(bps)=" + fmt2(bps) + " unit=" + unit);
+    }
+
+    private static String fmt2(double v) {
+        if (!Double.isFinite(v)) return "0.00";
+        return String.format(Locale.US, "%.2f", v);
+    }
+
+    private int cfgIntAny(java.util.List<String> paths, int def) {
+        if (paths != null) {
+            for (String p : paths) {
+                try {
+                    if (p != null && plugin.getConfig().contains(p)) return plugin.getConfig().getInt(p, def);
+                } catch (Throwable ignored) {}
+            }
+        }
+        return def;
+    }
+
+    private static class TickContext {
+        boolean running;
+        boolean registering;
+        boolean anyFinished;
+        java.util.List<java.util.UUID> liveOrder = java.util.List.of();
+        java.util.Map<java.util.UUID, Integer> positionById = java.util.Map.of();
+        java.util.List<RaceManager.ParticipantState> standings = java.util.List.of();
     }
 
     private String resolveSpeedColorByUnit(double bps, String unit) {

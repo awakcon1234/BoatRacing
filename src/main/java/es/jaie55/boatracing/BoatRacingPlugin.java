@@ -98,11 +98,70 @@ public class BoatRacingPlugin extends JavaPlugin {
     Bukkit.getPluginManager().registerEvents(new es.jaie55.boatracing.track.WandListener(this), this);
     // Movement listener for race tracking
         Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            private final java.util.Map<java.util.UUID, Long> lastCpDbg = new java.util.HashMap<>();
+
             @org.bukkit.event.EventHandler
             public void onMove(org.bukkit.event.player.PlayerMoveEvent e) {
                 if (raceManager == null || !raceManager.isRunning()) return;
                 if (e.getTo() == null) return;
-                raceManager.tickPlayer(e.getPlayer(), e.getTo());
+                raceManager.tickPlayer(e.getPlayer(), e.getFrom(), e.getTo());
+            }
+
+            @org.bukkit.event.EventHandler(ignoreCancelled = true)
+            public void onVehicleMove(org.bukkit.event.vehicle.VehicleMoveEvent e) {
+                if (raceManager == null) return;
+                if (!(e.getVehicle() instanceof org.bukkit.entity.Boat boat)) return;
+                org.bukkit.Location to = e.getTo();
+                org.bukkit.Location from = e.getFrom();
+                if (to == null || from == null) return;
+
+                boolean cpDbg = false;
+                try { cpDbg = getConfig().getBoolean("racing.debug.checkpoints", false); } catch (Throwable ignored) {}
+
+                // Tick checkpoints using the vehicle position (players in boats may not fire PlayerMoveEvent reliably)
+                if (raceManager.isRunning()) {
+                    for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
+                        if (passenger instanceof org.bukkit.entity.Player p) {
+                            if (cpDbg) {
+                                long now = System.currentTimeMillis();
+                                Long prev = lastCpDbg.get(p.getUniqueId());
+                                if (prev == null || (now - prev) >= 1000L) {
+                                    lastCpDbg.put(p.getUniqueId(), now);
+                                    getLogger().info("[CPDBG] VehicleMoveEvent tick for " + p.getName()
+                                            + " to=" + es.jaie55.boatracing.util.Text.fmtPos(to)
+                                            + " checkpoints=" + trackConfig.getCheckpoints().size()
+                                            + " expectedNext=" + (raceManager.getParticipantState(p.getUniqueId()) == null ? "?" : (raceManager.getParticipantState(p.getUniqueId()).nextCheckpointIndex + 1))
+                                    );
+                                }
+                            }
+                            raceManager.tickPlayer(p, from, to);
+                        }
+                    }
+                    return;
+                }
+
+                // Freeze boats during the start countdown so racers can't move before GO
+                boolean hasCountdownRacer = false;
+                for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
+                    if (passenger instanceof org.bukkit.entity.Player p) {
+                        if (raceManager.isCountdownActiveFor(p.getUniqueId())) {
+                            hasCountdownRacer = true;
+                            break;
+                        }
+                    }
+                }
+                if (!hasCountdownRacer) return;
+
+                if (from.getWorld() != null && to.getWorld() != null && from.getWorld().equals(to.getWorld())) {
+                    double dx = to.getX() - from.getX();
+                    double dz = to.getZ() - from.getZ();
+                    if ((dx * dx + dz * dz) < 0.0001) return;
+                }
+
+                try {
+                    boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                    boat.teleport(from);
+                } catch (Throwable ignored) {}
             }
         }, this);
 

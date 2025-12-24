@@ -189,24 +189,13 @@ public class TrackConfig {
         this.currentName = name;
         // waiting spawn
         Object wsp = cfg.get("waitingSpawn");
-        if (wsp instanceof java.util.Map) {
-            java.util.Map m = (java.util.Map) wsp;
-            try {
-                String w = (String)m.get("world");
-                if (w == null || w.isBlank()) w = this.worldName;
-                double x = asNumber(m.get("x")).doubleValue();
-                double y = asNumber(m.get("y")).doubleValue();
-                double z = asNumber(m.get("z")).doubleValue();
-                float yaw = m.get("yaw") == null ? 0f : ((Number)m.get("yaw")).floatValue();
-                float pitch = m.get("pitch") == null ? 0f : ((Number)m.get("pitch")).floatValue();
-                org.bukkit.World ww = org.bukkit.Bukkit.getWorld(w);
-                if (ww != null) this.waitingSpawn = new org.bukkit.Location(ww, x, y, z, yaw, pitch);
-                else {
-                    // Keep coordinates so we can still apply worldName later via withTrackWorld().
-                    this.waitingSpawn = new org.bukkit.Location(null, x, y, z, yaw, pitch);
-                    logger.warning("TrackConfig: waitingSpawn world not loaded: " + w + " (track=" + name + ")");
-                }
-            } catch (Throwable ignored) {}
+        if (wsp == null) wsp = cfg.get("waiting_spawn");
+        if (wsp == null) wsp = cfg.get("waiting-spawn");
+        org.bukkit.Location wsLoc = locationFromObject(wsp);
+        if (wsLoc != null) this.waitingSpawn = wsLoc;
+        else if (wsp != null) {
+            String type = wsp.getClass().getName();
+            logger.warning("TrackConfig: waitingSpawn present but failed to parse (type=" + type + ", track=" + name + ", world=" + this.worldName + ")");
         }
         return true;
     }
@@ -260,8 +249,10 @@ public class TrackConfig {
                 }
                 cfg.set("centerline", cl);
             }
-            if (this.waitingSpawn != null && this.waitingSpawn.getWorld() != null) {
+            if (this.waitingSpawn != null) {
                 java.util.Map<String,Object> ws = new java.util.LinkedHashMap<>();
+                String wName = (this.waitingSpawn.getWorld() != null ? this.waitingSpawn.getWorld().getName() : this.worldName);
+                if (wName != null) ws.put("world", wName);
                 ws.put("x", this.waitingSpawn.getX());
                 ws.put("y", this.waitingSpawn.getY());
                 ws.put("z", this.waitingSpawn.getZ());
@@ -418,12 +409,47 @@ public class TrackConfig {
             Number maxY = asNumber(m.get("maxY"));
             Number maxZ = asNumber(m.get("maxZ"));
             if (w == null || minX == null || minY == null || minZ == null || maxX == null || maxY == null || maxZ == null) return null;
-            org.bukkit.util.BoundingBox box = new org.bukkit.util.BoundingBox(
-                minX.doubleValue(), minY.doubleValue(), minZ.doubleValue(),
-                maxX.doubleValue(), maxY.doubleValue(), maxZ.doubleValue()
-            );
+            double nminX = Math.min(minX.doubleValue(), maxX.doubleValue());
+            double nmaxX = Math.max(minX.doubleValue(), maxX.doubleValue());
+            double nminY = Math.min(minY.doubleValue(), maxY.doubleValue());
+            double nmaxY = Math.max(minY.doubleValue(), maxY.doubleValue());
+            double nminZ = Math.min(minZ.doubleValue(), maxZ.doubleValue());
+            double nmaxZ = Math.max(minZ.doubleValue(), maxZ.doubleValue());
+            org.bukkit.util.BoundingBox box = new org.bukkit.util.BoundingBox(nminX, nminY, nminZ, nmaxX, nmaxY, nmaxZ);
             return new Region(w, box);
         } catch (Throwable ignored) { return null; }
+    }
+
+    @SuppressWarnings({"rawtypes"})
+    private org.bukkit.Location locationFromObject(Object obj) {
+        if (obj == null) return null;
+        java.util.Map m = null;
+        if (obj instanceof org.bukkit.configuration.ConfigurationSection cs) {
+            m = cs.getValues(false);
+        } else if (obj instanceof java.util.Map) {
+            m = (java.util.Map) obj;
+        }
+        if (m == null) return null;
+        try {
+            String w = (String) m.get("world");
+            if (w == null || w.isBlank()) w = this.worldName;
+            Number xN = asNumber(m.get("x"));
+            Number yN = asNumber(m.get("y"));
+            Number zN = asNumber(m.get("z"));
+            if (xN == null || yN == null || zN == null) return null;
+            double x = xN.doubleValue();
+            double y = yN.doubleValue();
+            double z = zN.doubleValue();
+            float yaw = m.get("yaw") == null ? 0f : ((Number) m.get("yaw")).floatValue();
+            float pitch = m.get("pitch") == null ? 0f : ((Number) m.get("pitch")).floatValue();
+            org.bukkit.World ww = (w != null ? org.bukkit.Bukkit.getWorld(w) : null);
+            if (ww != null) return new org.bukkit.Location(ww, x, y, z, yaw, pitch);
+            // Keep coordinates so we can still apply worldName later via withTrackWorld().
+            if (w != null) logger.warning("TrackConfig: waitingSpawn world not loaded: " + w + " (track=" + currentName + ")");
+            return new org.bukkit.Location(null, x, y, z, yaw, pitch);
+        } catch (Throwable ignored) {
+            return null;
+        }
     }
 
     private static Number asNumber(Object o) {

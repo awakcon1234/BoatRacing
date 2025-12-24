@@ -44,6 +44,19 @@ public class RaceManager {
     private int[] gateIndex = new int[0]; // indices along path for each checkpoint and finish
     private boolean pathReady = false;
 
+    // Debug helpers
+    private boolean debugTeleport() {
+        try { return plugin != null && plugin.getConfig().getBoolean("racing.debug.teleport", false); }
+        catch (Throwable ignored) { return false; }
+    }
+    private boolean debugCheckpoints() {
+        try { return plugin != null && plugin.getConfig().getBoolean("racing.debug.checkpoints", false); }
+        catch (Throwable ignored) { return false; }
+    }
+    private void dbg(String msg) {
+        try { if (plugin != null) plugin.getLogger().info(msg); } catch (Throwable ignored) {}
+    }
+
     public RaceManager(Plugin plugin, TrackConfig trackConfig) {
         this.plugin = plugin;
         this.trackConfig = trackConfig;
@@ -71,42 +84,116 @@ public class RaceManager {
         return countdownEndMillis > now && registered.contains(id);
     }
 
+    public boolean isCountdownActiveFor(UUID id) {
+        if (id == null) return false;
+        if (running) return false;
+        long now = System.currentTimeMillis();
+        return countdownEndMillis > now && registered.contains(id);
+    }
+
     /**
      * Called on player movement to detect checkpoint/pit/finish crossings
      */
     public void tickPlayer(Player player, Location to) {
+        tickPlayer(player, null, to);
+    }
+
+    /**
+     * Called on movement with both endpoints so we can do swept intersection checks.
+     */
+    public void tickPlayer(Player player, Location from, Location to) {
         if (!running) return;
+        if (to == null) return;
         ParticipantState s = participants.get(player.getUniqueId());
         if (s == null || s.finished) return;
+
+        Location segFrom = from;
+        if (segFrom == null) segFrom = s.lastTickLocation;
+        // If this is the first tick, just seed last location.
+        if (segFrom == null) {
+            s.lastTickLocation = to.clone();
+            return;
+        }
+        // World mismatch: reset seed.
+        if (segFrom.getWorld() == null || to.getWorld() == null || !segFrom.getWorld().equals(to.getWorld())) {
+            s.lastTickLocation = to.clone();
+            return;
+        }
 
         // Pit mechanic removed
 
         // Checkpoints
         java.util.List<Region> checkpoints = trackConfig.getCheckpoints();
+        int insideCp = -1;
         for (int i = 0; i < checkpoints.size(); i++) {
             Region r = checkpoints.get(i);
-            if (r != null && r.contains(to)) {
-                boolean advanced = checkpointReachedInternal(player.getUniqueId(), i);
-                if (advanced) {
-                    notifyCheckpointPassed(player, i + 1, checkpoints.size());
+            if (r != null && (r.containsXZ(to) || r.intersectsXZ(segFrom, to))) { insideCp = i; break; }
+        }
+        if (debugCheckpoints()) {
+            if (insideCp != s.lastInsideCheckpoint) {
+                s.lastInsideCheckpoint = insideCp;
+                if (insideCp >= 0) {
+                    dbg("[CPDBG] " + player.getName() + " entered checkpoint " + (insideCp + 1) + "/" + checkpoints.size()
+                            + " at " + es.jaie55.boatracing.util.Text.fmtPos(to)
+                            + " expectedNext=" + (s.nextCheckpointIndex + 1));
                 }
             }
         }
 
-        // Finish detection (also counts as lap completion if appropriate)
-        Region finish = trackConfig.getFinish();
-        if (finish != null && finish.contains(to)) {
-            // If track has checkpoints, finishing is managed by checkpoint flow; otherwise treat finish as lap completion
-            if (checkpoints.isEmpty()) {
-                // treat finish like completing a lap
-                handleLapCompletion(player.getUniqueId());
-            } else {
-                // if they have just completed all checkpoints, handle lap completion
-                ParticipantState ps = participants.get(player.getUniqueId());
-                if (ps != null && ps.nextCheckpointIndex == 0) {
-                    handleLapCompletion(player.getUniqueId());
+        if (debugCheckpoints() && insideCp < 0 && s.nextCheckpointIndex >= 0 && s.nextCheckpointIndex < checkpoints.size()) {
+            Region expected = checkpoints.get(s.nextCheckpointIndex);
+            if (expected != null) {
+                org.bukkit.util.BoundingBox b = expected.getBox();
+                org.bukkit.World w = to.getWorld();
+                if (b != null && w != null && expected.getWorldName() != null && expected.getWorldName().equals(w.getName())) {
+                    // Match Region.containsXZ(): treat as block-selection in X/Z with +1 upper bounds.
+                    double minX = Math.min(b.getMinX(), b.getMaxX());
+                    double maxX = Math.max(b.getMinX(), b.getMaxX()) + 1.0;
+                    double minZ = Math.min(b.getMinZ(), b.getMaxZ());
+                    double maxZ = Math.max(b.getMinZ(), b.getMaxZ()) + 1.0;
+
+                    double x = to.getX();
+                    double z = to.getZ();
+                    double cx = clamp(x, minX, maxX);
+                    double cz = clamp(z, minZ, maxZ);
+                    double dx = x - cx;
+                    double dz = z - cz;
+                    double dist = Math.sqrt(dx * dx + dz * dz);
+                    int bucket = (int) Math.floor(dist); // 0..n
+                    if (dist <= 4.0 && bucket != s.lastNearExpectedBucket) {
+                        s.lastNearExpectedBucket = bucket;
+                        dbg("[CPDBG] " + player.getName() + " near expected checkpoint " + (s.nextCheckpointIndex + 1)
+                                + " dist=" + String.format(java.util.Locale.US, "%.2f", dist)
+                                + " pos=" + es.jaie55.boatracing.util.Text.fmtPos(to)
+                                + " boxXZ=[" + minX + "," + minZ + "]..[" + (maxX - 1.0) + "," + (maxZ - 1.0) + "]");
+                    }
+                    if (dist > 6.0) s.lastNearExpectedBucket = -1;
                 }
             }
+        }
+        if (insideCp >= 0) {
+            boolean advanced = checkpointReachedInternal(player.getUniqueId(), insideCp);
+            if (advanced) {
+                notifyCheckpointPassed(player, insideCp + 1, checkpoints.size());
+            } else if (debugCheckpoints()) {
+                dbg("[CPDBG] " + player.getName() + " hit checkpoint " + (insideCp + 1) + " but NOT advanced (expected=" + (s.nextCheckpointIndex + 1) + ")");
+            }
+        }
+
+        // Finish detection
+        // IMPORTANT: For checkpoint-based tracks, lap completion is driven by checkpoint flow.
+        // Finish should only be used as lap completion when there are NO checkpoints.
+        Region finish = trackConfig.getFinish();
+        boolean inFinish = finish != null && (finish.containsXZ(to) || finish.intersectsXZ(segFrom, to));
+        boolean enteredFinish = inFinish && !s.wasInsideFinish;
+        s.wasInsideFinish = inFinish;
+
+        if (debugCheckpoints() && enteredFinish) {
+            dbg("[CPDBG] " + player.getName() + " entered finish at " + es.jaie55.boatracing.util.Text.fmtPos(to)
+                    + " nextCheckpointIndex=" + (s.nextCheckpointIndex + 1));
+        }
+        if (enteredFinish && checkpoints.isEmpty()) {
+            handleLapCompletion(player.getUniqueId());
         }
 
         // Update live path index for player (for live positions)
@@ -114,6 +201,9 @@ public class RaceManager {
             int seed = s.lastPathIndex;
             s.lastPathIndex = nearestPathIndex(to, seed, 40);
         }
+
+        // Update last location for next swept tick.
+        s.lastTickLocation = to.clone();
     }
 
     // test hook: allow tests to simulate checkpoints without needing Region instances
@@ -238,7 +328,21 @@ public class RaceManager {
         public int penaltySeconds = 0;
         public int lastPathIndex = 0; // nearest node index along centerline for live positions
 
+        // Last position seen (used for swept intersection checks).
+        public org.bukkit.Location lastTickLocation = null;
+
+        // Debug-only state (to avoid spam)
+        public int lastInsideCheckpoint = -1;
+        public int lastNearExpectedBucket = -1;
+
+        // Used to edge-trigger finish crossings (avoid repeated lap completions when inside the finish area)
+        public boolean wasInsideFinish = false;
+
         public ParticipantState(UUID id) { this.id = id; }
+    }
+
+    private static double clamp(double v, double min, double max) {
+        return Math.max(min, Math.min(max, v));
     }
 
     public int getTotalLaps() {
@@ -283,6 +387,12 @@ public class RaceManager {
         if (added) {
             // Prefer waiting spawn; else fall back to start center; else finish center
             org.bukkit.Location dest = trackConfig.getWaitingSpawn();
+            if (debugTeleport()) {
+                dbg("[TPDBG] join(" + p.getName() + ") track=" + trackConfig.getCurrentName()
+                        + " trackWorld=" + trackConfig.getWorldName()
+                        + " waitingSpawn=" + (dest == null ? "null" : es.jaie55.boatracing.util.Text.fmtPos(dest))
+                        + " destWorld=" + (dest == null || dest.getWorld() == null ? "null" : dest.getWorld().getName()));
+            }
             if (dest == null) dest = trackConfig.getStartCenter();
             if (dest == null && trackConfig.getFinish() != null) {
                 try { dest = centerOf(trackConfig.getFinish()); } catch (Throwable ignored) {}
@@ -290,6 +400,10 @@ public class RaceManager {
             boolean ok = false;
             if (dest != null && dest.getWorld() != null) {
                 try { ok = p.teleport(dest); } catch (Throwable ignored) { ok = false; }
+            }
+            if (debugTeleport()) {
+                dbg("[TPDBG] teleport primary ok=" + ok + " dest=" + (dest == null ? "null" : es.jaie55.boatracing.util.Text.fmtPos(dest))
+                        + " destWorld=" + (dest == null || dest.getWorld() == null ? "null" : dest.getWorld().getName()));
             }
             // fallback if teleport failed (rare but possible)
             if (!ok) {
@@ -299,6 +413,10 @@ public class RaceManager {
                 }
                 if (fb != null && fb.getWorld() != null) {
                     try { p.teleport(fb); } catch (Throwable ignored) {}
+                    if (debugTeleport()) {
+                        dbg("[TPDBG] teleport fallback -> " + es.jaie55.boatracing.util.Text.fmtPos(fb)
+                                + " world=" + (fb.getWorld() == null ? "null" : fb.getWorld().getName()));
+                    }
                 }
             }
         }
@@ -380,6 +498,15 @@ public class RaceManager {
                         participantPlayers.put(p.getUniqueId(), p);
                     }
                     initPathForLivePositions();
+
+					if (debugCheckpoints()) {
+						try {
+							dbg("[CPDBG] Race started. track=" + trackConfig.getCurrentName()
+									+ " checkpoints=" + trackConfig.getCheckpoints().size()
+									+ " finish=" + (trackConfig.getFinish() == null ? "null" : es.jaie55.boatracing.util.Text.fmtArea(trackConfig.getFinish())));
+						} catch (Throwable ignored) {}
+					}
+
                     for (Player p : placed) {
                         try {
                             var title = net.kyori.adventure.text.Component.text("GO!").color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
