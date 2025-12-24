@@ -32,6 +32,7 @@ public class RaceManager {
     // runtime participant state
     private final java.util.Map<UUID, ParticipantState> participants = new java.util.HashMap<>();
     private final java.util.Map<UUID, Player> participantPlayers = new java.util.HashMap<>();
+    private long raceStartMillis = 0L;
     // Centerline-based live position
     private java.util.List<org.bukkit.Location> path = java.util.Collections.emptyList();
     private int[] gateIndex = new int[0]; // indices along path for each checkpoint and finish
@@ -113,7 +114,7 @@ public class RaceManager {
         }
     }
 
-    ParticipantState getParticipantState(UUID uuid) { return participants.get(uuid); }
+    public ParticipantState getParticipantState(UUID uuid) { return participants.get(uuid); }
 
     // test helper: add a participant without needing a Player or a running race
     void addParticipantForTests(UUID uuid) {
@@ -243,6 +244,7 @@ public class RaceManager {
             if (counter[0] <= 0) {
                 // Start
                 running = true;
+                raceStartMillis = System.currentTimeMillis();
                 // initialize participant state from placed players
                 participants.clear();
                 participantPlayers.clear();
@@ -369,6 +371,20 @@ public class RaceManager {
         double intra = normalizedIndexClamped(s);
         return (double) s.currentLap + intra;
     }
+
+    public double getLapProgressRatio(UUID id) {
+        ParticipantState s = participants.get(id);
+        if (s == null) return 0.0;
+        return normalizedIndexClamped(s);
+    }
+
+    public long getRaceElapsedMillis() {
+        if (!running && raceStartMillis == 0L) return 0L;
+        long now = System.currentTimeMillis();
+        return Math.max(0L, now - raceStartMillis);
+    }
+
+    public long getRaceStartMillis() { return raceStartMillis; }
 
     public java.util.List<UUID> getLiveOrder() {
         java.util.List<UUID> ids = new java.util.ArrayList<>(participants.keySet());

@@ -17,6 +17,9 @@ public class PlayerProfileManager {
         public DyeColor color = DyeColor.WHITE;
         public int number = 0; // 0 means unset
         public String icon = ""; // unicode icon (optional)
+        public int completed = 0;
+        public int wins = 0;
+        public String boatType = ""; // Material name of the chosen boat/raft item
     }
 
     public PlayerProfileManager(File dataFolder) {
@@ -37,6 +40,14 @@ public class PlayerProfileManager {
     public String getIcon(UUID id) { return get(id).icon; }
     public void setIcon(UUID id, String icon) { get(id).icon = icon == null ? "" : icon; save(); }
 
+    public int getCompleted(UUID id) { return get(id).completed; }
+    public int getWins(UUID id) { return get(id).wins; }
+    public void incCompleted(UUID id) { get(id).completed++; save(); }
+    public void incWins(UUID id) { get(id).wins++; save(); }
+
+    public String getBoatType(UUID id) { return get(id).boatType; }
+    public void setBoatType(UUID id, String type) { get(id).boatType = type == null ? "" : type; save(); }
+
     public void load() {
         profiles.clear();
         if (!file.exists()) return;
@@ -51,6 +62,9 @@ public class PlayerProfileManager {
                 try { p.color = DyeColor.valueOf(colorName); } catch (IllegalArgumentException ignored) { p.color = DyeColor.WHITE; }
                 p.number = sec.getInt(key + ".number", 0);
                 p.icon = sec.getString(key + ".icon", "");
+                p.completed = sec.getInt(key + ".completed", 0);
+                p.wins = sec.getInt(key + ".wins", 0);
+                p.boatType = sec.getString(key + ".boatType", "");
                 profiles.put(id, p);
             } catch (IllegalArgumentException ignored) {}
         }
@@ -64,6 +78,9 @@ public class PlayerProfileManager {
             cfg.set(base + ".color", p.color.name());
             cfg.set(base + ".number", p.number);
             cfg.set(base + ".icon", p.icon);
+            cfg.set(base + ".completed", p.completed);
+            cfg.set(base + ".wins", p.wins);
+            cfg.set(base + ".boatType", p.boatType);
         }
         try { cfg.save(file); } catch (IOException ignored) {}
     }

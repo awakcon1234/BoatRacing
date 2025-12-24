@@ -29,6 +29,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     private es.jaie55.boatracing.ui.AdminRaceGUI adminRaceGUI;
     private es.jaie55.boatracing.profile.PlayerProfileManager profileManager;
     private es.jaie55.boatracing.ui.ProfileGUI profileGUI;
+    private es.jaie55.boatracing.ui.ScoreboardService scoreboardService;
     private String prefix;
     private TrackConfig trackConfig;
     private TrackLibrary trackLibrary;
@@ -48,6 +49,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     public es.jaie55.boatracing.ui.AdminRaceGUI getAdminRaceGUI() { return adminRaceGUI; }
     public es.jaie55.boatracing.profile.PlayerProfileManager getProfileManager() { return profileManager; }
     public es.jaie55.boatracing.ui.ProfileGUI getProfileGUI() { return profileGUI; }
+    public es.jaie55.boatracing.ui.ScoreboardService getScoreboardService() { return scoreboardService; }
     public RaceManager getRaceManager() { return raceManager; }
     public TrackConfig getTrackConfig() { return trackConfig; }
     public TrackLibrary getTrackLibrary() { return trackLibrary; }
@@ -72,6 +74,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.adminRaceGUI = new es.jaie55.boatracing.ui.AdminRaceGUI(this);
     this.profileManager = new es.jaie55.boatracing.profile.PlayerProfileManager(getDataFolder());
     this.profileGUI = new es.jaie55.boatracing.ui.ProfileGUI(this);
+    this.scoreboardService = new es.jaie55.boatracing.ui.ScoreboardService(this);
     this.trackConfig = new TrackConfig(getDataFolder());
     this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
     this.raceManager = new RaceManager(this, trackConfig);
@@ -82,6 +85,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     Bukkit.getPluginManager().registerEvents(tracksGUI, this);
     Bukkit.getPluginManager().registerEvents(adminRaceGUI, this);
     Bukkit.getPluginManager().registerEvents(profileGUI, this);
+    try { scoreboardService.start(); } catch (Throwable ignored) {}
     
     es.jaie55.boatracing.track.SelectionManager.init(this);
     Bukkit.getPluginManager().registerEvents(new es.jaie55.boatracing.track.WandListener(this), this);
@@ -166,6 +170,28 @@ public class BoatRacingPlugin extends JavaPlugin {
         if (command.getName().equalsIgnoreCase("boatracing")) {
             if (args.length == 0) {
                 Text.msg(p, "&cCách dùng: /" + label + " profile|race|setup|reload|version");
+                return true;
+            }
+            if (args[0].equalsIgnoreCase("scoreboard") || args[0].equalsIgnoreCase("sb")) {
+                if (!p.hasPermission("boatracing.admin")) { Text.msg(p, "&cBạn không có quyền thực hiện điều đó."); return true; }
+                if (args.length < 2) {
+                    Text.msg(p, "&eDùng: /"+label+" scoreboard <on|off|tick>");
+                    return true;
+                }
+                String sub = args[1].toLowerCase();
+                switch (sub) {
+                    case "on" -> { try { scoreboardService.start(); Text.msg(p, "&aScoreboard bật."); } catch (Throwable ignored) {} }
+                    case "off" -> {
+                        try { scoreboardService.stop(); } catch (Throwable ignored) {}
+                        for (org.bukkit.entity.Player pl : org.bukkit.Bukkit.getOnlinePlayers()) {
+                            org.bukkit.scoreboard.Scoreboard sb = org.bukkit.Bukkit.getScoreboardManager().getNewScoreboard();
+                            pl.setScoreboard(sb);
+                        }
+                        Text.msg(p, "&aScoreboard tắt.");
+                    }
+                    case "tick" -> { try { es.jaie55.boatracing.ui.ScoreboardService svc = scoreboardService; if (svc != null) svc.forceTick(); Text.msg(p, "&aĐã cập nhật."); } catch (Throwable ignored) {} }
+                    default -> Text.msg(p, "&eDùng: /"+label+" scoreboard <on|off|tick>");
+                }
                 return true;
             }
                         if (args[0].equalsIgnoreCase("profile")) {

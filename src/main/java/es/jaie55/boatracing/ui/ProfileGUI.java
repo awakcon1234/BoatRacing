@@ -34,14 +34,16 @@ public class ProfileGUI implements Listener {
     private final BoatRacingPlugin plugin;
     private final NamespacedKey KEY_ACTION;
     private final NamespacedKey KEY_COLOR;
+    private final NamespacedKey KEY_BOAT;
     private final NamespacedKey KEY_ICON;
 
-    private enum Action { COLOR, NUMBER, ICON, CLOSE }
+    private enum Action { COLOR, NUMBER, ICON, BOAT, CLOSE }
 
     public ProfileGUI(BoatRacingPlugin plugin) {
         this.plugin = plugin;
         this.KEY_ACTION = new NamespacedKey(plugin, "profile-action");
         this.KEY_COLOR = new NamespacedKey(plugin, "profile-color");
+        this.KEY_BOAT = new NamespacedKey(plugin, "profile-boat");
         this.KEY_ICON = new NamespacedKey(plugin, "profile-icon");
     }
 
@@ -61,6 +63,8 @@ public class ProfileGUI implements Listener {
                 List.of("&7Chọn màu đại diện của bạn."), true));
         inv.setItem(14, buttonWithLore(Material.NAME_TAG, Text.item("&a&lSố đua"), Action.NUMBER,
                 List.of("&7Nhập số đua (1-99)."), true));
+        inv.setItem(15, buttonWithLore(Material.OAK_BOAT, Text.item("&b&lThuyền"), Action.BOAT,
+            List.of("&7Chọn loại thuyền của bạn."), true));
         inv.setItem(16, buttonWithLore(Material.FLOWER_BANNER_PATTERN, Text.item("&d&lBiểu tượng"), Action.ICON,
             List.of("&7Chọn 1 biểu tượng từ danh sách."), true));
 
@@ -77,11 +81,13 @@ public class ProfileGUI implements Listener {
         if (im != null) {
             String icon = prof.icon == null ? "" : prof.icon;
             String num = prof.number > 0 ? ("#" + prof.number) : "(chưa có số)";
+            String boat = (prof.boatType==null || prof.boatType.isEmpty()) ? "(mặc định)" : prettyMat(prof.boatType);
             im.displayName(Text.item("&f&lXem trước"));
             List<String> lore = new ArrayList<>();
             lore.add("&7Màu: &f" + prof.color.name());
             lore.add("&7Số: &f" + num);
             lore.add("&7Biểu tượng: &f" + (icon.isEmpty()?"(trống)":icon));
+            lore.add("&7Thuyền: &f" + boat);
             im.lore(Text.lore(lore));
             im.addItemFlags(ItemFlag.values());
             it.setItemMeta(im);
@@ -129,6 +135,39 @@ public class ProfileGUI implements Listener {
         "★","☆","✦","✧","❖","◆","◇","❤","✚","⚡","☀","☂","☕","⚓","♪","♫","🚤","⛵"
     };
 
+    // Allowed boats list resolved dynamically
+    private static final org.bukkit.Material[] ALLOWED_BOATS = resolveAllowedBoats();
+
+    private static org.bukkit.Material[] resolveAllowedBoats() {
+        java.util.List<org.bukkit.Material> list = new java.util.ArrayList<>();
+        addIfPresent(list, "OAK_BOAT");
+        addIfPresent(list, "SPRUCE_BOAT");
+        addIfPresent(list, "BIRCH_BOAT");
+        addIfPresent(list, "JUNGLE_BOAT");
+        addIfPresent(list, "ACACIA_BOAT");
+        addIfPresent(list, "DARK_OAK_BOAT");
+        addIfPresent(list, "MANGROVE_BOAT");
+        addIfPresent(list, "CHERRY_BOAT");
+        addIfPresent(list, "PALE_OAK_BOAT");
+        addIfPresent(list, "BAMBOO_RAFT");
+        addIfPresent(list, "OAK_CHEST_BOAT");
+        addIfPresent(list, "SPRUCE_CHEST_BOAT");
+        addIfPresent(list, "BIRCH_CHEST_BOAT");
+        addIfPresent(list, "JUNGLE_CHEST_BOAT");
+        addIfPresent(list, "ACACIA_CHEST_BOAT");
+        addIfPresent(list, "DARK_OAK_CHEST_BOAT");
+        addIfPresent(list, "MANGROVE_CHEST_BOAT");
+        addIfPresent(list, "CHERRY_CHEST_BOAT");
+        addIfPresent(list, "PALE_OAK_CHEST_BOAT");
+        addIfPresent(list, "BAMBOO_CHEST_RAFT");
+        return list.toArray(new org.bukkit.Material[0]);
+    }
+
+    private static void addIfPresent(java.util.List<org.bukkit.Material> out, String name) {
+        org.bukkit.Material m = org.bukkit.Material.matchMaterial(name);
+        if (m != null) out.add(m);
+    }
+
     public void openIconPicker(Player p) {
         int size = 54;
         Inventory inv = Bukkit.createInventory(null, size, TITLE_ICON);
@@ -150,6 +189,32 @@ public class ProfileGUI implements Listener {
             slot++;
             if ((slot + 1) % 9 == 0) slot += 2;
             if (slot >= size - 9) break;
+        }
+        inv.setItem(size-1, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE, List.of("&7Đóng"), true));
+        p.openInventory(inv);
+        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.1f);
+    }
+
+    public void openBoatPicker(Player p) {
+        int rows = ((ALLOWED_BOATS.length - 1) / 9) + 2;
+        int size = Math.min(54, Math.max(18, rows * 9));
+        Inventory inv = Bukkit.createInventory(null, size, Text.title("Chọn thuyền"));
+        ItemStack filler = pane(Material.GRAY_STAINED_GLASS_PANE);
+        for (int i = 0; i < size; i++) inv.setItem(i, filler);
+        int slot = 0;
+        for (org.bukkit.Material m : ALLOWED_BOATS) {
+            if (slot >= size - 9) break;
+            ItemStack it = new ItemStack(m);
+            ItemMeta im = it.getItemMeta();
+            if (im != null) {
+                im.displayName(Text.item("&f" + prettyMat(m.name())));
+                im.lore(Text.lore(List.of("&7Bấm: &fChọn")));
+                im.getPersistentDataContainer().set(KEY_ACTION, PersistentDataType.STRING, Action.BOAT.name());
+                im.getPersistentDataContainer().set(KEY_BOAT, PersistentDataType.STRING, m.name());
+                im.addItemFlags(ItemFlag.values());
+                it.setItemMeta(im);
+            }
+            inv.setItem(slot++, it);
         }
         inv.setItem(size-1, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE, List.of("&7Đóng"), true));
         p.openInventory(inv);
@@ -235,7 +300,8 @@ public class ProfileGUI implements Listener {
         boolean inMain = title.equals(Text.plain(TITLE));
         boolean inColor = title.equals(Text.plain(TITLE_COLOR));
         boolean inIcon = title.equals(Text.plain(TITLE_ICON));
-        if (!inMain && !inColor && !inIcon) return;
+        boolean inBoat = title.equals(Text.plain(Text.title("Chọn thuyền")));
+        if (!inMain && !inColor && !inIcon && !inBoat) return;
         e.setCancelled(true);
         if (e.getClickedInventory() == null || e.getClickedInventory() != e.getView().getTopInventory()) return;
         HumanEntity who = e.getWhoClicked();
@@ -269,6 +335,13 @@ public class ProfileGUI implements Listener {
                 open(p);
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
             }
+            case BOAT -> {
+                if (inMain) { openBoatPicker(p); return; }
+                String bt = im.getPersistentDataContainer().get(KEY_BOAT, PersistentDataType.STRING);
+                if (bt != null) plugin.getProfileManager().setBoatType(p.getUniqueId(), bt);
+                open(p);
+                p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+            }
             case CLOSE -> p.closeInventory();
         }
     }
@@ -277,9 +350,15 @@ public class ProfileGUI implements Listener {
     public void onDrag(InventoryDragEvent e) {
         if (e.getView() == null) return;
         String title = Text.plain(e.getView().title());
-        if (title.equals(Text.plain(TITLE)) || title.equals(Text.plain(TITLE_COLOR)) || title.equals(Text.plain(TITLE_ICON))) {
+        if (title.equals(Text.plain(TITLE)) || title.equals(Text.plain(TITLE_COLOR)) || title.equals(Text.plain(TITLE_ICON)) || title.equals(Text.plain(Text.title("Chọn thuyền")))) {
             e.setCancelled(true);
         }
+    }
+
+    private static String prettyMat(String name) {
+        if (name == null || name.isEmpty()) return "";
+        String s = name.toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     @EventHandler
