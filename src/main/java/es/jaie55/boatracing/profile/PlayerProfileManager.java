@@ -20,6 +20,7 @@ public class PlayerProfileManager {
         public int completed = 0;
         public int wins = 0;
         public String boatType = ""; // Material name of the chosen boat/raft item
+        public String speedUnit = ""; // "kmh" | "bps"; empty = inherit global
     }
 
     public PlayerProfileManager(File dataFolder) {
@@ -48,6 +49,14 @@ public class PlayerProfileManager {
     public String getBoatType(UUID id) { return get(id).boatType; }
     public void setBoatType(UUID id, String type) { get(id).boatType = type == null ? "" : type; save(); }
 
+    public String getSpeedUnit(UUID id) { return get(id).speedUnit; }
+    public void setSpeedUnit(UUID id, String unit) {
+        String u = unit == null ? "" : unit.toLowerCase();
+        if (!u.equals("kmh") && !u.equals("bps") && !u.equals("bph") && !u.isEmpty()) u = ""; // sanitize
+        get(id).speedUnit = u;
+        save();
+    }
+
     public void load() {
         profiles.clear();
         if (!file.exists()) return;
@@ -65,6 +74,7 @@ public class PlayerProfileManager {
                 p.completed = sec.getInt(key + ".completed", 0);
                 p.wins = sec.getInt(key + ".wins", 0);
                 p.boatType = sec.getString(key + ".boatType", "");
+                p.speedUnit = sec.getString(key + ".speedUnit", "");
                 profiles.put(id, p);
             } catch (IllegalArgumentException ignored) {}
         }
@@ -81,6 +91,7 @@ public class PlayerProfileManager {
             cfg.set(base + ".completed", p.completed);
             cfg.set(base + ".wins", p.wins);
             cfg.set(base + ".boatType", p.boatType);
+            if (p.speedUnit != null && !p.speedUnit.isEmpty()) cfg.set(base + ".speedUnit", p.speedUnit);
         }
         try { cfg.save(file); } catch (IOException ignored) {}
     }

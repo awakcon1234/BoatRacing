@@ -208,6 +208,18 @@ public class BoatRacingPlugin extends JavaPlugin {
                 return true;
             }
                         if (args[0].equalsIgnoreCase("profile")) {
+                            // /boatracing profile speedunit <kmh|bps>
+                            if (args.length >= 3 && args[1].equalsIgnoreCase("speedunit")) {
+                                String u = args[2].toLowerCase();
+                                if (!u.equals("kmh") && !u.equals("bps") && !u.equals("bph")) {
+                                    Text.msg(p, "&cĐơn vị không hợp lệ. Dùng: &fkmh&7, &fbps&7 hoặc &fbph");
+                                    return true;
+                                }
+                                profileManager.setSpeedUnit(p.getUniqueId(), u);
+                                String unitLabel = u.equals("kmh")?"km/h":(u.equals("bps")?"bps":"bph");
+                                Text.msg(p, "&aĐã đặt đơn vị tốc độ: &f" + unitLabel);
+                                return true;
+                            }
                             // Open player profile GUI
                             profileGUI.open(p);
                             return true;

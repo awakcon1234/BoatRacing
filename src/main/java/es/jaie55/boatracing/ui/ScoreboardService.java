@@ -25,9 +25,10 @@ public class ScoreboardService {
     private final java.util.Map<java.util.UUID, Integer> lastCounts = new java.util.HashMap<>();
     private final java.util.Map<java.util.UUID, String> lastState = new java.util.HashMap<>();
     private volatile boolean debug = false;
-    // Per-player last locations used to compute speed (blocks per hour)
+    // Per-player last locations used to compute speed
     private final java.util.Map<java.util.UUID, org.bukkit.Location> lastLocations = new java.util.HashMap<>();
-    private final java.util.Map<java.util.UUID, Double> lastBph = new java.util.HashMap<>();
+    // Store last computed blocks-per-second (bps). Derive km/h or bph when needed.
+    private final java.util.Map<java.util.UUID, Double> lastBps = new java.util.HashMap<>();
 
     public ScoreboardService(BoatRacingPlugin plugin) {
         this.plugin = plugin;
@@ -77,15 +78,15 @@ public class ScoreboardService {
         log("tick: online=" + Bukkit.getOnlinePlayers().size() + ", running=" + rm.isRunning() + ", registering=" + rm.isRegistering() + ", libLoaded=" + (lib != null));
         for (Player p : Bukkit.getOnlinePlayers()) {
             try {
-                // compute speed (blocks per hour) based on movement since last tick
+                // compute speed (blocks per second) based on movement since last tick (~1s)
                 org.bukkit.Location now = p.getLocation();
                 org.bukkit.Location prev = lastLocations.get(p.getUniqueId());
                 if (prev != null && prev.getWorld() != null && now.getWorld() != null && prev.getWorld().equals(now.getWorld())) {
                     double dist = now.distance(prev); // blocks
-                    double bph = dist * 3600.0; // per second -> per hour (tick runs ~1s)
-                    lastBph.put(p.getUniqueId(), bph);
+                    double bps = dist; // since tick ~1s
+                    lastBps.put(p.getUniqueId(), bps);
                 } else {
-                    lastBph.put(p.getUniqueId(), 0.0);
+                    lastBps.put(p.getUniqueId(), 0.0);
                 }
                 lastLocations.put(p.getUniqueId(), now);
 
@@ -264,7 +265,7 @@ public class ScoreboardService {
         if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
         // Default template uses the dynamic %speed_color% placeholder as a MiniMessage tag name
         // so that servers can get auto-colored speed without touching config
-        String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed_bph% bph</%speed_color%>");
+        String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>");
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         var st = rm.getParticipantState(p.getUniqueId());
         java.util.List<java.util.UUID> order = rm.getLiveOrder();
@@ -274,32 +275,83 @@ public class ScoreboardService {
         int percent = (int) Math.round(rm.getLapProgressRatio(p.getUniqueId()) * 100.0);
         int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
         int totalCp = plugin.getTrackConfig().getCheckpoints().size();
-        double bph = lastBph.getOrDefault(p.getUniqueId(), 0.0);
-        // Determine a color bucket for the current speed. Thresholds are configurable:
-        //   scoreboard.speed.yellow_bph (default 5000)
-        //   scoreboard.speed.green_bph  (default 20000)
-        // bph < yellow -> red, bph < green -> yellow, else -> green
-        String speedColor = resolveSpeedColor(bph);
+        double bps = lastBps.getOrDefault(p.getUniqueId(), 0.0);
+        double kmh = bps * 3.6;
+        double bph = bps * 3600.0;
+        // Per-player preferred unit overrides global
+        String unitPref = pm != null ? pm.get(p.getUniqueId()).speedUnit : "";
+        String unit = (unitPref != null && !unitPref.isEmpty()) ? unitPref.toLowerCase() : cfgString("scoreboard.speed.unit", "kmh").toLowerCase();
+        String speedVal;
+        String speedUnit;
+        if ("bps".equals(unit)) { speedVal = String.valueOf(Math.round(bps)); speedUnit = "bps"; }
+        else if ("bph".equals(unit)) { speedVal = String.valueOf(Math.round(bph)); speedUnit = "bph"; }
+        else { speedVal = String.valueOf(Math.round(kmh)); speedUnit = "km/h"; unit = "kmh"; }
+        String speedColor = resolveSpeedColorByUnit(bps, unit);
         ph.put("position", String.valueOf(pos)); ph.put("racer_name", p.getName()); ph.put("lap_current", String.valueOf(lapCurrent)); ph.put("lap_total", String.valueOf(lapTotal));
-        ph.put("progress", String.valueOf(percent)); ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp)); ph.put("speed_bph", String.valueOf(Math.round(bph)));
-        // New placeholder exposed for templating: returns one of: red, yellow, green
+        ph.put("progress", String.valueOf(percent)); ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp));
+        // Speed placeholders (configurable unit + back-compat)
+        ph.put("speed", speedVal);
+        ph.put("speed_unit", speedUnit);
+        ph.put("speed_bps", String.valueOf(Math.round(bps)));
+        ph.put("speed_kmh", String.valueOf(Math.round(kmh)));
+        ph.put("speed_bph", String.valueOf(Math.round(bph)));
+        // color placeholder
         ph.put("speed_color", speedColor);
         Component c = parse(p, tpl, ph);
         sendActionBar(p, c);
-        log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed=" + Math.round(bph));
+        log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed(bps)=" + Math.round(bps) + " unit=" + unit);
     }
 
-    private String resolveSpeedColor(double bph) {
-        // Read thresholds from config (falls back to sensible defaults)
-        int yellow = cfgInt("scoreboard.speed.yellow_bph", 5000);
-        int green = cfgInt("scoreboard.speed.green_bph", 20000);
-        if (green < yellow) {
-            // Guard against misconfiguration
-            int tmp = green; green = yellow; yellow = tmp;
+    private String resolveSpeedColorByUnit(double bps, String unit) {
+        double yellow;
+        double green;
+        if ("bps".equals(unit)) {
+            int y = cfgInt("scoreboard.speed.yellow_bps", -1);
+            int g = cfgInt("scoreboard.speed.green_bps", -1);
+            if (y >= 0 && g >= 0) { yellow = y; green = g; }
+            else {
+                int yb = cfgInt("scoreboard.speed.yellow_bph", 5000);
+                int gb = cfgInt("scoreboard.speed.green_bph", 20000);
+                yellow = yb / 3600.0; green = gb / 3600.0;
+            }
+            double v = bps;
+            if (green < yellow) { double t = green; green = yellow; yellow = t; }
+            String low = cfgString("scoreboard.speed.colors.bps.low", cfgString("scoreboard.speed.colors.low", "red"));
+            String mid = cfgString("scoreboard.speed.colors.bps.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
+            String high = cfgString("scoreboard.speed.colors.bps.high", cfgString("scoreboard.speed.colors.high", "green"));
+            if (v < yellow) return low;
+            if (v < green) return mid;
+            return high;
+        } else if ("kmh".equals(unit)) { // km/h
+            int y = cfgInt("scoreboard.speed.yellow_kmh", -1);
+            int g = cfgInt("scoreboard.speed.green_kmh", -1);
+            if (y >= 0 && g >= 0) { yellow = y; green = g; }
+            else {
+                int yb = cfgInt("scoreboard.speed.yellow_bph", 5000);
+                int gb = cfgInt("scoreboard.speed.green_bph", 20000);
+                yellow = yb / 1000.0; green = gb / 1000.0;
+            }
+            double v = bps * 3.6;
+            if (green < yellow) { double t = green; green = yellow; yellow = t; }
+            String low = cfgString("scoreboard.speed.colors.kmh.low", cfgString("scoreboard.speed.colors.low", "red"));
+            String mid = cfgString("scoreboard.speed.colors.kmh.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
+            String high = cfgString("scoreboard.speed.colors.kmh.high", cfgString("scoreboard.speed.colors.high", "green"));
+            if (v < yellow) return low;
+            if (v < green) return mid;
+            return high;
+        } else { // bph
+            int yb = cfgInt("scoreboard.speed.yellow_bph", 5000);
+            int gb = cfgInt("scoreboard.speed.green_bph", 20000);
+            double v = bps * 3600.0;
+            yellow = yb; green = gb;
+            if (green < yellow) { double t = green; green = yellow; yellow = t; }
+            String low = cfgString("scoreboard.speed.colors.bph.low", cfgString("scoreboard.speed.colors.low", "red"));
+            String mid = cfgString("scoreboard.speed.colors.bph.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
+            String high = cfgString("scoreboard.speed.colors.bph.high", cfgString("scoreboard.speed.colors.high", "green"));
+            if (v < yellow) return low;
+            if (v < green) return mid;
+            return high;
         }
-        if (bph < yellow) return "red";
-        if (bph < green) return "yellow";
-        return "green";
     }
 
     private void clearActionBar(Player p) {

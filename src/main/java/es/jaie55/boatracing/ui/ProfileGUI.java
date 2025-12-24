@@ -37,7 +37,7 @@ public class ProfileGUI implements Listener {
     private final NamespacedKey KEY_BOAT;
     private final NamespacedKey KEY_ICON;
 
-    private enum Action { COLOR, NUMBER, ICON, BOAT, CLOSE }
+    private enum Action { COLOR, NUMBER, ICON, BOAT, SPEEDUNIT, CLOSE }
 
     public ProfileGUI(BoatRacingPlugin plugin) {
         this.plugin = plugin;
@@ -61,6 +61,10 @@ public class ProfileGUI implements Listener {
 
         inv.setItem(12, buttonWithLore(Material.LEATHER_CHESTPLATE, Text.item("&b&lMàu"), Action.COLOR,
                 List.of("&7Chọn màu đại diện của bạn."), true));
+        String u = (prof.speedUnit==null || prof.speedUnit.isEmpty()) ? plugin.getConfig().getString("scoreboard.speed.unit","kmh") : prof.speedUnit;
+        String label = "kmh".equalsIgnoreCase(u)?"km/h": ("bps".equalsIgnoreCase(u)?"bps":"bph");
+        inv.setItem(11, buttonWithLore(Material.COMPASS, Text.item("&e&lĐơn vị tốc độ"), Action.SPEEDUNIT,
+            List.of("&7Hiện tại: &f" + label, "&eBấm: &fLuân phiên km/h → bps → bph"), true));
         inv.setItem(14, buttonWithLore(Material.NAME_TAG, Text.item("&a&lSố đua"), Action.NUMBER,
                 List.of("&7Nhập số đua (1-99)."), true));
         inv.setItem(15, buttonWithLore(Material.OAK_BOAT, Text.item("&b&lThuyền"), Action.BOAT,
@@ -88,6 +92,8 @@ public class ProfileGUI implements Listener {
             lore.add("&7Số: &f" + num);
             lore.add("&7Biểu tượng: &f" + (icon.isEmpty()?"(trống)":icon));
             lore.add("&7Thuyền: &f" + boat);
+            String u = (prof.speedUnit==null || prof.speedUnit.isEmpty()) ? "(theo cấu hình)" : (prof.speedUnit.equalsIgnoreCase("kmh")?"km/h": (prof.speedUnit.equalsIgnoreCase("bps")?"bps":"bph"));
+            lore.add("&7Đơn vị tốc độ: &f" + u);
             im.lore(Text.lore(lore));
             im.addItemFlags(ItemFlag.values());
             it.setItemMeta(im);
@@ -339,6 +345,19 @@ public class ProfileGUI implements Listener {
                 if (inMain) { openBoatPicker(p); return; }
                 String bt = im.getPersistentDataContainer().get(KEY_BOAT, PersistentDataType.STRING);
                 if (bt != null) plugin.getProfileManager().setBoatType(p.getUniqueId(), bt);
+                open(p);
+                p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+            }
+            case SPEEDUNIT -> {
+                // Cycle kmh -> bps -> bph -> kmh (empty means inherit; we store explicit value)
+                var pm = plugin.getProfileManager();
+                String cur = pm.get(p.getUniqueId()).speedUnit;
+                String next;
+                if (cur==null || cur.isEmpty()) next = "kmh";
+                else if (cur.equalsIgnoreCase("kmh")) next = "bps";
+                else if (cur.equalsIgnoreCase("bps")) next = "bph";
+                else next = "kmh";
+                pm.setSpeedUnit(p.getUniqueId(), next);
                 open(p);
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
             }

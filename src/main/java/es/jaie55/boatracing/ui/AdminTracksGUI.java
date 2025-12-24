@@ -116,12 +116,14 @@ public class AdminTracksGUI implements Listener {
         inv.setItem(25, buttonWithLore(Material.LAVA_BUCKET, Text.item("&cXóa Checkpoint"), Action.CLEAR_CHECKPOINTS,
                 List.of("&7Xóa tất cả checkpoint"), true));
         inv.setItem(26, buttonWithLore(Material.FLINT_AND_STEEL, Text.item("&cXóa Đèn"), Action.CLEAR_LIGHTS,
-                List.of("&7Xóa tất cả đèn xuất phát"), true));
-        inv.setItem(22 + 6, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
+            List.of("&7Xóa tất cả đèn xuất phát"), true));
+        // Place build-path button in free slot (11) to avoid exceeding 27-slot inventory bounds
+        inv.setItem(11, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
             List.of("&7Tạo đường giữa bằng A* trên băng."), true));
 
         // Close
-        inv.setItem(21, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
+        // Move close button to top-right corner to avoid overlap with editing tools
+        inv.setItem(8, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
             List.of("&7Đóng trình quản lý đường đua"), true));
 
         p.openInventory(inv);

@@ -26,6 +26,8 @@ public class TrackConfig {
     private final File tracksDir;
     private String currentName = null;
     private org.bukkit.Location waitingSpawn;
+    // Single world name for the entire track
+    private String worldName = null;
 
     public TrackConfig(File dataFolder) {
         this.tracksDir = new File(dataFolder, "tracks");
@@ -59,6 +61,8 @@ public class TrackConfig {
         this.finish = null; this.bounds = null; this.pitlane = null; this.teamPits.clear(); this.customStartSlots.clear();
         this.centerline.clear();
         this.waitingSpawn = null;
+        // track world
+        this.worldName = cfg.getString("world", this.worldName);
         // starts
         List<?> s = cfg.getList("starts");
         if (s != null) {
@@ -68,6 +72,7 @@ public class TrackConfig {
                     java.util.Map m = (java.util.Map)o;
                     try {
                         String w = (String)m.get("world");
+                        if (w == null) w = this.worldName;
                         double x = ((Number)m.get("x")).doubleValue();
                         double y = ((Number)m.get("y")).doubleValue();
                         double z = ((Number)m.get("z")).doubleValue();
@@ -91,6 +96,7 @@ public class TrackConfig {
                     java.util.Map m = (java.util.Map)o;
                     try {
                         String w = (String)m.get("world");
+                        if (w == null) w = this.worldName;
                         int x = ((Number)m.get("x")).intValue();
                         int y = ((Number)m.get("y")).intValue();
                         int z = ((Number)m.get("z")).intValue();
@@ -146,6 +152,7 @@ public class TrackConfig {
                     java.util.Map m = (java.util.Map) o;
                     try {
                         String w = (String) m.get("world");
+                        if (w == null) w = this.worldName;
                         double x = asNumber(m.get("x")).doubleValue();
                         double y = asNumber(m.get("y")).doubleValue();
                         double z = asNumber(m.get("z")).doubleValue();
@@ -163,6 +170,7 @@ public class TrackConfig {
             java.util.Map m = (java.util.Map) wsp;
             try {
                 String w = (String)m.get("world");
+                if (w == null) w = this.worldName;
                 double x = asNumber(m.get("x")).doubleValue();
                 double y = asNumber(m.get("y")).doubleValue();
                 double z = asNumber(m.get("z")).doubleValue();
@@ -180,10 +188,10 @@ public class TrackConfig {
         try {
             File f = new File(tracksDir, name + ".yml");
             YamlConfiguration cfg = new YamlConfiguration();
+            if (this.worldName != null) cfg.set("world", this.worldName);
             List<Map<String,Object>> s = new ArrayList<>();
             for (Location loc : this.starts) {
                 Map<String,Object> m = new LinkedHashMap<>();
-                m.put("world", loc.getWorld().getName());
                 m.put("x", loc.getX()); m.put("y", loc.getY()); m.put("z", loc.getZ());
                 m.put("yaw", loc.getYaw()); m.put("pitch", loc.getPitch());
                 s.add(m);
@@ -192,7 +200,7 @@ public class TrackConfig {
             List<Map<String,Object>> ls = new ArrayList<>();
             for (Block b : this.lights) {
                 Map<String,Object> m = new LinkedHashMap<>();
-                m.put("world", b.getWorld().getName()); m.put("x", b.getX()); m.put("y", b.getY()); m.put("z", b.getZ());
+                m.put("x", b.getX()); m.put("y", b.getY()); m.put("z", b.getZ());
                 ls.add(m);
             }
             cfg.set("lights", ls);
@@ -216,7 +224,6 @@ public class TrackConfig {
                 java.util.List<java.util.Map<String,Object>> cl = new java.util.ArrayList<>();
                 for (org.bukkit.Location loc : this.centerline) {
                     java.util.Map<String,Object> m = new java.util.LinkedHashMap<>();
-                    m.put("world", loc.getWorld().getName());
                     m.put("x", loc.getX()); m.put("y", loc.getY()); m.put("z", loc.getZ());
                     cl.add(m);
                 }
@@ -224,7 +231,6 @@ public class TrackConfig {
             }
             if (this.waitingSpawn != null && this.waitingSpawn.getWorld() != null) {
                 java.util.Map<String,Object> ws = new java.util.LinkedHashMap<>();
-                ws.put("world", this.waitingSpawn.getWorld().getName());
                 ws.put("x", this.waitingSpawn.getX());
                 ws.put("y", this.waitingSpawn.getY());
                 ws.put("z", this.waitingSpawn.getZ());
@@ -241,7 +247,10 @@ public class TrackConfig {
     }
 
     // Starts
-    public void addStart(Location loc) { starts.add(normalizeStart(loc)); }
+    public void addStart(Location loc) {
+        if (loc != null && loc.getWorld() != null && (this.worldName == null)) this.worldName = loc.getWorld().getName();
+        starts.add(normalizeStart(withTrackWorld(loc)));
+    }
 
     /**
      * Normalize a start location:
@@ -272,12 +281,17 @@ public class TrackConfig {
     public List<Location> getStarts() { return Collections.unmodifiableList(starts); }
 
     // Finish / pit
-    public void setFinish(Region r) { this.finish = r; }
+    public void setFinish(Region r) { this.finish = overrideRegionWorld(r); }
     public Region getFinish() { return finish; }
     // Bounds
-    public void setBounds(Region r) { this.bounds = r; }
+    public void setBounds(Region r) {
+        if (r == null) { this.bounds = null; return; }
+        org.bukkit.util.BoundingBox b = r.getBox();
+        if (b != null) b = snapBoxToWhole(b);
+        this.bounds = overrideRegionWorld(new Region(r.getWorldName(), b));
+    }
     public Region getBounds() { return bounds; }
-    public void setPitlane(Region r) { this.pitlane = r; }
+    public void setPitlane(Region r) { this.pitlane = overrideRegionWorld(r); }
     public Region getPitlane() { return pitlane; }
 
     // Team pits
@@ -285,7 +299,7 @@ public class TrackConfig {
     public Map<java.util.UUID, Region> getTeamPits() { return Collections.unmodifiableMap(teamPits); }
 
     // Checkpoints
-    public void addCheckpoint(Region r) { checkpoints.add(r); }
+    public void addCheckpoint(Region r) { checkpoints.add(overrideRegionWorld(r)); }
     public void clearCheckpoints() { checkpoints.clear(); }
     public List<Region> getCheckpoints() { return Collections.unmodifiableList(checkpoints); }
 
@@ -303,18 +317,37 @@ public class TrackConfig {
     public java.util.List<org.bukkit.Location> getCenterline() { return java.util.Collections.unmodifiableList(centerline); }
     public void setCenterline(java.util.List<org.bukkit.Location> nodes) {
         this.centerline.clear();
-        if (nodes != null) this.centerline.addAll(nodes);
+        if (nodes != null) {
+            for (org.bukkit.Location l : nodes) this.centerline.add(withTrackWorld(l));
+        }
     }
     public void clearCenterline() { this.centerline.clear(); }
 
     public org.bukkit.Location getWaitingSpawn() { return waitingSpawn; }
     public void setWaitingSpawn(org.bukkit.Location loc) { this.waitingSpawn = loc == null ? null : loc.clone(); }
 
+    // --- Helpers ---
+    private static org.bukkit.util.BoundingBox snapBoxToWhole(org.bukkit.util.BoundingBox box) {
+        if (box == null) return null;
+        double minX = Math.round(box.getMinX());
+        double minY = Math.round(box.getMinY());
+        double minZ = Math.round(box.getMinZ());
+        double maxX = Math.round(box.getMaxX());
+        double maxY = Math.round(box.getMaxY());
+        double maxZ = Math.round(box.getMaxZ());
+        // Ensure ordering after rounding
+        double nminX = Math.min(minX, maxX), nmaxX = Math.max(minX, maxX);
+        double nminY = Math.min(minY, maxY), nmaxY = Math.max(minY, maxY);
+        double nminZ = Math.min(minZ, maxZ), nmaxZ = Math.max(minZ, maxZ);
+        return new org.bukkit.util.BoundingBox(nminX, nminY, nminZ, nmaxX, nmaxY, nmaxZ);
+    }
+
     public org.bukkit.Location getStartCenter() {
         if (starts.isEmpty()) return null;
         double x = 0, y = 0, z = 0; String world = null;
         for (org.bukkit.Location l : starts) { x += l.getX(); y += l.getY(); z += l.getZ(); if (world == null && l.getWorld()!=null) world = l.getWorld().getName(); }
         x /= starts.size(); y /= starts.size(); z /= starts.size();
+        if (world == null) world = this.worldName;
         org.bukkit.World w = world != null ? org.bukkit.Bukkit.getWorld(world) : (starts.get(0).getWorld());
         return w != null ? new org.bukkit.Location(w, x, y, z) : null;
     }
@@ -322,7 +355,6 @@ public class TrackConfig {
     // Serialization helpers for Region
     private static Map<String,Object> regionToMap(Region r) {
         Map<String,Object> m = new LinkedHashMap<>();
-        m.put("world", r.getWorldName());
         org.bukkit.util.BoundingBox b = r.getBox();
         if (b != null) {
             m.put("minX", b.getMinX()); m.put("minY", b.getMinY()); m.put("minZ", b.getMinZ());
@@ -332,7 +364,7 @@ public class TrackConfig {
     }
 
     @SuppressWarnings({"rawtypes","unchecked"})
-    private static Region regionFromObject(Object obj) {
+    private Region regionFromObject(Object obj) {
         if (obj == null) return null;
         java.util.Map m = null;
         if (obj instanceof org.bukkit.configuration.ConfigurationSection cs) {
@@ -343,6 +375,7 @@ public class TrackConfig {
         if (m == null) return null;
         try {
             String w = (String) m.get("world");
+            if (w == null) w = this.worldName;
             Number minX = asNumber(m.get("minX"));
             Number minY = asNumber(m.get("minY"));
             Number minZ = asNumber(m.get("minZ"));
@@ -365,4 +398,21 @@ public class TrackConfig {
         }
         return null;
     }
+
+    // Enforce single world on locations and regions
+    private org.bukkit.Location withTrackWorld(org.bukkit.Location src) {
+        if (src == null) return null;
+        if (this.worldName == null && src.getWorld() != null) this.worldName = src.getWorld().getName();
+        if (this.worldName == null) return src.clone();
+        org.bukkit.World w = org.bukkit.Bukkit.getWorld(this.worldName);
+        return new org.bukkit.Location(w, src.getX(), src.getY(), src.getZ(), src.getYaw(), src.getPitch());
+    }
+    private Region overrideRegionWorld(Region r) {
+        if (r == null) return null;
+        String w = this.worldName != null ? this.worldName : r.getWorldName();
+        return new Region(w, r.getBox());
+    }
+
+    public String getWorldName() { return worldName; }
+    public void setWorldName(String worldName) { this.worldName = worldName; }
 }

@@ -72,16 +72,41 @@ racing:
         enabled: true
         # Waiting placeholders: %countdown% %joined% %max%
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> • <gray>%joined%/%max%</gray>"
-        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed_bph% %next_checkpoint% %checkpoint_total% %speed_color%
-        # %speed_color% returns one of: red, yellow, green (MiniMessage color names). Example usage: <%speed_color%>%speed_bph%</%speed_color%>
-        racing: "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed_bph% bph</%speed_color%>"
+        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_total% %speed_color%
+        # %speed% chooses unit based on scoreboard.speed.unit (bps|kmh). Example: <%speed_color%>%speed% %speed_unit%</%speed_color%>
+        racing: "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>"
 
-# Speed color thresholds for %speed_color% placeholder (in blocks per hour)
+# Speed unit and color thresholds
 scoreboard:
   speed:
-    yellow_bph: 5000   # below this is red; between yellow and green is yellow
-    green_bph: 20000   # at or above this is green
+    unit: kmh        # kmh | bps | bph
+    # Preferred thresholds for chosen unit (integers).
+    yellow_kmh: 5    # below this is red; between yellow and green is yellow
+    green_kmh: 20    # at or above this is green
+    # Thresholds for bps unit (blocks per second)
+    yellow_bps: 2
+    green_bps: 6
+    # Thresholds for bph unit (blocks per hour)
+    yellow_bph: 5000
+    green_bph: 20000
+    # Colors for tiers (MiniMessage color names). Global defaults + per-unit overrides.
+    colors:
+      low: red
+      mid: yellow
+      high: green
+      bps:
+        low: red
+        mid: yellow
+        high: green
+      kmh:
+        low: red
+        mid: yellow
+        high: green
+      bph:
+        low: red
+        mid: yellow
+        high: green
 
   # Registration announce message template
   # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command
-  registration-announce: "&6[BoatRacing] &eCuộc đua mới tại &f{track}&e (&f{laps}&e vòng). &7Tham gia bằng &f{cmd}"
+  registration-announce: "&eCuộc đua mới tại &f{track}&e (&f{laps}&e vòng). &7Tham gia bằng &f{cmd}"
