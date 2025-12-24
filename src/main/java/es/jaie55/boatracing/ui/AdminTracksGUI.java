@@ -320,9 +320,11 @@ public class AdminTracksGUI implements Listener {
     }
 
     private void doAddStart(Player p) {
-        org.bukkit.Location loc = p.getLocation();
+        org.bukkit.Location raw = p.getLocation();
+        org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
         plugin.getTrackConfig().addStart(loc);
-        Text.msg(p, "&aĐã thêm Start tại &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ());
+        Text.msg(p, "&aĐã thêm Start tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
+                " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=0)");
         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
         open(p);
     }

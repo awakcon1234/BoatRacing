@@ -69,7 +69,11 @@ public class TrackConfig {
                         double z = ((Number)m.get("z")).doubleValue();
                         float yaw = m.get("yaw") == null ? 0f : ((Number)m.get("yaw")).floatValue();
                         float pitch = m.get("pitch") == null ? 0f : ((Number)m.get("pitch")).floatValue();
-                        Location loc = new Location(Bukkit.getWorld(w), x, y, z, yaw, pitch);
+                        org.bukkit.World world = Bukkit.getWorld(w);
+                        if (world == null) {
+                            Bukkit.getLogger().warning("[BoatRacing] TrackConfig: start position world not loaded: " + w + " (track=" + name + ")");
+                        }
+                        Location loc = new Location(world, x, y, z, yaw, pitch);
                         this.starts.add(loc);
                     } catch (Throwable ignored) {}
                 }
@@ -86,7 +90,12 @@ public class TrackConfig {
                         int x = ((Number)m.get("x")).intValue();
                         int y = ((Number)m.get("y")).intValue();
                         int z = ((Number)m.get("z")).intValue();
-                        Block b = Bukkit.getWorld(w).getBlockAt(x,y,z);
+                        org.bukkit.World world = Bukkit.getWorld(w);
+                        if (world == null) {
+                            Bukkit.getLogger().warning("[BoatRacing] TrackConfig: light world not loaded: " + w + " (track=" + name + ")");
+                            continue;
+                        }
+                        Block b = world.getBlockAt(x,y,z);
                         this.lights.add(b);
                     } catch (Throwable ignored) {}
                 }
@@ -134,6 +143,7 @@ public class TrackConfig {
                         double z = asNumber(m.get("z")).doubleValue();
                         org.bukkit.World ww = org.bukkit.Bukkit.getWorld(w);
                         if (ww != null) this.centerline.add(new org.bukkit.Location(ww, x, y, z));
+                        else Bukkit.getLogger().warning("[BoatRacing] TrackConfig: centerline world not loaded: " + w + " (track=" + name + ")");
                     } catch (Throwable ignored) {}
                 }
             }
@@ -196,7 +206,33 @@ public class TrackConfig {
     }
 
     // Starts
-    public void addStart(Location loc) { starts.add(loc); }
+    public void addStart(Location loc) { starts.add(normalizeStart(loc)); }
+
+    /**
+     * Normalize a start location:
+     * - X/Z snapped to nearest 0.5 (.. .0 or .5)
+     * - Pitch = 0
+     * - Yaw snapped to nearest multiple of 45 degrees (kept in [-180, 180])
+     */
+    public static Location normalizeStart(Location src) {
+        if (src == null) return null;
+        Location l = src.clone();
+        // Snap X/Z to nearest 0.5
+        double nx = Math.round(l.getX() * 2.0) / 2.0;
+        double nz = Math.round(l.getZ() * 2.0) / 2.0;
+        l.setX(nx);
+        l.setZ(nz);
+        // Pitch to 0
+        l.setPitch(0.0f);
+        // Yaw to nearest multiple of 45
+        float yaw = l.getYaw();
+        double snapped = Math.round(((double) yaw) / 45.0) * 45.0;
+        // Normalize to [-180, 180]
+        while (snapped <= -180.0) snapped += 360.0;
+        while (snapped > 180.0) snapped -= 360.0;
+        l.setYaw((float) snapped);
+        return l;
+    }
     public void clearStarts() { starts.clear(); }
     public List<Location> getStarts() { return Collections.unmodifiableList(starts); }
 

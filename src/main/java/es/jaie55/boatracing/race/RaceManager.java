@@ -225,7 +225,8 @@ public class RaceManager {
                 target.setY(target.getY() + 1.0);
                 p.teleport(target);
                 // spawn a boat and set player as passenger
-                var ent = p.getWorld().spawnEntity(target, EntityType.BOAT);
+                // Spawn the boat in the target location's world to support cross-world starts
+                var ent = (target.getWorld() != null ? target.getWorld() : p.getWorld()).spawnEntity(target, EntityType.BOAT);
                 if (ent instanceof Boat) {
                     Boat b = (Boat) ent;
                     b.addPassenger(p);

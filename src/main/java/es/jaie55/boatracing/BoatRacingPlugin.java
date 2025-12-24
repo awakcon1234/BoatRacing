@@ -433,6 +433,8 @@ public class BoatRacingPlugin extends JavaPlugin {
                     Text.msg(p, "&eLệnh cấu hình:");
                     Text.tell(p, "&7 - &f/" + label + " setup addstart &7(Thêm vị trí hiện tại làm vị trí bắt đầu; lặp lại để thêm nhiều)");
                     Text.tell(p, "&7 - &f/" + label + " setup clearstarts &7(Xóa tất cả vị trí bắt đầu)");
+                    Text.tell(p, "&7 - &f/" + label + " setup pos1 &7(Đặt góc A = vị trí hiện tại)");
+                    Text.tell(p, "&7 - &f/" + label + " setup pos2 &7(Đặt góc B = vị trí hiện tại)");
                     Text.tell(p, "&7 - &f/" + label + " setup setfinish &7(Sử dụng selection của bạn để đặt vùng vạch đích)");
                     // pit mechanic removed
                     Text.tell(p, "&7 - &f/" + label + " setup addcheckpoint &7(Thêm checkpoint từ selection; có thể thêm nhiều. Thứ tự quan trọng)");
@@ -451,6 +453,18 @@ public class BoatRacingPlugin extends JavaPlugin {
                 }
                 String sub = args[1].toLowerCase();
                 switch (sub) {
+                    case "pos1" -> {
+                        es.jaie55.boatracing.track.SelectionManager.setCornerA(p, p.getLocation());
+                        Text.msg(p, "&aĐã đặt &fGóc A &a= &f" + p.getWorld().getName() + " &7(" + p.getLocation().getBlockX() + ", " + p.getLocation().getBlockY() + ", " + p.getLocation().getBlockZ() + ")");
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.3f);
+                        return true;
+                    }
+                    case "pos2" -> {
+                        es.jaie55.boatracing.track.SelectionManager.setCornerB(p, p.getLocation());
+                        Text.msg(p, "&aĐã đặt &fGóc B &a= &f" + p.getWorld().getName() + " &7(" + p.getLocation().getBlockX() + ", " + p.getLocation().getBlockY() + ", " + p.getLocation().getBlockZ() + ")");
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.3f);
+                        return true;
+                    }
                     case "wand" -> {
                         es.jaie55.boatracing.track.SelectionManager.giveWand(p);
                         Text.msg(p, "&aCông cụ chọn đã sẵn sàng. &7Nhấp trái đánh dấu &fGóc A&7; nhấp phải đánh dấu &fGóc B&7.");
@@ -478,9 +492,11 @@ public class BoatRacingPlugin extends JavaPlugin {
                         return true;
                     }
                     case "addstart" -> {
-                        org.bukkit.Location loc = p.getLocation();
+                        org.bukkit.Location raw = p.getLocation();
+                        org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
                         trackConfig.addStart(loc);
-                        Text.msg(p, "&aĐã thêm vị trí bắt đầu tại &f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ() + " &7(" + loc.getWorld().getName() + ")");
+                        Text.msg(p, "&aĐã thêm vị trí bắt đầu tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
+                                " &7(" + loc.getWorld().getName() + ") yaw=" + Math.round(loc.getYaw()) + ", pitch=0");
                         Text.tell(p, "&7Mẹo: Bạn có thể thêm nhiều vị trí bắt đầu. Chạy lệnh một lần nữa để thêm.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
@@ -713,7 +729,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
+                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","pos1","pos2","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
                 if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
                     // Suggest player names (online + known offline)
                     String prefName = args[2] == null ? "" : args[2].toLowerCase();

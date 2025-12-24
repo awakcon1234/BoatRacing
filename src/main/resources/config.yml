@@ -72,8 +72,15 @@ racing:
         enabled: true
         # Waiting placeholders: %countdown% %joined% %max%
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> • <gray>%joined%/%max%</gray>"
-        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed_bph% %next_checkpoint% %checkpoint_total%
-        racing: "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <green>%speed_bph% bph</green>"
+        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed_bph% %next_checkpoint% %checkpoint_total% %speed_color%
+        # %speed_color% returns one of: red, yellow, green (MiniMessage color names). Example usage: <%speed_color%>%speed_bph%</%speed_color%>
+        racing: "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed_bph% bph</%speed_color%>"
+
+# Speed color thresholds for %speed_color% placeholder (in blocks per hour)
+scoreboard:
+  speed:
+    yellow_bph: 5000   # below this is red; between yellow and green is yellow
+    green_bph: 20000   # at or above this is green
 
   # Registration announce message template
   # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command

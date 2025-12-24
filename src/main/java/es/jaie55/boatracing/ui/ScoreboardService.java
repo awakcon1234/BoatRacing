@@ -262,7 +262,9 @@ public class ScoreboardService {
 
     private void applyActionBarForRacing(Player p) {
         if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
-        String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <green>%speed_bph% bph</green>");
+        // Default template uses the dynamic %speed_color% placeholder as a MiniMessage tag name
+        // so that servers can get auto-colored speed without touching config
+        String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed_bph% bph</%speed_color%>");
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         var st = rm.getParticipantState(p.getUniqueId());
         java.util.List<java.util.UUID> order = rm.getLiveOrder();
@@ -273,11 +275,31 @@ public class ScoreboardService {
         int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
         int totalCp = plugin.getTrackConfig().getCheckpoints().size();
         double bph = lastBph.getOrDefault(p.getUniqueId(), 0.0);
+        // Determine a color bucket for the current speed. Thresholds are configurable:
+        //   scoreboard.speed.yellow_bph (default 5000)
+        //   scoreboard.speed.green_bph  (default 20000)
+        // bph < yellow -> red, bph < green -> yellow, else -> green
+        String speedColor = resolveSpeedColor(bph);
         ph.put("position", String.valueOf(pos)); ph.put("racer_name", p.getName()); ph.put("lap_current", String.valueOf(lapCurrent)); ph.put("lap_total", String.valueOf(lapTotal));
         ph.put("progress", String.valueOf(percent)); ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp)); ph.put("speed_bph", String.valueOf(Math.round(bph)));
+        // New placeholder exposed for templating: returns one of: red, yellow, green
+        ph.put("speed_color", speedColor);
         Component c = parse(p, tpl, ph);
         sendActionBar(p, c);
         log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed=" + Math.round(bph));
+    }
+
+    private String resolveSpeedColor(double bph) {
+        // Read thresholds from config (falls back to sensible defaults)
+        int yellow = cfgInt("scoreboard.speed.yellow_bph", 5000);
+        int green = cfgInt("scoreboard.speed.green_bph", 20000);
+        if (green < yellow) {
+            // Guard against misconfiguration
+            int tmp = green; green = yellow; yellow = tmp;
+        }
+        if (bph < yellow) return "red";
+        if (bph < green) return "yellow";
+        return "green";
     }
 
     private void clearActionBar(Player p) {
