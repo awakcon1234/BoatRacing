@@ -17,6 +17,9 @@ public final class CenterlineBuilder {
     // Allowed surface blocks for pathing (can be made configurable later)
     private static final Set<Material> ALLOWED = EnumSet.of(Material.ICE, Material.PACKED_ICE, Material.BLUE_ICE);
 
+    // Larger values pull the path toward the middle (away from edges/fences).
+    private static final double CENTER_BIAS = 2.0;
+
     public static List<Location> build(TrackConfig cfg, int corridorMargin) {
         return build(cfg, corridorMargin, null, false);
     }
@@ -236,6 +239,16 @@ public final class CenterlineBuilder {
         Node start = new Node(a.getBlockX(), startY, a.getBlockZ());
         Node goal = new Node(b.getBlockX(), goalY, b.getBlockZ());
 
+        WalkGrid grid = WalkGrid.build(w, minX, maxX, minZ, maxZ, startY, 12, logger, label, verbose);
+        if (grid == null) {
+            warn(logger, "A* " + label + " aborted: failed to build walk grid");
+            return null;
+        }
+        if (!grid.isWalkable(start.x, start.z) || !grid.isWalkable(goal.x, goal.z)) {
+            warn(logger, "A* " + label + " aborted: endpoints not walkable in grid. startWalkable=" + grid.isWalkable(start.x, start.z) + " goalWalkable=" + grid.isWalkable(goal.x, goal.z));
+            return null;
+        }
+
         java.util.PriorityQueue<Node> open = new java.util.PriorityQueue<>(Comparator.comparingDouble(n -> n.f));
         java.util.Map<Long, Node> all = new java.util.HashMap<>();
 
@@ -246,8 +259,6 @@ public final class CenterlineBuilder {
 
         int expanded = 0;
         final int maxStepUpDown = 2;
-        final int surfaceScan = 12;
-        java.util.Map<Long, Integer> surfaceCache = new java.util.HashMap<>(); // key(x,0,z) -> surfaceY
 
         // Debug counters (reported only on failure)
         int skippedOutOfBounds = 0;
@@ -255,6 +266,7 @@ public final class CenterlineBuilder {
         int skippedTooSteep = 0;
         int skippedNotAllowed = 0;
         int skippedNoClearance = 0;
+        int skippedNotWalkable = 0;
         int skippedClosed = 0;
         int skippedImprovement = 0;
         java.util.List<String> samples = verbose ? new java.util.ArrayList<>() : java.util.Collections.emptyList();
@@ -274,22 +286,23 @@ public final class CenterlineBuilder {
                 double stepCost = d[2] / 10.0;
                 if (nx < minX || nx > maxX || nz < minZ || nz > maxZ) { skippedOutOfBounds++; continue; }
 
-                int ny = cachedSurfaceY(w, nx, nz, cur.y, surfaceScan, surfaceCache);
-                if (ny == Integer.MIN_VALUE) {
-                    skippedNoSurface++;
-                    if (samples.size() < maxSamples) {
-                        int highest = w.getHighestBlockYAt(nx, nz);
-                        Material atHint = safeType(w, nx, cur.y, nz);
-                        Material atHintMinus1 = safeType(w, nx, cur.y - 1, nz);
-                        Material atHintPlus1 = safeType(w, nx, cur.y + 1, nz);
-                        Material atTop = safeType(w, nx, highest, nz);
-                        Material atTopMinus1 = safeType(w, nx, highest - 1, nz);
-                        samples.add("no allowed surface near " + w.getName() + "(" + nx + ",? ," + nz + ") yHint=" + cur.y +
-                                " samples: hint=" + atHint + ", hint-1=" + atHintMinus1 + ", hint+1=" + atHintPlus1 +
-                                ", topY=" + highest + " top=" + atTop + ", top-1=" + atTopMinus1);
+                if (!grid.isWalkable(nx, nz)) {
+                    skippedNotWalkable++;
+                    int nyRaw = grid.surfaceY(nx, nz);
+                    if (nyRaw == Integer.MIN_VALUE) {
+                        skippedNoSurface++;
+                        if (samples.size() < maxSamples) {
+                            int highest = w.getHighestBlockYAt(nx, nz);
+                            Material atHint = safeType(w, nx, cur.y, nz);
+                            Material atTop = safeType(w, nx, highest, nz);
+                            samples.add("no allowed surface near " + w.getName() + "(" + nx + ",? ," + nz + ") yHint=" + cur.y +
+                                    " samples: hint=" + atHint + ", topY=" + highest + " top=" + atTop);
+                        }
                     }
                     continue;
                 }
+
+                int ny = grid.surfaceY(nx, nz);
                 if (Math.abs(ny - cur.y) > maxStepUpDown) {
                     skippedTooSteep++;
                     if (samples.size() < maxSamples) {
@@ -298,23 +311,7 @@ public final class CenterlineBuilder {
                     continue;
                 }
 
-                Block bl = w.getBlockAt(nx, ny, nz);
-                Material t = bl.getType();
-                if (!ALLOWED.contains(t)) {
-                    skippedNotAllowed++;
-                    if (samples.size() < maxSamples) {
-                        samples.add("expected ice at " + w.getName() + "(" + nx + "," + ny + "," + nz + ") but found " + t);
-                    }
-                    continue;
-                }
-                if (!isClearAbove(w, nx, ny, nz)) {
-                    skippedNoClearance++;
-                    if (samples.size() < maxSamples) {
-                        Material above = w.getBlockAt(nx, ny + 1, nz).getType();
-                        samples.add("no clearance above " + w.getName() + "(" + nx + "," + ny + "," + nz + ") above=" + above);
-                    }
-                    continue;
-                }
+                // (walkability already enforces allowed surface + clearance)
 
                 long k = key(nx, ny, nz);
                 Node nb = all.get(k);
@@ -322,7 +319,10 @@ public final class CenterlineBuilder {
                 if (nb.closed) { skippedClosed++; continue; }
 
                 int dy = Math.abs(ny - cur.y);
-                double tg = cur.g + stepCost + (0.2 * dy); // prefer smooth slopes
+                int distToEdge = grid.distToEdge(nx, nz);
+                if (distToEdge < 0) distToEdge = 0;
+                double centerPenalty = CENTER_BIAS / (distToEdge + 1.0);
+                double tg = cur.g + stepCost + (0.2 * dy) + centerPenalty; // prefer smooth slopes + center
                 if (tg < nb.g) {
                     nb.parent = cur;
                     nb.g = tg;
@@ -345,6 +345,7 @@ public final class CenterlineBuilder {
                     " tooSteep=" + skippedTooSteep +
                     " notAllowed=" + skippedNotAllowed +
                     " noClearance=" + skippedNoClearance +
+                    " notWalkable=" + skippedNotWalkable +
                     " closed=" + skippedClosed +
                     " noImprove=" + skippedImprovement);
             for (String s : samples) {
@@ -352,6 +353,126 @@ public final class CenterlineBuilder {
             }
         }
         return null; // no path
+    }
+
+    private static final class WalkGrid {
+        final int minX, minZ, width, height;
+        final int[] surfaceY; // Integer.MIN_VALUE for none
+        final boolean[] walkable;
+        final int[] dist; // distance-to-edge for walkable cells, -1 for not walkable
+
+        private WalkGrid(int minX, int minZ, int width, int height) {
+            this.minX = minX;
+            this.minZ = minZ;
+            this.width = width;
+            this.height = height;
+            int n = width * height;
+            this.surfaceY = new int[n];
+            this.walkable = new boolean[n];
+            this.dist = new int[n];
+            java.util.Arrays.fill(this.surfaceY, Integer.MIN_VALUE);
+            java.util.Arrays.fill(this.dist, -1);
+        }
+
+        int idx(int x, int z) { return (z - minZ) * width + (x - minX); }
+        boolean inBounds(int x, int z) { return x >= minX && x < (minX + width) && z >= minZ && z < (minZ + height); }
+
+        boolean isWalkable(int x, int z) {
+            if (!inBounds(x, z)) return false;
+            return walkable[idx(x, z)];
+        }
+
+        int surfaceY(int x, int z) {
+            if (!inBounds(x, z)) return Integer.MIN_VALUE;
+            return surfaceY[idx(x, z)];
+        }
+
+        int distToEdge(int x, int z) {
+            if (!inBounds(x, z)) return -1;
+            return dist[idx(x, z)];
+        }
+
+        static WalkGrid build(World w, int minX, int maxX, int minZ, int maxZ, int yHint, int scan, Logger logger, String label, boolean verbose) {
+            int width = (maxX - minX) + 1;
+            int height = (maxZ - minZ) + 1;
+            long cells = (long) width * (long) height;
+            // Safety cap to avoid huge allocations on very large bounds.
+            long cap = 1_200_000L;
+            if (cells <= 0 || cells > cap) {
+                if (verbose) warn(logger, "A* " + label + " grid skipped: bounds too large (" + width + "x" + height + "=" + cells + ")");
+                // Fallback: no grid centering
+                WalkGrid g = new WalkGrid(minX, minZ, width, height);
+                // minimal walkability computed on-demand would be nicer, but we avoid allocation.
+                // Returning null forces caller to abort; caller can keep previous behavior if needed.
+                return g;
+            }
+
+            WalkGrid g = new WalkGrid(minX, minZ, width, height);
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    int y = findSurfaceYNear(w, x, z, yHint, scan);
+                    int id = g.idx(x, z);
+                    g.surfaceY[id] = y;
+                    if (y == Integer.MIN_VALUE) {
+                        g.walkable[id] = false;
+                        g.dist[id] = -1;
+                        continue;
+                    }
+                    Material t = w.getBlockAt(x, y, z).getType();
+                    boolean ok = ALLOWED.contains(t) && isClearAbove(w, x, y, z);
+                    g.walkable[id] = ok;
+                    g.dist[id] = ok ? Integer.MAX_VALUE : -1;
+                }
+            }
+
+            // Multi-source BFS from edges/boundaries to compute distance-to-edge.
+            java.util.ArrayDeque<Integer> q = new java.util.ArrayDeque<>();
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    int id = g.idx(x, z);
+                    if (!g.walkable[id]) continue;
+                    boolean boundary = (x == minX || x == maxX || z == minZ || z == maxZ);
+                    if (!boundary) {
+                        // 4-neighbor boundary check is sufficient for "edge hugging".
+                        if (!g.isWalkable(x + 1, z) || !g.isWalkable(x - 1, z) || !g.isWalkable(x, z + 1) || !g.isWalkable(x, z - 1)) {
+                            boundary = true;
+                        }
+                    }
+                    if (boundary) {
+                        g.dist[id] = 0;
+                        q.add(id);
+                    }
+                }
+            }
+
+            while (!q.isEmpty()) {
+                int cur = q.poll();
+                int cx = (cur % g.width) + g.minX;
+                int cz = (cur / g.width) + g.minZ;
+                int cd = g.dist[cur];
+                // 4-neighbor expansion
+                int[] nx = new int[] { cx + 1, cx - 1, cx, cx };
+                int[] nz = new int[] { cz, cz, cz + 1, cz - 1 };
+                for (int i = 0; i < 4; i++) {
+                    int x = nx[i], z = nz[i];
+                    if (!g.inBounds(x, z)) continue;
+                    int id = g.idx(x, z);
+                    if (!g.walkable[id]) continue;
+                    if (g.dist[id] > cd + 1) {
+                        g.dist[id] = cd + 1;
+                        q.add(id);
+                    }
+                }
+            }
+
+            if (verbose) {
+                // Quick sanity: report max distance in this grid.
+                int maxD = 0;
+                for (int d : g.dist) if (d > maxD && d < Integer.MAX_VALUE) maxD = d;
+                info(logger, "A* " + label + " grid built: size=" + width + "x" + height + " maxDistToEdge=" + maxD);
+            }
+            return g;
+        }
     }
 
         // 8-direction movement (cardinal cost=1.0, diagonal cost≈1.4)

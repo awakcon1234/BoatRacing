@@ -446,27 +446,49 @@ public class AdminTracksGUI implements Listener {
             open(p);
             return;
         }
-        // Start a new repeating visualizer (every 10 ticks)
+        // Start a new repeating visualizer (updates as the player moves)
         int newId = Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             List<org.bukkit.Location> nodes = plugin.getTrackConfig().getCenterline();
             if (nodes.isEmpty()) return;
             if (!p.isOnline()) return;
             org.bukkit.World pw = p.getWorld();
             org.bukkit.Location pl = p.getLocation();
-            double maxDistSq = 64.0 * 64.0;
-            // sample every k nodes to reduce spam
-            int step = Math.max(1, nodes.size() / 200); // cap around ~200 particles
+            // Only render inside player's view distance.
+            int viewChunks = getClientViewDistanceChunks(p);
+            if (viewChunks <= 0) viewChunks = Bukkit.getViewDistance();
+            int radiusBlocks = Math.max(16, (viewChunks + 1) * 16);
+            double maxDistSq = (double) radiusBlocks * (double) radiusBlocks;
+            // Draw a continuous line: render every node in view.
+            int step = 1;
+
+            org.bukkit.Particle.DustOptions dust = new org.bukkit.Particle.DustOptions(org.bukkit.Color.fromRGB(170, 0, 255), 1.2f);
             for (int i = 0; i < nodes.size(); i += step) {
                 org.bukkit.Location n = nodes.get(i);
-                if (n.getWorld() != null && n.getWorld().equals(pw) && n.distanceSquared(pl) <= maxDistSq) {
-                    pw.spawnParticle(org.bukkit.Particle.END_ROD, n.getX(), n.getY() + 0.2, n.getZ(), 1, 0, 0, 0, 0);
+                org.bukkit.World nw = (n.getWorld() != null) ? n.getWorld() : pw;
+                // Use name match to be resilient across reloads, and use horizontal distance so Y differences don't hide particles.
+                if (!nw.getName().equals(pw.getName())) continue;
+                double dx = n.getX() - pl.getX();
+                double dz = n.getZ() - pl.getZ();
+                if ((dx * dx + dz * dz) <= maxDistSq) {
+                    double y = n.getY() + 2.0;
+                    pw.spawnParticle(org.bukkit.Particle.DUST, n.getX(), y, n.getZ(), 1, 0, 0, 0, 0, dust);
                 }
             }
-        }, 0L, 10L).getTaskId();
+        }, 0L, 5L).getTaskId();
         vizTasks.put(id, newId);
         Text.msg(p, "&aĐã bật hiển thị đường giữa.");
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
         open(p);
+    }
+
+    private static int getClientViewDistanceChunks(Player p) {
+        try {
+            java.lang.reflect.Method m = p.getClass().getMethod("getClientViewDistance");
+            Object v = m.invoke(p);
+            if (v instanceof Integer i) return i;
+        } catch (Throwable ignored) {
+        }
+        return -1;
     }
 
     @org.bukkit.event.EventHandler
