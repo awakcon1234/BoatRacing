@@ -29,7 +29,7 @@ public class UpdateNotifier implements Listener {
         if (checker != null && checker.isChecked() && checker.isOutdated()) {
             int behind = checker.getBehindCount();
             String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
-            String current = plugin.getDescription().getVersion();
+            String current = es.jaie55.boatracing.BoatRacingPlugin.getInstance().getPluginVersion();
             Text.msg(p, "&eBạn đang chậm &f" + behind + "&e phiên bản!");
             Text.msg(p, "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e.");
             Text.msg(p, "&eTải về: &b" + checker.getLatestUrl());
@@ -43,7 +43,7 @@ public class UpdateNotifier implements Listener {
                     if (checker.isChecked() && checker.isOutdated() && p.isOnline() && p.hasPermission("boatracing.update")) {
                         int behind = checker.getBehindCount();
                         String latest = checker.getLatestVersion() != null ? checker.getLatestVersion() : "latest";
-                        String current = plugin.getDescription().getVersion();
+                        String current = es.jaie55.boatracing.BoatRacingPlugin.getInstance().getPluginVersion();
                         Text.msg(p, "&eBạn đang chậm &f" + behind + "&e phiên bản!");
                         Text.msg(p, "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e.");
                         Text.msg(p, "&eTải về: &b" + checker.getLatestUrl());

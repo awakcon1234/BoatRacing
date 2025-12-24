@@ -27,7 +27,7 @@ public final class SelectionManager {
         ItemStack stick = new ItemStack(Material.STICK, 1);
         ItemMeta m = stick.getItemMeta();
         if (m != null) {
-            m.setDisplayName("§6BoatRacing Selector");
+            m.displayName(net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection().deserialize("§6BoatRacing Selector"));
             stick.setItemMeta(m);
         }
         p.getInventory().addItem(stick);

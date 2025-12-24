@@ -41,12 +41,15 @@ test {
 tasks.withType(JavaCompile).configureEach {
     options.release = 21
     options.encoding = 'UTF-8'
+    // Show detailed deprecation warnings during compilation
+    options.compilerArgs += ['-Xlint:deprecation']
 }
 
 processResources {
+    // Use a Provider for the version to avoid accessing Task.project at execution time
+    def versionProvider = project.provider { project.version }
     filesMatching('plugin.yml') {
-        // Expand ${project.version} in plugin.yml via Gradle
-        expand([project: [version: project.version]])
+        expand([version: versionProvider])
     }
 }
 

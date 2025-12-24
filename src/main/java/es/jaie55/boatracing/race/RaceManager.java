@@ -234,6 +234,7 @@ public class RaceManager {
     }
 
     // Simple countdown using server scheduler
+    @SuppressWarnings("deprecation")
     public void startRaceWithCountdown(List<Player> placed) {
         if (placed.isEmpty()) return;
         this.registering = false;
@@ -254,7 +255,11 @@ public class RaceManager {
                 initPathForLivePositions();
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     for (Player p : placed) {
-                        p.sendTitle("", "§aGo!", 5, 20, 5);
+                        p.showTitle(net.kyori.adventure.title.Title.title(
+                        net.kyori.adventure.text.Component.empty(),
+                        net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&aGo!"),
+                        net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(5L * 50L), java.time.Duration.ofMillis(20L * 50L), java.time.Duration.ofMillis(5L * 50L))
+                ));
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
                     }
                 });
@@ -264,7 +269,11 @@ public class RaceManager {
                 final int cur = counter[0];
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     for (Player p : placed) {
-                        p.sendTitle("", "§e" + cur, 5, 20, 5);
+                        p.showTitle(net.kyori.adventure.title.Title.title(
+                          net.kyori.adventure.text.Component.empty(),
+                          net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&e" + cur),
+                          net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(5L * 50L), java.time.Duration.ofMillis(20L * 50L), java.time.Duration.ofMillis(5L * 50L))
+                  ));
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.0f);
                     }
                 });

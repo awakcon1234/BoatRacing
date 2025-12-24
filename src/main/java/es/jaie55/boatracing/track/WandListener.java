@@ -21,8 +21,9 @@ public class WandListener implements Listener {
         if (ev.getHand() != null && ev.getHand() != EquipmentSlot.HAND) return;
         if (ev.getItem() == null || !ev.getItem().hasItemMeta()) return;
         var meta = ev.getItem().getItemMeta();
-        if (meta == null || meta.getDisplayName() == null) return;
-        if (!meta.getDisplayName().contains("Selector")) return;
+        if (meta == null || meta.displayName() == null) return;
+        String name = net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacySection().serialize(meta.displayName());
+        if (!name.contains("Selector")) return;
         ev.setCancelled(true);
         var p = ev.getPlayer();
         switch (ev.getAction()) {

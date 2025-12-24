@@ -40,6 +40,9 @@ public class BoatRacingPlugin extends JavaPlugin {
     private es.jaie55.boatracing.ui.AdminTracksGUI tracksGUI;
     // Last latest-version announced in console due to 5-minute silent checks (to avoid duplicate prints)
     private volatile String lastConsoleAnnouncedVersion = null;
+    // Plugin metadata (avoid deprecated getDescription())
+    private String pluginVersion = "unknown";
+    private java.util.List<String> pluginAuthors = java.util.Collections.emptyList();
     // Team and pit features removed
 
     public static BoatRacingPlugin getInstance() { return instance; }
@@ -65,6 +68,8 @@ public class BoatRacingPlugin extends JavaPlugin {
             getLogger().warning("Failed to merge default config values: " + t.getMessage());
         }
         this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
+        // Load plugin metadata (version/authors) from plugin.yml to avoid deprecated API
+        loadPluginMeta();
         // Team and pit features removed
     this.adminGUI = new es.jaie55.boatracing.ui.AdminGUI(this);
     this.adminRaceGUI = new es.jaie55.boatracing.ui.AdminRaceGUI(this);
@@ -108,7 +113,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 
     // Updates
     if (getConfig().getBoolean("updates.enabled", true)) {
-            String currentVersion = getDescription().getVersion();
+            String currentVersion = pluginVersion;
             updateChecker = new UpdateChecker(this, "boatracing", currentVersion);
             updateChecker.checkAsync();
             // Post-result console notice (delayed)
@@ -145,7 +150,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                             String latest = updateChecker.getLatestVersion();
                             if (latest != null && (lastConsoleAnnouncedVersion == null || !latest.equals(lastConsoleAnnouncedVersion))) {
                                 int behind = updateChecker.getBehindCount();
-                                String current = getDescription().getVersion();
+                                String current = pluginVersion;
                                 Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
                                 Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
                                 Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
@@ -172,7 +177,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                     if (!getConfig().getBoolean("updates.console-warn", true)) return;
                     if (updateChecker.isChecked() && updateChecker.isOutdated()) {
                         int behind = updateChecker.getBehindCount();
-                        String current = getDescription().getVersion();
+                        String current = pluginVersion;
                         String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
                         Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
                         Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
@@ -199,6 +204,19 @@ public class BoatRacingPlugin extends JavaPlugin {
         cfg.options().copyDefaults(true);
         saveConfig();
     }
+
+    // Load plugin metadata (version/authors) from plugin.yml to avoid calling deprecated getDescription()
+    private void loadPluginMeta() {
+        InputStream is = getResource("plugin.yml");
+        if (is == null) return;
+        YamlConfiguration y = YamlConfiguration.loadConfiguration(new InputStreamReader(is, StandardCharsets.UTF_8));
+        this.pluginVersion = y.getString("version", this.pluginVersion);
+        java.util.List<String> authors = y.getStringList("authors");
+        if (authors != null && !authors.isEmpty()) this.pluginAuthors = authors;
+    }
+
+    public String getPluginVersion() { return pluginVersion; }
+    public java.util.List<String> getPluginAuthors() { return pluginAuthors; }
 
 
     // Resolve an OfflinePlayer without remote lookups: prefer online, then cache, or UUID literal
@@ -249,8 +267,8 @@ public class BoatRacingPlugin extends JavaPlugin {
                     p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                     return true;
                 }
-                String current = getDescription().getVersion();
-                java.util.List<String> authors = getDescription().getAuthors();
+                String current = pluginVersion;
+                java.util.List<String> authors = pluginAuthors;
                 Text.msg(p, "&e" + getName() + "-" + current);
                 if (!authors.isEmpty()) {
                     Text.msg(p, "&eAuthors: &f" + String.join(", ", authors));
@@ -788,7 +806,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 
     private void sendUpdateStatus(Player p) {
         if (updateChecker == null) return;
-                        String current = getDescription().getVersion();
+                        String current = pluginVersion;
         if (!updateChecker.isChecked()) return;
         if (updateChecker.hasError()) {
             Text.msg(p, "&7Kiểm tra cập nhật thất bại. Xem chi tiết trong console.");
