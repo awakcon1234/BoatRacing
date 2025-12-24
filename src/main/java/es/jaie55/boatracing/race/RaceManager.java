@@ -33,6 +33,9 @@ public class RaceManager {
     private final java.util.Map<UUID, ParticipantState> participants = new java.util.HashMap<>();
     private final java.util.Map<UUID, Player> participantPlayers = new java.util.HashMap<>();
     private long raceStartMillis = 0L;
+    // Countdown end (millis) for the start countdown; 0 if no countdown active
+    private volatile long countdownEndMillis = 0L;
+
     // Centerline-based live position
     private java.util.List<org.bukkit.Location> path = java.util.Collections.emptyList();
     private int[] gateIndex = new int[0]; // indices along path for each checkpoint and finish
@@ -240,11 +243,15 @@ public class RaceManager {
         if (placed.isEmpty()) return;
         this.registering = false;
         final int[] counter = {5};
+        // set countdown end for external consumers
+        this.countdownEndMillis = System.currentTimeMillis() + (counter[0] * 1000L);
         final var task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (counter[0] <= 0) {
                 // Start
                 running = true;
                 raceStartMillis = System.currentTimeMillis();
+                // clear countdown
+                countdownEndMillis = 0L;
                 // initialize participant state from placed players
                 participants.clear();
                 participantPlayers.clear();
@@ -269,6 +276,8 @@ public class RaceManager {
                 throw new RuntimeException("__cancel__");
             } else {
                 final int cur = counter[0];
+                // update countdown end so external readers see a live remaining time
+                countdownEndMillis = System.currentTimeMillis() + (cur * 1000L);
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     for (Player p : placed) {
                         p.showTitle(net.kyori.adventure.title.Title.title(
@@ -282,9 +291,10 @@ public class RaceManager {
             }
             counter[0]--;
         }, 0L, 20L);
-        // Wrap cancellation
+        // Wrap cancellation: clear countdown when canceled
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             try { task.cancel(); } catch (Throwable ignored) {}
+            countdownEndMillis = 0L;
         }, 20L * 6L);
     }
 
@@ -385,6 +395,15 @@ public class RaceManager {
     }
 
     public long getRaceStartMillis() { return raceStartMillis; }
+
+    /**
+     * Remaining seconds for the active start countdown, or 0 if none.
+     */
+    public int getCountdownRemainingSeconds() {
+        long now = System.currentTimeMillis();
+        if (countdownEndMillis <= now) return 0;
+        return (int) ((countdownEndMillis - now + 999L) / 1000L);
+    }
 
     public java.util.List<UUID> getLiveOrder() {
         java.util.List<UUID> ids = new java.util.ArrayList<>(participants.keySet());

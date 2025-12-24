@@ -657,6 +657,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 root.add("profile");
                 // Expose 'race' root to all users for join/leave/status discoverability
                 root.add("race");
+                root.add("scoreboard");
                 if (sender.hasPermission("boatracing.setup")) root.add("setup");
                 if (sender.hasPermission("boatracing.admin")) root.add("admin");
                 if (sender.hasPermission("boatracing.reload")) root.add("reload");
@@ -669,11 +670,18 @@ public class BoatRacingPlugin extends JavaPlugin {
                 // if (sender.hasPermission("boatracing.teams")) root.add("teams");
                 root.add("profile");
                 root.add("race");
+                root.add("scoreboard");
                 if (sender.hasPermission("boatracing.setup")) root.add("setup");
                 if (sender.hasPermission("boatracing.admin")) root.add("admin");
                 if (sender.hasPermission("boatracing.reload")) root.add("reload");
                 if (sender.hasPermission("boatracing.version")) root.add("version");
                 return root.stream().filter(s -> s.startsWith(pref)).toList();
+            }
+            if (args.length >= 2 && (args[0].equalsIgnoreCase("scoreboard") || args[0].equalsIgnoreCase("sb"))) {
+                if (!sender.hasPermission("boatracing.admin")) return java.util.Collections.emptyList();
+                if (args.length == 2) return java.util.Arrays.asList("on","off","tick","debug");
+                if (args.length == 3 && args[1].equalsIgnoreCase("debug")) return java.util.Arrays.asList("on","off");
+                return java.util.Collections.emptyList();
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("admin")) {
                 if (!sender.hasPermission("boatracing.admin")) return java.util.Collections.emptyList();

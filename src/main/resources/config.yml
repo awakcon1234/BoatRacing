@@ -67,6 +67,13 @@ racing:
         unfinished_progress_line: "<gray>  tiến độ: <white>%progress%%"
         max_finished_lines: 8
         max_unfinished_lines: 6
+      # ActionBar templates shown only while waiting and racing; supports MiniMessage and PlaceholderAPI
+      actionbar:
+        enabled: true
+        # Waiting placeholders: %countdown% %joined% %max%
+        waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> • <gray>%joined%/%max%</gray>"
+        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed_bph% %next_checkpoint% %checkpoint_total%
+        racing: "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <green>%speed_bph% bph</green>"
 
   # Registration announce message template
   # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command

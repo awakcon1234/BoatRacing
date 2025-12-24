@@ -25,6 +25,9 @@ public class ScoreboardService {
     private final java.util.Map<java.util.UUID, Integer> lastCounts = new java.util.HashMap<>();
     private final java.util.Map<java.util.UUID, String> lastState = new java.util.HashMap<>();
     private volatile boolean debug = false;
+    // Per-player last locations used to compute speed (blocks per hour)
+    private final java.util.Map<java.util.UUID, org.bukkit.Location> lastLocations = new java.util.HashMap<>();
+    private final java.util.Map<java.util.UUID, Double> lastBph = new java.util.HashMap<>();
 
     public ScoreboardService(BoatRacingPlugin plugin) {
         this.plugin = plugin;
@@ -73,17 +76,31 @@ public class ScoreboardService {
         if (rm == null) { log("tick: rm=null, waiting for initialization"); return; }
         log("tick: online=" + Bukkit.getOnlinePlayers().size() + ", running=" + rm.isRunning() + ", registering=" + rm.isRegistering() + ", libLoaded=" + (lib != null));
         for (Player p : Bukkit.getOnlinePlayers()) {
-            try { updateFor(p); } catch (Throwable ignored) {}
+            try {
+                // compute speed (blocks per hour) based on movement since last tick
+                org.bukkit.Location now = p.getLocation();
+                org.bukkit.Location prev = lastLocations.get(p.getUniqueId());
+                if (prev != null && prev.getWorld() != null && now.getWorld() != null && prev.getWorld().equals(now.getWorld())) {
+                    double dist = now.distance(prev); // blocks
+                    double bph = dist * 3600.0; // per second -> per hour (tick runs ~1s)
+                    lastBph.put(p.getUniqueId(), bph);
+                } else {
+                    lastBph.put(p.getUniqueId(), 0.0);
+                }
+                lastLocations.put(p.getUniqueId(), now);
+
+                updateFor(p);
+            } catch (Throwable ignored) {}
         }
     }
 
     private void updateFor(Player p) {
-        if (rm.isRunning()) { setState(p, "RACING"); applyRacingBoard(p); return; }
-        if (rm.isRegistering()) { setState(p, "WAITING"); applyWaitingBoard(p); return; }
+        if (rm.isRunning()) { setState(p, "RACING"); applyRacingBoard(p); applyActionBarForRacing(p); return; }
+        if (rm.isRegistering()) { setState(p, "WAITING"); applyWaitingBoard(p); applyActionBarForWaiting(p); return; }
         boolean anyFinished = rm.getStandings().stream().anyMatch(s -> s.finished);
-        if (anyFinished) { setState(p, "COMPLETED"); applyCompletedBoard(p); return; }
+        if (anyFinished) { setState(p, "COMPLETED"); applyCompletedBoard(p); clearActionBar(p); return; }
         setState(p, "LOBBY");
-        applyLobbyBoard(p);
+        applyLobbyBoard(p); clearActionBar(p);
     }
 
     private void applyLobbyBoard(Player p) {
@@ -229,6 +246,64 @@ public class ScoreboardService {
         log("Applied sidebar to " + p.getName() + " title='" + Text.plain(title) + "' lines=" + lines.size());
     }
 
+    // --- ActionBar support ---
+    private void applyActionBarForWaiting(Player p) {
+        if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
+        String tpl = cfgString("scoreboard.actionbar.waiting", "<yellow>Start in <white>%countdown%</white> • <gray>%joined%/%max%</gray>");
+        int countdown = rm.getCountdownRemainingSeconds();
+        int joined = rm.getRegistered().size();
+        int max = plugin.getTrackConfig().getStarts().size();
+        java.util.Map<String,String> ph = new java.util.HashMap<>();
+        ph.put("countdown", formatCountdownSeconds(countdown)); ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
+        Component c = parse(p, tpl, ph);
+        sendActionBar(p, c);
+        log("Applied waiting actionbar to " + p.getName() + " tpl='" + tpl + "'");
+    }
+
+    private void applyActionBarForRacing(Player p) {
+        if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
+        String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <green>%speed_bph% bph</green>");
+        java.util.Map<String,String> ph = new java.util.HashMap<>();
+        var st = rm.getParticipantState(p.getUniqueId());
+        java.util.List<java.util.UUID> order = rm.getLiveOrder();
+        int pos = Math.max(1, order.indexOf(p.getUniqueId()) + 1);
+        int lapCurrent = st == null ? 0 : (st.currentLap + 1);
+        int lapTotal = rm.getTotalLaps();
+        int percent = (int) Math.round(rm.getLapProgressRatio(p.getUniqueId()) * 100.0);
+        int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
+        int totalCp = plugin.getTrackConfig().getCheckpoints().size();
+        double bph = lastBph.getOrDefault(p.getUniqueId(), 0.0);
+        ph.put("position", String.valueOf(pos)); ph.put("racer_name", p.getName()); ph.put("lap_current", String.valueOf(lapCurrent)); ph.put("lap_total", String.valueOf(lapTotal));
+        ph.put("progress", String.valueOf(percent)); ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp)); ph.put("speed_bph", String.valueOf(Math.round(bph)));
+        Component c = parse(p, tpl, ph);
+        sendActionBar(p, c);
+        log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed=" + Math.round(bph));
+    }
+
+    private void clearActionBar(Player p) {
+        try { sendActionBar(p, Component.empty()); } catch (Throwable ignored) {}
+    }
+
+    private void sendActionBar(Player p, Component c) {
+        try {
+            // Preferred: Adventure-friendly API if available
+            p.sendActionBar(c);
+        } catch (Throwable t) {
+            try {
+                // Fallback to legacy spigot action bar
+                p.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, net.md_5.bungee.api.chat.TextComponent.fromLegacyText(Text.plain(c)));
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private static String formatCountdownSeconds(int sec) {
+        if (sec <= 0) return "0s";
+        if (sec >= 60) {
+            int m = sec / 60; int s = sec % 60; return String.format("%d:%02d", m, s);
+        }
+        return sec + "s";
+    }
+
     private java.util.List<Component> parseLines(Player p, java.util.List<String> lines, java.util.Map<String,String> placeholders) {
         java.util.List<Component> out = new java.util.ArrayList<>(lines.size());
         for (String s : lines) out.add(parse(p, s, placeholders));
@@ -253,10 +328,31 @@ public class ScoreboardService {
         return (out == null || out.isEmpty()) ? def : out;
     }
     private int cfgInt(String path, int def) { return plugin.getConfig().getInt(path, def); }
+    private boolean cfgBool(String path, boolean def) { return plugin.getConfig().getBoolean(path, def); }
 
     private static String colorTagFor(org.bukkit.DyeColor dc) {
-        String n = (dc == null ? "white" : dc.name().toLowerCase(java.util.Locale.ROOT));
-        return "<" + n + ">";
+        // MiniMessage supports a specific set of color names (e.g. gold, red, light_purple, dark_aqua, etc.)
+        // Map Bukkit DyeColor to the closest MiniMessage-supported name (fallback to white).
+        if (dc == null) return "<white>";
+        switch (dc) {
+            case WHITE: return "<white>";
+            case ORANGE: return "<gold>"; // orange -> gold
+            case MAGENTA: return "<light_purple>";
+            case LIGHT_BLUE: return "<blue>";
+            case YELLOW: return "<yellow>";
+            case LIME: return "<green>";
+            case PINK: return "<light_purple>";
+            case GRAY: return "<gray>";
+            case LIGHT_GRAY: return "<gray>";
+            case CYAN: return "<aqua>";
+            case PURPLE: return "<dark_purple>";
+            case BLUE: return "<blue>";
+            case BROWN: return "<gold>";
+            case GREEN: return "<green>";
+            case RED: return "<red>";
+            case BLACK: return "<black>";
+            default: return "<white>";
+        }
     }
     private static boolean empty(String s) { return s == null || s.isEmpty(); }
 
