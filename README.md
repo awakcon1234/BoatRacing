@@ -10,7 +10,6 @@
 
 [![Modrinth](https://img.shields.io/modrinth/v/boatracing?logo=modrinth&label=Modrinth)](https://modrinth.com/plugin/boatracing) [![Downloads](https://img.shields.io/modrinth/dt/boatracing?logo=modrinth&label=Downloads)](https://modrinth.com/plugin/boatracing)
 
-[![bStats](https://bstats.org/signatures/bukkit/BoatRacing.svg)](https://bstats.org/plugin/bukkit/BoatRacing/26881)
 
 An F1‒style ice boat racing plugin for Bukkit/Spigot (compatible with Paper/Purpur) with a clean, vanilla‒like GUI. Manage teams, configure tracks with the built‒in BoatRacing selection tool, run timed races with checkpoints, pit area penalties, and a guided setup wizard.
 
@@ -27,10 +26,7 @@ Compatibility and fixes:
 - Classified as a Bukkit/Spigot plugin on Paper (paper-plugin.yml excluded from the JAR). Paper-only APIs replaced with Bukkit-safe calls.
 - Docs: README, CHANGELOG and QA checklist updated (EN/ES).
  
-Updater cadence:
-- Background checks still run every 5 minutes. When a new version is first detected during runtime, a console WARN is printed immediately (once per version).
-- Hourly reminder aligned to the top of each hour (00:00, 01:00, …) while outdated (respects `updates.console-warn`).
-- Admin join: always notifies in chat (if enabled), never prints to console on player join.
+Updater: update checking and in‑game update notifications have been removed from this plugin.
 
 ## What’s new (1.0.8)
 Improvements and toggles:
@@ -126,7 +122,7 @@ Fixes and polish:
  - Live scoreboard: per-player sidebar tracking Lap, CP and Time (auto‑created on race start and cleaned up on stop/reset).
 - Registration: admin opens a timed registration window; players join via command (must be in a team); force‑start supported
 - Persistent storage: teams.yml, racers.yml, and per‑track files under `plugins/BoatRacing/tracks/` (no central `track.yml`).
-- Update notifications and bStats metrics (enabled by default)
+- Update notifications and bStats metrics (removed)
  - Admin GUI: manage teams (create/rename/color/add/remove/delete) and players (assign team, set racer number, set boat)
  - Tracks GUI: manage named tracks (Create now auto-loads the new track and suggests starting the setup wizard).
  - Race GUI: one-click controls for registration and race state, plus laps.
@@ -250,7 +246,6 @@ Admins (permission `boatracing.admin`) can:
 - `boatracing.teams` (default: true) — access to `/boatracing teams`
 - `boatracing.version` (default: true) — access to `/boatracing version`
 - `boatracing.reload` (default: op) — access to `/boatracing reload`
-- `boatracing.update` (default: op) — receive in‑game update notices
 - `boatracing.setup` (default: op) — configure tracks and selections (wizard, lights, starts, finish, pit, checkpoints)
 - `boatracing.admin` (default: op) — admin GUI and commands (manage teams and players). Grants all plugin permissions via explicit children (no circular wildcard). Also enables root tab‑completion for `admin`.
 	- Admin Tracks GUI requires `boatracing.setup` to open from the Admin panel.
@@ -277,7 +272,6 @@ Players without `boatracing.setup` can use `/boatracing race join <track>`, `/bo
 - `bstats.enabled`: true|false (bStats plugin-id is fixed)
 - `updates.enabled`: enable update checks
 - `updates.console-warn`: WARN in console when outdated
-- `updates.notify-admins`: in‑game update notices for admins (`boatracing.update`)
 - `racing.laps`: default race laps (int, default 3)
 - `racing.mandatory-pitstops`: required pit exits to be allowed to finish (int, default 0 = disabled)
 - `racing.pit-penalty-seconds`: time penalty applied on pit entry (double, default 5.0)

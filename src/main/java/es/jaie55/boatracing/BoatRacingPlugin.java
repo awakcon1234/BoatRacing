@@ -14,8 +14,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
 import es.jaie55.boatracing.util.Text;
-import es.jaie55.boatracing.update.UpdateChecker;
-import es.jaie55.boatracing.update.UpdateNotifier;
 import es.jaie55.boatracing.track.TrackConfig;
 import es.jaie55.boatracing.track.TrackLibrary;
 import es.jaie55.boatracing.track.Region;
@@ -32,7 +30,6 @@ public class BoatRacingPlugin extends JavaPlugin {
     private es.jaie55.boatracing.profile.PlayerProfileManager profileManager;
     private es.jaie55.boatracing.ui.ProfileGUI profileGUI;
     private String prefix;
-    private UpdateChecker updateChecker;
     private TrackConfig trackConfig;
     private TrackLibrary trackLibrary;
     private RaceManager raceManager;
@@ -98,94 +95,10 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
         }, this);
     
-    try {
-            boolean metricsEnabled = getConfig().getBoolean("bstats.enabled", true);
-            if (metricsEnabled) {
-                final int pluginId = 26881; // fixed bStats plugin id
-                new org.bstats.bukkit.Metrics(this, pluginId);
-                getLogger().info("Starting Metrics. Opt-out using the global bStats config.");
-            }
-        } catch (Throwable t) {
-            getLogger().warning("Failed to initialize bStats metrics: " + t.getMessage());
-        }
+// Removed bStats metrics and the external update checker per configuration.
+        // If you need to re-enable update checking or metrics, re-add a custom implementation and config keys.
 
     // ViaVersion integration and internal scoreboard number hiding removed by request
-
-    // Updates
-    if (getConfig().getBoolean("updates.enabled", true)) {
-            String currentVersion = pluginVersion;
-            updateChecker = new UpdateChecker(this, "boatracing", currentVersion);
-            updateChecker.checkAsync();
-            // Post-result console notice (delayed)
-            Bukkit.getScheduler().runTaskLater(this, () -> {
-                if (updateChecker.isChecked() && updateChecker.isOutdated()) {
-                    int behind = updateChecker.getBehindCount();
-                    String current = currentVersion;
-                    String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
-                    if (getConfig().getBoolean("updates.console-warn", true)) {
-                        Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
-                        Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
-                        Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
-                        // Record which latest was announced
-                        lastConsoleAnnouncedVersion = updateChecker.getLatestVersion();
-                    }
-                }
-            }, 20L * 5); // ~5s after enable
-            // In-game notifications for admins
-            if (getConfig().getBoolean("updates.notify-admins", true)) {
-                Bukkit.getPluginManager().registerEvents(new UpdateNotifier(this, updateChecker), this);
-            }
-            // Periodic silent update checks every 5 minutes. If a NEW update is first detected here,
-            // print a console WARN immediately (single time per version); hourly reminders handle repetition.
-            long period = 20L * 60L * 5L; // 5 minutes
-            Bukkit.getScheduler().runTaskTimerAsynchronously(this, () -> {
-                try {
-                    if (!getConfig().getBoolean("updates.enabled", true)) return;
-                    updateChecker.checkAsync();
-                    // Evaluate result shortly after on the main thread to avoid race conditions
-                    Bukkit.getScheduler().runTaskLater(this, () -> {
-                        if (!getConfig().getBoolean("updates.enabled", true)) return;
-                        if (!getConfig().getBoolean("updates.console-warn", true)) return;
-                        if (updateChecker.isChecked() && updateChecker.isOutdated()) {
-                            String latest = updateChecker.getLatestVersion();
-                            if (latest != null && (lastConsoleAnnouncedVersion == null || !latest.equals(lastConsoleAnnouncedVersion))) {
-                                int behind = updateChecker.getBehindCount();
-                                String current = pluginVersion;
-                                Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
-                                Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
-                                Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
-                                lastConsoleAnnouncedVersion = latest; // avoid duplicate console prints for the same version here
-                            }
-                        }
-                    }, 20L * 8L);
-                } catch (Throwable ignored) {}
-            }, period, period);
-            // Console reminder every hour:
-            // - Warn immediately if we already know we're outdated
-            // - Trigger a fresh async check and then warn once when the result arrives (with retries to cover latency)
-            // Hourly console reminder aligned to the top of each local hour (00:00, 01:00, 02:00, ...)
-            java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
-            java.time.ZonedDateTime nextHour = now.withMinute(0).withSecond(0).withNano(0).plusHours(1);
-            long delayTicks = Math.max(1L, java.time.Duration.between(now, nextHour).toMillis() / 50L);
-            long hourly = 20L * 60L * 60L; // 1 hour
-            Bukkit.getScheduler().runTaskTimer(this, () -> {
-                if (!getConfig().getBoolean("updates.enabled", true)) return;
-                if (!getConfig().getBoolean("updates.console-warn", true)) return;
-                try { updateChecker.checkAsync(); } catch (Throwable ignored) {}
-                Bukkit.getScheduler().runTaskLater(this, () -> {
-                    if (!getConfig().getBoolean("updates.enabled", true)) return;
-                    if (!getConfig().getBoolean("updates.console-warn", true)) return;
-                    if (updateChecker.isChecked() && updateChecker.isOutdated()) {
-                        int behind = updateChecker.getBehindCount();
-                        String current = pluginVersion;
-                        String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
-                        Bukkit.getLogger().warning("[" + getName() + "] An update is available. You are " + behind + " version(s) out of date.");
-                        Bukkit.getLogger().warning("[" + getName() + "] You are running " + current + ", the latest version is " + latest + ".");
-                        Bukkit.getLogger().warning("[" + getName() + "] Update at " + updateChecker.getLatestUrl());
-                    }
-                }, 20L * 10L);
-            }, delayTicks, hourly);
-        }
 
     if (getCommand("boatracing") != null) {
             getCommand("boatracing").setExecutor(this);
@@ -275,26 +188,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 }
                 
 
-                boolean updatesEnabled = getConfig().getBoolean("updates.enabled", true);
-                if (!updatesEnabled) {
-                    Text.msg(p, "&7Kiểm tra cập nhật bị tắt trong cấu hình.");
-                    return true;
-                }
-
-                // Ensure we have a checker and run one if needed
-                if (updateChecker == null) {
-                    updateChecker = new UpdateChecker(this, "boatracing", current);
-                }
-                if (!updateChecker.isChecked()) {
-                    Text.msg(p, "&7Đang kiểm tra cập nhật...");
-                    updateChecker.checkAsync();
-                    // Poll a couple of times to deliver result to the user shortly after
-                    Bukkit.getScheduler().runTaskLater(this, () -> sendUpdateStatus(p), 40L);
-                    Bukkit.getScheduler().runTaskLater(this, () -> sendUpdateStatus(p), 100L);
-                    return true;
-                }
-                // Already have a result
-                sendUpdateStatus(p);
+                // Update checks removed; only display local metadata here
                 return true;
             }
             if (args[0].equalsIgnoreCase("reload")) {
@@ -804,27 +698,6 @@ public class BoatRacingPlugin extends JavaPlugin {
         return Collections.emptyList();
     }
 
-    private void sendUpdateStatus(Player p) {
-        if (updateChecker == null) return;
-                        String current = pluginVersion;
-        if (!updateChecker.isChecked()) return;
-        if (updateChecker.hasError()) {
-            Text.msg(p, "&7Kiểm tra cập nhật thất bại. Xem chi tiết trong console.");
-            Text.msg(p, "&7Phát hành: &f" + updateChecker.getLatestUrl());
-            return;
-        }
-        if (updateChecker.isOutdated()) {
-            int behind = updateChecker.getBehindCount();
-            String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : "latest";
-            Text.msg(p, "&eCó bản cập nhật cho " + getName() + ". Bạn đang chậm &f" + behind + "&e phiên bản.");
-            Text.msg(p, "&eBạn đang dùng &6" + current + "&e, phiên bản mới nhất là &6" + latest + "&e.");
-            Text.msg(p, "&eTải về: &f" + updateChecker.getLatestUrl());
-        } else {
-            String latest = updateChecker.getLatestVersion() != null ? updateChecker.getLatestVersion() : current;
-            Text.msg(p, "&aBạn đang dùng phiên bản mới nhất (&f" + current + "&a).");
-            Text.msg(p, "&7Mới nhất: &f" + latest + " &7| Phát hành: &f" + updateChecker.getLatestUrl());
-        }
-    }
 
     private static String fmtBox(org.bukkit.util.BoundingBox b) {
         return String.format("min(%d,%d,%d) max(%d,%d,%d)",

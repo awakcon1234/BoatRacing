@@ -19,7 +19,6 @@ permissions:
       boatracing.use: true
       boatracing.version: true
       boatracing.reload: true
-      boatracing.update: true
       boatracing.setup: true
       boatracing.admin: true
       boatracing.race.join: true
@@ -40,9 +39,6 @@ permissions:
   boatracing.reload:
     description: Tải lại cấu hình và dữ liệu plugin BoatRacing
     default: op
-  boatracing.update:
-    description: Nhận thông báo cập nhật trong game
-    default: op
   boatracing.setup:
     description: Cấu hình đường đua và vùng (quản trị)
     default: op
@@ -53,7 +49,6 @@ permissions:
       boatracing.use: true
       boatracing.version: true
       boatracing.reload: true
-      boatracing.update: true
       boatracing.setup: true
       boatracing.race.join: true
       boatracing.race.leave: true

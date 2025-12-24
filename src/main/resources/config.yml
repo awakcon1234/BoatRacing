@@ -3,15 +3,6 @@ player-actions:
   # Allow non-admin players to perform these actions
   allow-set-boat: true
   allow-set-number: true
-bstats:
-  enabled: true
-  # Anonymous usage metrics via bStats. Set to false to opt-out.
-updates:
-  enabled: true
-  # Log a WARN in console on startup if out of date
-  console-warn: true
-  # Notify admins with permission in-game on join
-  notify-admins: true
 racing:
   laps: 3
   registration-seconds: 300
