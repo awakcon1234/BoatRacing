@@ -422,7 +422,7 @@ public class AdminTracksGUI implements Listener {
         }
         Text.msg(p, "&7Đang xây dựng đường giữa...");
         // Run sync (small corridors). For large tracks, offload to async and schedule block checks on main thread chunk by chunk.
-        java.util.List<org.bukkit.Location> nodes = es.jaie55.boatracing.track.CenterlineBuilder.build(cfg, 8);
+        java.util.List<org.bukkit.Location> nodes = es.jaie55.boatracing.track.CenterlineBuilder.build(cfg, 8, plugin.getLogger(), true);
         if (nodes == null || nodes.isEmpty()) {
             Text.msg(p, "&cKhông thể tìm đường giữa. Hãy đảm bảo đường là băng liền mạch giữa các checkpoint.");
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);

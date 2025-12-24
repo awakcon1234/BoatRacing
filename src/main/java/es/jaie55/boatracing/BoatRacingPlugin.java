@@ -74,7 +74,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.adminRaceGUI = new es.jaie55.boatracing.ui.AdminRaceGUI(this);
     this.profileManager = new es.jaie55.boatracing.profile.PlayerProfileManager(getDataFolder());
     this.profileGUI = new es.jaie55.boatracing.ui.ProfileGUI(this);
-    this.trackConfig = new TrackConfig(getDataFolder());
+    this.trackConfig = new TrackConfig(this, getDataFolder());
     this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
     this.raceManager = new RaceManager(this, trackConfig);
     this.scoreboardService = new es.jaie55.boatracing.ui.ScoreboardService(this);

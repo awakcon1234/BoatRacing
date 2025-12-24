@@ -7,6 +7,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
 import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * Track configuration with simple disk persistence (YAML files under dataFolder/tracks).
@@ -24,12 +25,22 @@ public class TrackConfig {
     // Centerline polyline nodes across the entire course (optional, built by path builder)
     private final List<org.bukkit.Location> centerline = new ArrayList<>();
     private final File tracksDir;
+    private final Logger logger;
     private String currentName = null;
     private org.bukkit.Location waitingSpawn;
     // Single world name for the entire track
     private String worldName = null;
 
     public TrackConfig(File dataFolder) {
+        this(Logger.getLogger("BoatRacing"), dataFolder);
+    }
+
+    public TrackConfig(org.bukkit.plugin.Plugin plugin, File dataFolder) {
+        this(plugin != null ? plugin.getLogger() : Logger.getLogger("BoatRacing"), dataFolder);
+    }
+
+    public TrackConfig(Logger logger, File dataFolder) {
+        this.logger = (logger != null) ? logger : Logger.getLogger("BoatRacing");
         this.tracksDir = new File(dataFolder, "tracks");
         if (!tracksDir.exists()) tracksDir.mkdirs();
     }
@@ -80,13 +91,19 @@ public class TrackConfig {
                         float pitch = m.get("pitch") == null ? 0f : ((Number)m.get("pitch")).floatValue();
                         org.bukkit.World world = Bukkit.getWorld(w);
                         if (world == null) {
-                            Bukkit.getLogger().warning("[BoatRacing] TrackConfig: start position world not loaded: " + w + " (track=" + name + ")");
+                            logger.warning("TrackConfig: start position world not loaded: " + w + " (track=" + name + ")");
                         }
                         Location loc = new Location(world, x, y, z, yaw, pitch);
                         this.starts.add(loc);
                     } catch (Throwable ignored) {}
                 }
             }
+        }
+
+        // Legacy tracks might not have the top-level 'world' key; infer it from loaded start positions.
+        if (this.worldName == null && !this.starts.isEmpty()) {
+            org.bukkit.Location l0 = this.starts.get(0);
+            if (l0 != null && l0.getWorld() != null) this.worldName = l0.getWorld().getName();
         }
         // lights as simple location lists
         List<?> ls = cfg.getList("lights");
@@ -102,7 +119,7 @@ public class TrackConfig {
                         int z = ((Number)m.get("z")).intValue();
                         org.bukkit.World world = Bukkit.getWorld(w);
                         if (world == null) {
-                            Bukkit.getLogger().warning("[BoatRacing] TrackConfig: light world not loaded: " + w + " (track=" + name + ")");
+                            logger.warning("TrackConfig: light world not loaded: " + w + " (track=" + name + ")");
                             continue;
                         }
                         Block b = world.getBlockAt(x,y,z);
@@ -115,6 +132,12 @@ public class TrackConfig {
         Object fobj = cfg.get("finish");
         Region fin = regionFromObject(fobj);
         if (fin != null) this.finish = fin;
+
+        // Legacy tracks might keep world only inside region objects; capture it once.
+        if (this.worldName == null && this.finish != null && this.finish.getWorldName() != null) {
+            this.worldName = this.finish.getWorldName();
+        }
+
         // optional bounds region
         Object bobj = cfg.get("bounds");
         Region b = regionFromObject(bobj);
@@ -158,7 +181,7 @@ public class TrackConfig {
                         double z = asNumber(m.get("z")).doubleValue();
                         org.bukkit.World ww = org.bukkit.Bukkit.getWorld(w);
                         if (ww != null) this.centerline.add(new org.bukkit.Location(ww, x, y, z));
-                        else Bukkit.getLogger().warning("[BoatRacing] TrackConfig: centerline world not loaded: " + w + " (track=" + name + ")");
+                        else logger.warning("TrackConfig: centerline world not loaded: " + w + " (track=" + name + ")");
                     } catch (Throwable ignored) {}
                 }
             }
@@ -170,7 +193,7 @@ public class TrackConfig {
             java.util.Map m = (java.util.Map) wsp;
             try {
                 String w = (String)m.get("world");
-                if (w == null) w = this.worldName;
+                if (w == null || w.isBlank()) w = this.worldName;
                 double x = asNumber(m.get("x")).doubleValue();
                 double y = asNumber(m.get("y")).doubleValue();
                 double z = asNumber(m.get("z")).doubleValue();
@@ -178,7 +201,11 @@ public class TrackConfig {
                 float pitch = m.get("pitch") == null ? 0f : ((Number)m.get("pitch")).floatValue();
                 org.bukkit.World ww = org.bukkit.Bukkit.getWorld(w);
                 if (ww != null) this.waitingSpawn = new org.bukkit.Location(ww, x, y, z, yaw, pitch);
-                else org.bukkit.Bukkit.getLogger().warning("[BoatRacing] TrackConfig: waitingSpawn world not loaded: " + w + " (track=" + name + ")");
+                else {
+                    // Keep coordinates so we can still apply worldName later via withTrackWorld().
+                    this.waitingSpawn = new org.bukkit.Location(null, x, y, z, yaw, pitch);
+                    logger.warning("TrackConfig: waitingSpawn world not loaded: " + w + " (track=" + name + ")");
+                }
             } catch (Throwable ignored) {}
         }
         return true;
