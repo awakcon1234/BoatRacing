@@ -66,7 +66,7 @@ public final class CenterlineBuilder {
             Location a = waypoints.get(i);
             Location b = waypoints.get(i + 1);
             if (verbose) info(logger, "A* segment " + i + ": " + fmt(a) + " -> " + fmt(b));
-            List<Location> segment = aStar2D(a, b, corridorMargin, logger, "segment#" + i, verbose);
+            List<Location> segment = aStar2DWithRetries(a, b, corridorMargin, 64, logger, "segment#" + i, verbose);
             if (segment == null || segment.isEmpty()) {
                 warn(logger, "Centerline build failed: A* returned no path for segment#" + i +
                         " (" + fmt(a) + " -> " + fmt(b) + ")");
@@ -134,6 +134,21 @@ public final class CenterlineBuilder {
     }
 
     // Simple 2D A* path on fixed Y plane across allowed blocks within corridor
+    private static List<Location> aStar2DWithRetries(Location a, Location b, int baseMargin, int maxMargin, Logger logger, String label, boolean verbose) {
+        int margin = Math.max(0, baseMargin);
+        int cap = Math.max(margin, maxMargin);
+
+        // Try increasing the corridor when tracks curve outside the initial bounding box.
+        while (true) {
+            if (verbose) info(logger, "A* " + label + " attempt: margin=" + margin);
+            List<Location> result = aStar2D(a, b, margin, logger, label, verbose);
+            if (result != null && !result.isEmpty()) return result;
+            if (margin >= cap) return null;
+            // grow (8 -> 16 -> 32 -> 64)
+            margin = (margin == 0) ? 8 : Math.min(cap, margin * 2);
+        }
+    }
+
     private static List<Location> aStar2D(Location a, Location b, int margin, Logger logger, String label, boolean verbose) {
         World w = a.getWorld();
         if (w == null || b.getWorld() == null || !w.equals(b.getWorld())) {
