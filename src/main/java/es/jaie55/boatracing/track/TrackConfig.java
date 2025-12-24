@@ -25,6 +25,7 @@ public class TrackConfig {
     private final List<org.bukkit.Location> centerline = new ArrayList<>();
     private final File tracksDir;
     private String currentName = null;
+    private org.bukkit.Location waitingSpawn;
 
     public TrackConfig(File dataFolder) {
         this.tracksDir = new File(dataFolder, "tracks");
@@ -57,6 +58,7 @@ public class TrackConfig {
         this.checkpoints.clear();
         this.finish = null; this.bounds = null; this.pitlane = null; this.teamPits.clear(); this.customStartSlots.clear();
         this.centerline.clear();
+        this.waitingSpawn = null;
         // starts
         List<?> s = cfg.getList("starts");
         if (s != null) {
@@ -155,6 +157,22 @@ public class TrackConfig {
             }
         }
         this.currentName = name;
+        // waiting spawn
+        Object wsp = cfg.get("waitingSpawn");
+        if (wsp instanceof java.util.Map) {
+            java.util.Map m = (java.util.Map) wsp;
+            try {
+                String w = (String)m.get("world");
+                double x = asNumber(m.get("x")).doubleValue();
+                double y = asNumber(m.get("y")).doubleValue();
+                double z = asNumber(m.get("z")).doubleValue();
+                float yaw = m.get("yaw") == null ? 0f : ((Number)m.get("yaw")).floatValue();
+                float pitch = m.get("pitch") == null ? 0f : ((Number)m.get("pitch")).floatValue();
+                org.bukkit.World ww = org.bukkit.Bukkit.getWorld(w);
+                if (ww != null) this.waitingSpawn = new org.bukkit.Location(ww, x, y, z, yaw, pitch);
+                else org.bukkit.Bukkit.getLogger().warning("[BoatRacing] TrackConfig: waitingSpawn world not loaded: " + w + " (track=" + name + ")");
+            } catch (Throwable ignored) {}
+        }
         return true;
     }
 
@@ -203,6 +221,16 @@ public class TrackConfig {
                     cl.add(m);
                 }
                 cfg.set("centerline", cl);
+            }
+            if (this.waitingSpawn != null && this.waitingSpawn.getWorld() != null) {
+                java.util.Map<String,Object> ws = new java.util.LinkedHashMap<>();
+                ws.put("world", this.waitingSpawn.getWorld().getName());
+                ws.put("x", this.waitingSpawn.getX());
+                ws.put("y", this.waitingSpawn.getY());
+                ws.put("z", this.waitingSpawn.getZ());
+                ws.put("yaw", this.waitingSpawn.getYaw());
+                ws.put("pitch", this.waitingSpawn.getPitch());
+                cfg.set("waitingSpawn", ws);
             }
             cfg.save(f);
             this.currentName = name;
@@ -278,6 +306,9 @@ public class TrackConfig {
         if (nodes != null) this.centerline.addAll(nodes);
     }
     public void clearCenterline() { this.centerline.clear(); }
+
+    public org.bukkit.Location getWaitingSpawn() { return waitingSpawn; }
+    public void setWaitingSpawn(org.bukkit.Location loc) { this.waitingSpawn = loc == null ? null : loc.clone(); }
 
     public org.bukkit.Location getStartCenter() {
         if (starts.isEmpty()) return null;

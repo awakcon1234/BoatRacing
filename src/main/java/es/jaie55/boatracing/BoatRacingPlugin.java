@@ -360,7 +360,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         if (placed.isEmpty()) { Text.msg(p, "&cKhông còn vị trí bắt đầu trống trên đường đua này."); return true; }
                         if (placed.size() < participants.size()) { Text.msg(p, "&7Một số người chơi đăng ký không thể được đặt do thiếu vị trí bắt đầu."); }
                         // Use start lights countdown if configured
-                        raceManager.startRaceWithCountdown(placed);
+                        raceManager.startLightsCountdown(placed);
                         return true;
                     }
                     case "stop" -> {
@@ -436,6 +436,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                     Text.tell(p, "&7 - &f/" + label + " setup pos1 &7(Đặt góc A = vị trí hiện tại)");
                     Text.tell(p, "&7 - &f/" + label + " setup pos2 &7(Đặt góc B = vị trí hiện tại)");
                     Text.tell(p, "&7 - &f/" + label + " setup setbounds &7(Đặt vùng bao đường đua từ selection hiện tại)");
+                    Text.tell(p, "&7 - &f/" + label + " setup setwaitspawn &7(Đặt điểm spawn chờ từ vị trí hiện tại)");
                     Text.tell(p, "&7 - &f/" + label + " setup setfinish &7(Sử dụng selection của bạn để đặt vùng vạch đích)");
                     // pit mechanic removed
                     Text.tell(p, "&7 - &f/" + label + " setup addcheckpoint &7(Thêm checkpoint từ selection; có thể thêm nhiều. Thứ tự quan trọng)");
@@ -476,6 +477,16 @@ public class BoatRacingPlugin extends JavaPlugin {
                         es.jaie55.boatracing.track.Region r = new es.jaie55.boatracing.track.Region(sel.worldName, sel.box);
                         trackConfig.setBounds(r);
                         Text.msg(p, "&aĐã đặt vùng bao cho đường đua.");
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
+                        if (setupWizard != null) setupWizard.afterAction(p);
+                        return true;
+                    }
+                    case "setwaitspawn" -> {
+                        org.bukkit.Location raw = p.getLocation();
+                        org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
+                        trackConfig.setWaitingSpawn(loc);
+                        Text.msg(p, "&aĐã đặt spawn chờ tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
+                                " &7(" + loc.getWorld().getName() + ") yaw=" + Math.round(loc.getYaw()) + ", pitch=0");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                         return true;
@@ -744,7 +755,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","pos1","pos2","setbounds","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
+                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","pos1","pos2","setbounds","setwaitspawn","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
                 if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
                     // Suggest player names (online + known offline)
                     String prefName = args[2] == null ? "" : args[2].toLowerCase();

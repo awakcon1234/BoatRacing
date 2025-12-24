@@ -300,7 +300,7 @@ public class AdminRaceGUI implements Listener {
         List<Player> placed = rm.placeAtStartsWithBoats(participants);
         if (placed.isEmpty()) { Text.msg(p, "&cKhông còn vị trí bắt đầu trống trên đường đua này."); return; }
         if (placed.size() < participants.size()) { Text.msg(p, "&7Một số người chơi đăng ký không thể được đặt do thiếu vị trí bắt đầu."); }
-        rm.startRaceWithCountdown(placed);
+        rm.startLightsCountdown(placed);
         Text.msg(p, "&aĐã bắt đầu cuộc đua.");
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.2f);
         open(p);

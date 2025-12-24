@@ -48,6 +48,7 @@ public class AdminTracksGUI implements Listener {
         SAVE,
         SAVE_AS,
         SET_BOUNDS,
+        SET_WAIT_SPAWN,
         ADD_START,
         CLEAR_STARTS,
         SET_FINISH,
@@ -105,6 +106,8 @@ public class AdminTracksGUI implements Listener {
             List.of("&7Dùng selection để đặt vùng bao (bounds)"), true));
         inv.setItem(21, buttonWithLore(Material.WHITE_BANNER, Text.item("&6Đặt Đích"), Action.SET_FINISH,
                 List.of("&7Dùng selection để đặt vùng đích"), true));
+        inv.setItem(22, buttonWithLore(Material.RESPAWN_ANCHOR, Text.item("&aĐặt Spawn chờ"), Action.SET_WAIT_SPAWN,
+            List.of("&7Đặt điểm spawn chờ từ vị trí hiện tại"), true));
         // Pit mechanic disabled: hide pit button
         inv.setItem(23, buttonWithLore(Material.LODESTONE, Text.item("&aThêm Checkpoint"), Action.ADD_CHECKPOINT,
                 List.of("&7Dùng selection để thêm checkpoint"), true));
@@ -114,7 +117,7 @@ public class AdminTracksGUI implements Listener {
                 List.of("&7Xóa tất cả checkpoint"), true));
         inv.setItem(26, buttonWithLore(Material.FLINT_AND_STEEL, Text.item("&cXóa Đèn"), Action.CLEAR_LIGHTS,
                 List.of("&7Xóa tất cả đèn xuất phát"), true));
-        inv.setItem(22, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
+        inv.setItem(22 + 6, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
             List.of("&7Tạo đường giữa bằng A* trên băng."), true));
 
         // Close
@@ -134,6 +137,7 @@ public class AdminTracksGUI implements Listener {
         int cps = cfg.getCheckpoints().size();
         boolean hasFinish = cfg.getFinish() != null;
         boolean hasBounds = cfg.getBounds() != null;
+        boolean hasWaitSpawn = cfg.getWaitingSpawn() != null;
         boolean hasPit = cfg.getPitlane() != null; // mechanic disabled, still displayed for info
         int pathNodes = cfg.getCenterline().size();
         ItemStack it = new ItemStack(Material.PAPER);
@@ -145,6 +149,7 @@ public class AdminTracksGUI implements Listener {
             lore.add("&7Đèn: &f" + lights + "/5");
             lore.add("&7Đích: &f" + (hasFinish?"có":"không"));
             lore.add("&7Vùng bao: &f" + (hasBounds?"có":"không"));
+            lore.add("&7Spawn chờ: &f" + (hasWaitSpawn?"có":"không"));
             // pit removed from gameplay; optional to display
             lore.add("&7Checkpoints: &f" + cps);
             lore.add("&7Đường giữa: &f" + pathNodes + " nút");
@@ -291,6 +296,7 @@ public class AdminTracksGUI implements Listener {
             case SAVE -> doSave(p);
             case SAVE_AS -> promptSaveAs(p);
             case SET_BOUNDS -> doSetBounds(p);
+            case SET_WAIT_SPAWN -> doSetWaitSpawn(p);
             case ADD_START -> doAddStart(p);
             case CLEAR_STARTS -> { plugin.getTrackConfig().clearStarts(); Text.msg(p, "&aĐã xóa tất cả start."); open(p);} 
             case SET_FINISH -> doSetFinish(p);
@@ -360,6 +366,17 @@ public class AdminTracksGUI implements Listener {
         plugin.getTrackConfig().setBounds(r);
         Text.msg(p, "&aĐã đặt vùng bao (bounds) cho đường đua.");
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f);
+        open(p);
+    }
+
+    private void doSetWaitSpawn(Player p) {
+        org.bukkit.Location raw = p.getLocation();
+        // use normalized start format for consistency (snap yaw 45°, pitch 0, x/z to .0 or .5)
+        org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
+        plugin.getTrackConfig().setWaitingSpawn(loc);
+        Text.msg(p, "&aĐã đặt spawn chờ tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
+                " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=0)");
+        p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
         open(p);
     }
 

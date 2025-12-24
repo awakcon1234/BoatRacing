@@ -35,6 +35,8 @@ public class RaceManager {
     private long raceStartMillis = 0L;
     // Countdown end (millis) for the start countdown; 0 if no countdown active
     private volatile long countdownEndMillis = 0L;
+    // Waiting end (millis) for registration waiting phase; 0 if none
+    private volatile long waitingEndMillis = 0L;
 
     // Centerline-based live position
     private java.util.List<org.bukkit.Location> path = java.util.Collections.emptyList();
@@ -192,12 +194,44 @@ public class RaceManager {
     public boolean openRegistration(int laps, Object unused) {
         this.registering = true;
         this.totalLaps = laps;
+        // start waiting window based on config (default 30s)
+        int waitSec = Math.max(1, plugin.getConfig().getInt("racing.registration-seconds", 30));
+        this.waitingEndMillis = System.currentTimeMillis() + (waitSec * 1000L);
+        // schedule transition to start
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            // if registration canceled or no longer registering, abort
+            if (!registering) { waitingEndMillis = 0L; return; }
+            // if nobody registered, just cancel registration
+            if (registered.isEmpty()) { cancelRegistration(false); waitingEndMillis = 0L; return; }
+            // collect online registered players
+            java.util.List<org.bukkit.entity.Player> participants = new java.util.ArrayList<>();
+            for (java.util.UUID id : new java.util.LinkedHashSet<>(registered)) {
+                org.bukkit.entity.Player rp = plugin.getServer().getPlayer(id);
+                if (rp != null && rp.isOnline()) participants.add(rp);
+            }
+            if (participants.isEmpty()) { cancelRegistration(false); waitingEndMillis = 0L; return; }
+            // place and start countdown
+            java.util.List<org.bukkit.entity.Player> placed = placeAtStartsWithBoats(participants);
+            if (placed.isEmpty()) { cancelRegistration(false); waitingEndMillis = 0L; return; }
+            if (placed.size() < participants.size()) {
+                for (org.bukkit.entity.Player p : participants) if (!placed.contains(p)) es.jaie55.boatracing.util.Text.msg(p, "&7Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
+            }
+            this.registering = false;
+            waitingEndMillis = 0L;
+            startLightsCountdown(placed);
+        }, waitSec * 20L);
         return true;
     }
 
     public boolean join(Player p) {
         if (!registering) return false;
-        return registered.add(p.getUniqueId());
+        boolean added = registered.add(p.getUniqueId());
+        // teleport to waiting spawn if set
+        org.bukkit.Location wsp = trackConfig.getWaitingSpawn();
+        if (added && wsp != null && wsp.getWorld() != null) {
+            try { p.teleport(wsp); } catch (Throwable ignored) {}
+        }
+        return added;
     }
 
     public boolean leave(Player p) {
@@ -239,21 +273,18 @@ public class RaceManager {
     }
 
     // Simple countdown using server scheduler
-    @SuppressWarnings("deprecation")
-    public void startRaceWithCountdown(List<Player> placed) {
+    public void startLightsCountdown(List<Player> placed) {
         if (placed.isEmpty()) return;
         this.registering = false;
-        final int[] counter = {5};
-        // set countdown end for external consumers
-        this.countdownEndMillis = System.currentTimeMillis() + (counter[0] * 1000L);
+        final int total = 3; // red -> yellow -> green
+        final int[] cur = {total};
+        this.countdownEndMillis = System.currentTimeMillis() + (total * 1000L);
         final var task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            if (counter[0] <= 0) {
-                // Start
+            if (cur[0] <= 0) {
+                // Start!
                 running = true;
                 raceStartMillis = System.currentTimeMillis();
-                // clear countdown
                 countdownEndMillis = 0L;
-                // initialize participant state from placed players
                 participants.clear();
                 participantPlayers.clear();
                 for (Player p : placed) {
@@ -261,42 +292,53 @@ public class RaceManager {
                     participants.put(p.getUniqueId(), st);
                     participantPlayers.put(p.getUniqueId(), p);
                 }
-                // Initialize centerline path for live positions
                 initPathForLivePositions();
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     for (Player p : placed) {
-                        p.showTitle(net.kyori.adventure.title.Title.title(
-                        net.kyori.adventure.text.Component.empty(),
-                        net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&aGo!"),
-                        net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(5L * 50L), java.time.Duration.ofMillis(20L * 50L), java.time.Duration.ofMillis(5L * 50L))
-                ));
+                        var title = net.kyori.adventure.text.Component.text("GO!").color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
+                        var sub = net.kyori.adventure.text.Component.text("● ● ●").color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
+                        p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
+                                net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
                     }
                 });
-                // cancel
                 throw new RuntimeException("__cancel__");
             } else {
-                final int cur = counter[0];
-                // update countdown end so external readers see a live remaining time
-                countdownEndMillis = System.currentTimeMillis() + (cur * 1000L);
+                int sec = cur[0];
+                countdownEndMillis = System.currentTimeMillis() + (sec * 1000L);
                 plugin.getServer().getScheduler().runTask(plugin, () -> {
                     for (Player p : placed) {
-                        p.showTitle(net.kyori.adventure.title.Title.title(
-                          net.kyori.adventure.text.Component.empty(),
-                          net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer.legacyAmpersand().deserialize("&e" + cur),
-                          net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(5L * 50L), java.time.Duration.ofMillis(20L * 50L), java.time.Duration.ofMillis(5L * 50L))
-                  ));
-                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.0f);
+                        var title = net.kyori.adventure.text.Component.text(String.valueOf(sec)).color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
+                        // Build 3-dot lights: ● ● ● (red, yellow, green stages)
+                        net.kyori.adventure.text.Component dot = net.kyori.adventure.text.Component.text("●");
+                        var dark = net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY;
+                        net.kyori.adventure.text.Component sub;
+                        if (sec == 3) {
+                            sub = net.kyori.adventure.text.Component.empty()
+                                    .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.RED)).append(net.kyori.adventure.text.Component.text(" "))
+                                    .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
+                                    .append(dot.color(dark));
+                        } else if (sec == 2) {
+                            sub = net.kyori.adventure.text.Component.empty()
+                                    .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.RED)).append(net.kyori.adventure.text.Component.text(" "))
+                                    .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.YELLOW)).append(net.kyori.adventure.text.Component.text(" "))
+                                    .append(dot.color(dark));
+                        } else { // sec == 1
+                            sub = net.kyori.adventure.text.Component.empty()
+                                    .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
+                                    .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
+                                    .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.GREEN));
+                        }
+                        p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
+                                net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
+                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                     }
                 });
             }
-            counter[0]--;
+            cur[0]--;
         }, 0L, 20L);
-        // Wrap cancellation: clear countdown when canceled
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            try { task.cancel(); } catch (Throwable ignored) {}
-            countdownEndMillis = 0L;
-        }, 20L * 6L);
+        // Ensure cleanup after some time
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> { try { task.cancel(); } catch (Throwable ignored) {} }, (total + 2) * 20L);
     }
 
     public boolean cancelRegistration(boolean announce) {
@@ -402,8 +444,11 @@ public class RaceManager {
      */
     public int getCountdownRemainingSeconds() {
         long now = System.currentTimeMillis();
-        if (countdownEndMillis <= now) return 0;
-        return (int) ((countdownEndMillis - now + 999L) / 1000L);
+        long end = 0L;
+        if (registering && waitingEndMillis > now) end = waitingEndMillis;
+        else if (countdownEndMillis > now) end = countdownEndMillis;
+        if (end <= now) return 0;
+        return (int) ((end - now + 999L) / 1000L);
     }
 
     public java.util.List<UUID> getLiveOrder() {
