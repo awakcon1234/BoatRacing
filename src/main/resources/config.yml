@@ -28,7 +28,7 @@ racing:
         title: "<gold>BoatRacing"
         lines:
           - "<yellow>Hồ sơ của bạn"
-          - "<gray>Tên: <<%racer_color%>>%racer_name%"
+          - "<gray>Tên: %racer_color%%racer_name%"
           - "<gray>Màu: <white>%racer_color%"
           - "<gray>Biểu tượng: <white>%icon%"
           - "<gray>Số đua: <white>%number%"
@@ -43,7 +43,7 @@ racing:
           - "<gray>Vòng: <white>%laps%"
           - "<gray>Người chơi: <white>%joined%/%max%"
           - "<yellow>Tay đua"
-          - "<gray>Tên: <<%racer_color%>>%racer_name%"
+          - "<gray>Tên: %racer_color%%racer_name%"
           - "<gray>Màu: <white>%racer_color%"
           - "<gray>Biểu tượng: <white>%icon%"
           - "<gray>Số đua: <white>%number%"

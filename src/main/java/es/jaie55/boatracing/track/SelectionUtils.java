@@ -37,12 +37,8 @@ public final class SelectionUtils {
         List<String> lines = new ArrayList<>();
         SelectionManager.Selection s = SelectionManager.getSelection(p);
         if (s == null) { lines.add("no selection"); return lines; }
-        lines.add("Corner A: " + (s.a == null ? "unset" : formatLoc(s.a)));
-        lines.add("Corner B: " + (s.b == null ? "unset" : formatLoc(s.b)));
+        lines.add("Corner A: " + (s.a == null ? "unset" : es.jaie55.boatracing.util.Text.fmtPos(s.a)));
+        lines.add("Corner B: " + (s.b == null ? "unset" : es.jaie55.boatracing.util.Text.fmtPos(s.b)));
         return lines;
-    }
-
-    private static String formatLoc(Location l) {
-        return String.format("%s (%d,%d,%d)", l.getWorld().getName(), l.getBlockX(), l.getBlockY(), l.getBlockZ());
     }
 }

@@ -9,11 +9,49 @@ import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.command.CommandSender;
 
+import java.util.Locale;
+
 import java.util.List;
 import java.util.stream.Collectors;
 
 public final class Text {
     private Text() {}
+
+    private static final Locale LOCALE = Locale.US;
+
+    private static String fmtCoord(double v) {
+        double r = Math.rint(v);
+        if (Math.abs(v - r) < 1e-9) return String.valueOf((long) r);
+        return String.format(LOCALE, "%.1f", v);
+    }
+
+    public static String fmtPos(org.bukkit.Location loc) {
+        if (loc == null) return "(unset)";
+        String w = (loc.getWorld() != null ? loc.getWorld().getName() : "?");
+        return w + " (" + fmtCoord(loc.getX()) + ", " + fmtCoord(loc.getY()) + ", " + fmtCoord(loc.getZ()) + ")";
+    }
+
+    public static String fmtBlock(org.bukkit.block.Block b) {
+        if (b == null) return "(unset)";
+        String w = (b.getWorld() != null ? b.getWorld().getName() : "?");
+        return w + " (" + b.getX() + ", " + b.getY() + ", " + b.getZ() + ")";
+    }
+
+    public static String fmtArea(org.bukkit.util.BoundingBox box) {
+        if (box == null) return "[unset]";
+        return "[" + fmtCoord(box.getMinX()) + ", " + fmtCoord(box.getMinY()) + ", " + fmtCoord(box.getMinZ())
+                + " -> " + fmtCoord(box.getMaxX()) + ", " + fmtCoord(box.getMaxY()) + ", " + fmtCoord(box.getMaxZ()) + "]";
+    }
+
+    public static String fmtArea(String worldName, org.bukkit.util.BoundingBox box) {
+        String w = (worldName == null || worldName.isEmpty()) ? "?" : worldName;
+        return w + " " + fmtArea(box);
+    }
+
+    public static String fmtArea(es.jaie55.boatracing.track.Region region) {
+        if (region == null) return "(unset)";
+        return fmtArea(region.getWorldName(), region.getBox());
+    }
 
     // String-based color (for quick sendMessage(String))
     public static String colorize(String s) {

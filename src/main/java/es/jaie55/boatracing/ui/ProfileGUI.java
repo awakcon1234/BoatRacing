@@ -21,6 +21,7 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
@@ -57,9 +58,9 @@ public class ProfileGUI implements Listener {
         var prof = pm.get(p.getUniqueId());
 
         // Preview item
-        inv.setItem(10, previewItem(prof));
+        inv.setItem(10, previewItem(p, prof));
 
-        inv.setItem(12, buttonWithLore(Material.LEATHER_CHESTPLATE, Text.item("&b&lMàu"), Action.COLOR,
+        inv.setItem(12, buttonWithLore(dyeFor(prof.color), Text.item("&b&lMàu"), Action.COLOR,
                 List.of("&7Chọn màu đại diện của bạn."), true));
         String u = (prof.speedUnit==null || prof.speedUnit.isEmpty()) ? plugin.getConfig().getString("scoreboard.speed.unit","kmh") : prof.speedUnit;
         String label = "kmh".equalsIgnoreCase(u)?"km/h": ("bps".equalsIgnoreCase(u)?"bps":"bph");
@@ -67,7 +68,7 @@ public class ProfileGUI implements Listener {
             List.of("&7Hiện tại: &f" + label, "&eBấm: &fLuân phiên km/h → bps → bph"), true));
         inv.setItem(14, buttonWithLore(Material.NAME_TAG, Text.item("&a&lSố đua"), Action.NUMBER,
                 List.of("&7Nhập số đua (1-99)."), true));
-        inv.setItem(15, buttonWithLore(Material.OAK_BOAT, Text.item("&b&lThuyền"), Action.BOAT,
+        inv.setItem(15, buttonWithLore(boatMatFor(prof.boatType), Text.item("&b&lThuyền"), Action.BOAT,
             List.of("&7Chọn loại thuyền của bạn."), true));
         inv.setItem(16, buttonWithLore(Material.FLOWER_BANNER_PATTERN, Text.item("&d&lBiểu tượng"), Action.ICON,
             List.of("&7Chọn 1 biểu tượng từ danh sách."), true));
@@ -79,10 +80,14 @@ public class ProfileGUI implements Listener {
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
     }
 
-    private ItemStack previewItem(PlayerProfileManager.Profile prof) {
-        ItemStack it = new ItemStack(Material.PAPER);
+    private ItemStack previewItem(Player p, PlayerProfileManager.Profile prof) {
+        ItemStack it = new ItemStack(Material.PLAYER_HEAD);
         ItemMeta im = it.getItemMeta();
         if (im != null) {
+            if (im instanceof SkullMeta sm) {
+                sm.setOwningPlayer(p);
+                im = sm;
+            }
             String icon = prof.icon == null ? "" : prof.icon;
             String num = prof.number > 0 ? ("#" + prof.number) : "(chưa có số)";
             String boat = (prof.boatType==null || prof.boatType.isEmpty()) ? "(mặc định)" : prettyMat(prof.boatType);
@@ -99,6 +104,34 @@ public class ProfileGUI implements Listener {
             it.setItemMeta(im);
         }
         return it;
+    }
+
+    private static Material dyeFor(DyeColor color) {
+        if (color == null) return Material.WHITE_DYE;
+        return switch (color) {
+            case WHITE -> Material.WHITE_DYE;
+            case BLACK -> Material.BLACK_DYE;
+            case RED -> Material.RED_DYE;
+            case BLUE -> Material.BLUE_DYE;
+            case GREEN -> Material.GREEN_DYE;
+            case YELLOW -> Material.YELLOW_DYE;
+            case ORANGE -> Material.ORANGE_DYE;
+            case PURPLE -> Material.PURPLE_DYE;
+            case PINK -> Material.PINK_DYE;
+            case LIGHT_BLUE -> Material.LIGHT_BLUE_DYE;
+            default -> Material.WHITE_DYE;
+        };
+    }
+
+    private static Material boatMatFor(String boatType) {
+        if (boatType == null || boatType.isEmpty()) return Material.OAK_BOAT;
+        try {
+            Material m = Material.valueOf(boatType);
+            // Basic safety: only allow boat/raft-ish materials to show here.
+            String n = m.name();
+            if (n.endsWith("_BOAT") || n.endsWith("_CHEST_BOAT") || n.endsWith("_RAFT") || n.endsWith("_CHEST_RAFT")) return m;
+        } catch (Exception ignored) {}
+        return Material.OAK_BOAT;
     }
 
     // Limit colors to a curated set

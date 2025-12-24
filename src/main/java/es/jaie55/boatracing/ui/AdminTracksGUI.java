@@ -337,8 +337,7 @@ public class AdminTracksGUI implements Listener {
         org.bukkit.Location raw = p.getLocation();
         org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
         plugin.getTrackConfig().addStart(loc);
-        Text.msg(p, "&aĐã thêm Start tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
-                " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=0)");
+        Text.msg(p, "&aĐã thêm Start tại &f" + Text.fmtPos(loc) + " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=0)");
         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
         open(p);
     }
@@ -352,7 +351,7 @@ public class AdminTracksGUI implements Listener {
         }
         Region r = new Region(sel.worldName, sel.box);
         plugin.getTrackConfig().setFinish(r);
-        Text.msg(p, "&aĐã đặt vùng đích.");
+        Text.msg(p, "&aĐã đặt vùng đích: &f" + Text.fmtArea(r));
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f);
         open(p);
     }
@@ -366,7 +365,7 @@ public class AdminTracksGUI implements Listener {
         }
         Region r = new Region(sel.worldName, sel.box);
         plugin.getTrackConfig().setBounds(r);
-        Text.msg(p, "&aĐã đặt vùng bao (bounds) cho đường đua.");
+        Text.msg(p, "&aĐã đặt vùng bao (bounds): &f" + Text.fmtArea(r));
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f);
         open(p);
     }
@@ -376,8 +375,7 @@ public class AdminTracksGUI implements Listener {
         // use normalized start format for consistency (snap yaw 45°, pitch 0, x/z to .0 or .5)
         org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
         plugin.getTrackConfig().setWaitingSpawn(loc);
-        Text.msg(p, "&aĐã đặt spawn chờ tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
-                " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=0)");
+        Text.msg(p, "&aĐã đặt spawn chờ tại &f" + Text.fmtPos(loc) + " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=0)");
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
         open(p);
     }
@@ -393,7 +391,7 @@ public class AdminTracksGUI implements Listener {
         }
         Region r = new Region(sel.worldName, sel.box);
         plugin.getTrackConfig().addCheckpoint(r);
-        Text.msg(p, "&aĐã thêm checkpoint #&f" + plugin.getTrackConfig().getCheckpoints().size());
+        Text.msg(p, "&aĐã thêm checkpoint #&f" + plugin.getTrackConfig().getCheckpoints().size() + " &7(" + Text.fmtArea(r) + ")");
         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
         open(p);
     }
@@ -411,7 +409,7 @@ public class AdminTracksGUI implements Listener {
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
             return;
         }
-        Text.msg(p, "&aĐã thêm đèn tại &f(" + target.getX() + ", " + target.getY() + ", " + target.getZ() + ")");
+        Text.msg(p, "&aĐã thêm đèn tại &f" + Text.fmtBlock(target));
         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
         open(p);
     }

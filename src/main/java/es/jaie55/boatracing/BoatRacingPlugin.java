@@ -480,13 +480,13 @@ public class BoatRacingPlugin extends JavaPlugin {
                 switch (sub) {
                     case "pos1" -> {
                         es.jaie55.boatracing.track.SelectionManager.setCornerA(p, p.getLocation());
-                        Text.msg(p, "&aĐã đặt &fGóc A &a= &f" + p.getWorld().getName() + " &7(" + p.getLocation().getBlockX() + ", " + p.getLocation().getBlockY() + ", " + p.getLocation().getBlockZ() + ")");
+                        Text.msg(p, "&aĐã đặt &fGóc A &a= &f" + Text.fmtPos(p.getLocation()));
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.3f);
                         return true;
                     }
                     case "pos2" -> {
                         es.jaie55.boatracing.track.SelectionManager.setCornerB(p, p.getLocation());
-                        Text.msg(p, "&aĐã đặt &fGóc B &a= &f" + p.getWorld().getName() + " &7(" + p.getLocation().getBlockX() + ", " + p.getLocation().getBlockY() + ", " + p.getLocation().getBlockZ() + ")");
+                        Text.msg(p, "&aĐã đặt &fGóc B &a= &f" + Text.fmtPos(p.getLocation()));
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.3f);
                         return true;
                     }
@@ -508,8 +508,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         org.bukkit.Location raw = p.getLocation();
                         org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
                         trackConfig.setWaitingSpawn(loc);
-                        Text.msg(p, "&aĐã đặt spawn chờ tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
-                                " &7(" + loc.getWorld().getName() + ") yaw=" + Math.round(loc.getYaw()) + ", pitch=0");
+                        Text.msg(p, "&aĐã đặt spawn chờ tại &f" + Text.fmtPos(loc) + " &7yaw=" + Math.round(loc.getYaw()) + ", pitch=0");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                         return true;
@@ -544,8 +543,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         org.bukkit.Location raw = p.getLocation();
                         org.bukkit.Location loc = es.jaie55.boatracing.track.TrackConfig.normalizeStart(raw);
                         trackConfig.addStart(loc);
-                        Text.msg(p, "&aĐã thêm vị trí bắt đầu tại &f" + String.format("%.1f", loc.getX()) + ", " + String.format("%.1f", loc.getY()) + ", " + String.format("%.1f", loc.getZ()) +
-                                " &7(" + loc.getWorld().getName() + ") yaw=" + Math.round(loc.getYaw()) + ", pitch=0");
+                        Text.msg(p, "&aĐã thêm vị trí bắt đầu tại &f" + Text.fmtPos(loc) + " &7yaw=" + Math.round(loc.getYaw()) + ", pitch=0");
                         Text.tell(p, "&7Mẹo: Bạn có thể thêm nhiều vị trí bắt đầu. Chạy lệnh một lần nữa để thêm.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
@@ -565,7 +563,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         Region r = new Region(sel.worldName, sel.box);
                         trackConfig.setFinish(r);
-                        Text.msg(p, "&aĐã đặt vùng đích (" + fmtBox(sel.box) + ")");
+                        Text.msg(p, "&aĐã đặt vùng đích (&f" + Text.fmtArea(r) + "&a)");
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.3f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
@@ -579,7 +577,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         Region r = new Region(sel.worldName, sel.box);
                         trackConfig.addCheckpoint(r);
-                        Text.msg(p, "&aĐã thêm checkpoint #&f" + trackConfig.getCheckpoints().size() + " &7(" + fmtBox(sel.box) + ")");
+                        Text.msg(p, "&aĐã thêm checkpoint #&f" + trackConfig.getCheckpoints().size() + " &7(" + Text.fmtArea(r) + ")");
                         Text.tell(p, "&7Mẹo: Có thể thêm nhiều checkpoint. Thứ tự quan trọng.");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
@@ -597,7 +595,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        Text.msg(p, "&aĐã thêm đèn xuất phát &7(" + target.getX() + ", " + target.getY() + ", " + target.getZ() + ")");
+                        Text.msg(p, "&aĐã thêm đèn xuất phát &7(" + Text.fmtBlock(target) + ")");
                         p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
@@ -808,12 +806,5 @@ public class BoatRacingPlugin extends JavaPlugin {
             return Collections.emptyList();
         }
         return Collections.emptyList();
-    }
-
-
-    private static String fmtBox(org.bukkit.util.BoundingBox b) {
-        return String.format("min(%d,%d,%d) max(%d,%d,%d)",
-                (int) Math.floor(b.getMinX()), (int) Math.floor(b.getMinY()), (int) Math.floor(b.getMinZ()),
-                (int) Math.floor(b.getMaxX()), (int) Math.floor(b.getMaxY()), (int) Math.floor(b.getMaxZ()));
     }
 }

@@ -28,12 +28,20 @@ public class WandListener implements Listener {
         var p = ev.getPlayer();
         switch (ev.getAction()) {
             case LEFT_CLICK_BLOCK, LEFT_CLICK_AIR -> {
-                if (ev.getClickedBlock() != null) SelectionManager.setCornerA(p, ev.getClickedBlock().getLocation());
-                Text.msg(p, "&aĐã đặt góc A.");
+                if (ev.getClickedBlock() != null) {
+                    SelectionManager.setCornerA(p, ev.getClickedBlock().getLocation());
+                    Text.msg(p, "&aĐã đặt góc A = &f" + Text.fmtBlock(ev.getClickedBlock()));
+                } else {
+                    Text.msg(p, "&cHãy nhấp vào một block để đặt góc A.");
+                }
             }
             case RIGHT_CLICK_BLOCK, RIGHT_CLICK_AIR -> {
-                if (ev.getClickedBlock() != null) SelectionManager.setCornerB(p, ev.getClickedBlock().getLocation());
-                Text.msg(p, "&aĐã đặt góc B.");
+                if (ev.getClickedBlock() != null) {
+                    SelectionManager.setCornerB(p, ev.getClickedBlock().getLocation());
+                    Text.msg(p, "&aĐã đặt góc B = &f" + Text.fmtBlock(ev.getClickedBlock()));
+                } else {
+                    Text.msg(p, "&cHãy nhấp vào một block để đặt góc B.");
+                }
             }
             default -> {}
         }

@@ -114,7 +114,7 @@ public class SetupWizard {
                 if (sel != null && sel.a != null) {
                     // use corner A as a start location
                     plugin.getTrackConfig().addStart(sel.a);
-                    es.jaie55.boatracing.util.Text.msg(p, "&aĐã thêm vị trí xuất phát tại góc A của vùng chọn.");
+                    es.jaie55.boatracing.util.Text.msg(p, "&aĐã thêm vị trí xuất phát tại &f" + es.jaie55.boatracing.util.Text.fmtPos(sel.a));
                 } else es.jaie55.boatracing.util.Text.msg(p, "&cHãy chọn vị trí trước bằng gậy chọn.");
             }
             case ADD_CHECKPOINTS -> {
@@ -122,7 +122,7 @@ public class SetupWizard {
                 if (sel != null && sel.a != null && sel.b != null) {
                     var box = new org.bukkit.util.BoundingBox(Math.min(sel.a.getX(), sel.b.getX()), Math.min(sel.a.getY(), sel.b.getY()), Math.min(sel.a.getZ(), sel.b.getZ()), Math.max(sel.a.getX(), sel.b.getX()), Math.max(sel.a.getY(), sel.b.getY()), Math.max(sel.a.getZ(), sel.b.getZ()));
                     plugin.getTrackConfig().addCheckpoint(new es.jaie55.boatracing.track.Region(sel.a.getWorld().getName(), box));
-                    es.jaie55.boatracing.util.Text.msg(p, "&aĐã thêm vùng checkpoint.");
+                    es.jaie55.boatracing.util.Text.msg(p, "&aĐã thêm vùng checkpoint: &f" + es.jaie55.boatracing.util.Text.fmtArea(sel.a.getWorld().getName(), box));
                 } else es.jaie55.boatracing.util.Text.msg(p, "&cHãy chọn hai góc bằng gậy để tạo checkpoint.");
             }
             case SET_FINISH -> {
@@ -130,7 +130,7 @@ public class SetupWizard {
                 if (sel != null && sel.a != null && sel.b != null) {
                     var box = new org.bukkit.util.BoundingBox(Math.min(sel.a.getX(), sel.b.getX()), Math.min(sel.a.getY(), sel.b.getY()), Math.min(sel.a.getZ(), sel.b.getZ()), Math.max(sel.a.getX(), sel.b.getX()), Math.max(sel.a.getY(), sel.b.getY()), Math.max(sel.a.getZ(), sel.b.getZ()));
                     plugin.getTrackConfig().setFinish(new es.jaie55.boatracing.track.Region(sel.a.getWorld().getName(), box));
-                    es.jaie55.boatracing.util.Text.msg(p, "&aĐã đặt vùng vạch đích.");
+                    es.jaie55.boatracing.util.Text.msg(p, "&aĐã đặt vùng vạch đích: &f" + es.jaie55.boatracing.util.Text.fmtArea(sel.a.getWorld().getName(), box));
                 } else es.jaie55.boatracing.util.Text.msg(p, "&cHãy chọn hai góc bằng gậy để đặt vùng vạch đích.");
             }
             default -> {}

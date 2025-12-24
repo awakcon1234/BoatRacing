@@ -8,10 +8,21 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class PlayerProfileManager {
     private final File file;
     private final Map<UUID, Profile> profiles = new HashMap<>();
+
+    // Keep defaults aligned with ProfileGUI pickers.
+    private static final DyeColor[] DEFAULT_COLORS = new DyeColor[] {
+        DyeColor.WHITE, DyeColor.BLACK, DyeColor.RED, DyeColor.BLUE, DyeColor.GREEN,
+        DyeColor.YELLOW, DyeColor.ORANGE, DyeColor.PURPLE, DyeColor.PINK, DyeColor.LIGHT_BLUE
+    };
+
+    private static final String[] DEFAULT_ICONS = new String[] {
+        "★","☆","✦","✧","❖","◆","◇","❤","✚","⚡","☀","☂","☕","⚓","♪","♫","🚤","⛵"
+    };
 
     public static class Profile {
         public DyeColor color = DyeColor.WHITE;
@@ -29,7 +40,29 @@ public class PlayerProfileManager {
     }
 
     public Profile get(UUID id) {
-        return profiles.computeIfAbsent(id, k -> new Profile());
+        Profile p = profiles.get(id);
+        boolean created = false;
+        if (p == null) {
+            p = new Profile();
+            profiles.put(id, p);
+            created = true;
+        }
+
+        // If player has not set these yet, assign randomized defaults.
+        boolean changed = false;
+        if (created) {
+            p.color = pick(DEFAULT_COLORS);
+            p.number = ThreadLocalRandom.current().nextInt(1, 100); // 1..99
+            p.icon = pick(DEFAULT_ICONS);
+            changed = true;
+        } else {
+            if (p.color == null) { p.color = pick(DEFAULT_COLORS); changed = true; }
+            if (p.number <= 0) { p.number = ThreadLocalRandom.current().nextInt(1, 100); changed = true; }
+            if (isBlank(p.icon)) { p.icon = pick(DEFAULT_ICONS); changed = true; }
+        }
+
+        if (changed) save();
+        return p;
     }
 
     public DyeColor getColor(UUID id) { return get(id).color; }
@@ -63,21 +96,31 @@ public class PlayerProfileManager {
         YamlConfiguration cfg = YamlConfiguration.loadConfiguration(file);
         var sec = cfg.getConfigurationSection("profiles");
         if (sec == null) return;
+        boolean changed = false;
         for (String key : sec.getKeys(false)) {
             try {
                 UUID id = UUID.fromString(key);
                 Profile p = new Profile();
+
+                boolean hasColor = sec.contains(key + ".color");
+                boolean hasNumber = sec.contains(key + ".number");
+                boolean hasIcon = sec.contains(key + ".icon");
+
                 String colorName = sec.getString(key + ".color", DyeColor.WHITE.name());
-                try { p.color = DyeColor.valueOf(colorName); } catch (IllegalArgumentException ignored) { p.color = DyeColor.WHITE; }
+                try { p.color = DyeColor.valueOf(colorName); } catch (IllegalArgumentException ignored) { p.color = null; }
                 p.number = sec.getInt(key + ".number", 0);
                 p.icon = sec.getString(key + ".icon", "");
                 p.completed = sec.getInt(key + ".completed", 0);
                 p.wins = sec.getInt(key + ".wins", 0);
                 p.boatType = sec.getString(key + ".boatType", "");
                 p.speedUnit = sec.getString(key + ".speedUnit", "");
+
+                if (ensureDefaults(p, hasColor, hasNumber, hasIcon)) changed = true;
                 profiles.put(id, p);
             } catch (IllegalArgumentException ignored) {}
         }
+
+        if (changed) save();
     }
 
     public void save() {
@@ -85,7 +128,7 @@ public class PlayerProfileManager {
         for (Map.Entry<UUID, Profile> e : profiles.entrySet()) {
             String base = "profiles." + e.getKey().toString();
             Profile p = e.getValue();
-            cfg.set(base + ".color", p.color.name());
+            cfg.set(base + ".color", (p.color == null ? DyeColor.WHITE : p.color).name());
             cfg.set(base + ".number", p.number);
             cfg.set(base + ".icon", p.icon);
             cfg.set(base + ".completed", p.completed);
@@ -94,5 +137,37 @@ public class PlayerProfileManager {
             if (p.speedUnit != null && !p.speedUnit.isEmpty()) cfg.set(base + ".speedUnit", p.speedUnit);
         }
         try { cfg.save(file); } catch (IOException ignored) {}
+    }
+
+    private static boolean ensureDefaults(Profile p, boolean hasColorKey, boolean hasNumberKey, boolean hasIconKey) {
+        boolean changed = false;
+
+        // Color: only randomize when missing/invalid (not when explicitly set to WHITE).
+        if (p.color == null || !hasColorKey) {
+            p.color = pick(DEFAULT_COLORS);
+            changed = true;
+        }
+
+        // Number: 0 means unset.
+        if (!hasNumberKey || p.number <= 0) {
+            p.number = ThreadLocalRandom.current().nextInt(1, 100); // 1..99
+            changed = true;
+        }
+
+        // Icon: empty/blank means unset.
+        if (!hasIconKey || isBlank(p.icon)) {
+            p.icon = pick(DEFAULT_ICONS);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private static <T> T pick(T[] values) {
+        return values[ThreadLocalRandom.current().nextInt(values.length)];
     }
 }
