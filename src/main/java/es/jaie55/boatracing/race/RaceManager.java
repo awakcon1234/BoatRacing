@@ -8,6 +8,7 @@ import org.bukkit.entity.Boat;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -58,6 +59,18 @@ public class RaceManager {
     public boolean isRegistering() { return registering; }
     public Set<UUID> getRegistered() { return Collections.unmodifiableSet(registered); }
 
+    public boolean shouldPreventBoatExit(UUID id) {
+        if (id == null) return false;
+        long now = System.currentTimeMillis();
+        // During live race: only active (not finished) racers
+        if (running) {
+            ParticipantState s = participants.get(id);
+            return s != null && !s.finished;
+        }
+        // During countdown: keep registered racers seated
+        return countdownEndMillis > now && registered.contains(id);
+    }
+
     /**
      * Called on player movement to detect checkpoint/pit/finish crossings
      */
@@ -73,8 +86,10 @@ public class RaceManager {
         for (int i = 0; i < checkpoints.size(); i++) {
             Region r = checkpoints.get(i);
             if (r != null && r.contains(to)) {
-                checkpointReached(player.getUniqueId(), i);
-                Text.msg(player, "&eĐã qua checkpoint " + (i+1) + ".");
+                boolean advanced = checkpointReachedInternal(player.getUniqueId(), i);
+                if (advanced) {
+                    notifyCheckpointPassed(player, i + 1, checkpoints.size());
+                }
             }
         }
 
@@ -107,9 +122,13 @@ public class RaceManager {
 
     // package-private helpers for testing and fine-grained control
     void checkpointReached(UUID uuid, int checkpointIndex) {
+        checkpointReachedInternal(uuid, checkpointIndex);
+    }
+
+    private boolean checkpointReachedInternal(UUID uuid, int checkpointIndex) {
         ParticipantState s = participants.get(uuid);
-        if (s == null || s.finished) return;
-        if (checkpointIndex != s.nextCheckpointIndex) return; // enforce sequence
+        if (s == null || s.finished) return false;
+        if (checkpointIndex != s.nextCheckpointIndex) return false; // enforce sequence
         s.nextCheckpointIndex++;
         int totalCheckpoints = testCheckpointCount >= 0 ? testCheckpointCount : trackConfig.getCheckpoints().size();
         if (s.nextCheckpointIndex >= totalCheckpoints) {
@@ -117,6 +136,7 @@ public class RaceManager {
             s.nextCheckpointIndex = 0;
             handleLapCompletion(uuid);
         }
+        return true;
     }
 
     public ParticipantState getParticipantState(UUID uuid) { return participants.get(uuid); }
@@ -137,8 +157,42 @@ public class RaceManager {
             finishPlayer(uuid);
         } else {
             Player p = participantPlayers.get(uuid);
-            if (p != null) Text.msg(p, "&aVòng " + s.currentLap + " / " + getTotalLaps());
+            if (p != null) {
+                notifyLapCompleted(p, s.currentLap, getTotalLaps());
+            }
         }
+    }
+
+    private void notifyCheckpointPassed(Player p, int passed, int total) {
+        try {
+            var sub = net.kyori.adventure.text.Component.text("Checkpoint " + passed + "/" + total)
+                    .color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
+            p.showTitle(net.kyori.adventure.title.Title.title(
+                    net.kyori.adventure.text.Component.empty(),
+                    sub,
+                    net.kyori.adventure.title.Title.Times.of(
+                            java.time.Duration.ofMillis(100),
+                            java.time.Duration.ofMillis(700),
+                            java.time.Duration.ofMillis(200)
+                    )));
+            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 1.6f);
+        } catch (Throwable ignored) {}
+    }
+
+    private void notifyLapCompleted(Player p, int lap, int total) {
+        try {
+            var sub = net.kyori.adventure.text.Component.text("Hoàn thành vòng " + lap + "/" + total)
+                    .color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
+            p.showTitle(net.kyori.adventure.title.Title.title(
+                    net.kyori.adventure.text.Component.empty(),
+                    sub,
+                    net.kyori.adventure.title.Title.Times.of(
+                            java.time.Duration.ofMillis(100),
+                            java.time.Duration.ofMillis(900),
+                            java.time.Duration.ofMillis(250)
+                    )));
+            p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.15f);
+        } catch (Throwable ignored) {}
     }
 
     void finishPlayer(UUID uuid) {
@@ -226,10 +280,27 @@ public class RaceManager {
     public boolean join(Player p) {
         if (!registering) return false;
         boolean added = registered.add(p.getUniqueId());
-        // teleport to waiting spawn if set
-        org.bukkit.Location wsp = trackConfig.getWaitingSpawn();
-        if (added && wsp != null && wsp.getWorld() != null) {
-            try { p.teleport(wsp); } catch (Throwable ignored) {}
+        if (added) {
+            // Prefer waiting spawn; else fall back to start center; else finish center
+            org.bukkit.Location dest = trackConfig.getWaitingSpawn();
+            if (dest == null) dest = trackConfig.getStartCenter();
+            if (dest == null && trackConfig.getFinish() != null) {
+                try { dest = centerOf(trackConfig.getFinish()); } catch (Throwable ignored) {}
+            }
+            boolean ok = false;
+            if (dest != null && dest.getWorld() != null) {
+                try { ok = p.teleport(dest); } catch (Throwable ignored) { ok = false; }
+            }
+            // fallback if teleport failed (rare but possible)
+            if (!ok) {
+                org.bukkit.Location fb = trackConfig.getStartCenter();
+                if (fb == null && trackConfig.getFinish() != null) {
+                    try { fb = centerOf(trackConfig.getFinish()); } catch (Throwable ignored) {}
+                }
+                if (fb != null && fb.getWorld() != null) {
+                    try { p.teleport(fb); } catch (Throwable ignored) {}
+                }
+            }
         }
         return added;
     }
@@ -239,10 +310,22 @@ public class RaceManager {
     }
 
     public void forceStart() {
-        if (!registered.isEmpty()) {
-            this.running = true;
-            this.registering = false;
+        this.registering = false;
+        if (registered.isEmpty()) return;
+        // Build participants from currently registered and online
+        java.util.List<Player> participants = new java.util.ArrayList<>();
+        for (UUID id : new java.util.LinkedHashSet<>(registered)) {
+            Player rp = plugin.getServer().getPlayer(id);
+            if (rp != null && rp.isOnline()) participants.add(rp);
         }
+        if (participants.isEmpty()) return;
+        // Place at starts and run the same lights countdown
+        java.util.List<Player> placed = placeAtStartsWithBoats(participants);
+        if (placed.isEmpty()) return;
+        if (placed.size() < participants.size()) {
+            for (Player p : participants) if (!placed.contains(p)) es.jaie55.boatracing.util.Text.msg(p, "&7Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
+        }
+        startLightsCountdown(placed);
     }
 
     // Place participants at start locations and spawn boats for them
@@ -276,40 +359,44 @@ public class RaceManager {
     public void startLightsCountdown(List<Player> placed) {
         if (placed.isEmpty()) return;
         this.registering = false;
-        final int total = 3; // red -> yellow -> green
-        final int[] cur = {total};
+        final int total = 3; // 3..2..1..GO
         this.countdownEndMillis = System.currentTimeMillis() + (total * 1000L);
-        final var task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            if (cur[0] <= 0) {
-                // Start!
-                running = true;
-                raceStartMillis = System.currentTimeMillis();
-                countdownEndMillis = 0L;
-                participants.clear();
-                participantPlayers.clear();
-                for (Player p : placed) {
-                    ParticipantState st = new ParticipantState(p.getUniqueId());
-                    participants.put(p.getUniqueId(), st);
-                    participantPlayers.put(p.getUniqueId(), p);
-                }
-                initPathForLivePositions();
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
+
+        new BukkitRunnable() {
+            private int sec = total;
+
+            @Override
+            public void run() {
+                if (sec <= 0) {
+                    // Start!
+                    running = true;
+                    raceStartMillis = System.currentTimeMillis();
+                    countdownEndMillis = 0L;
+                    participants.clear();
+                    participantPlayers.clear();
                     for (Player p : placed) {
-                        var title = net.kyori.adventure.text.Component.text("GO!").color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
-                        var sub = net.kyori.adventure.text.Component.text("● ● ●").color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
-                        p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
-                                net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
-                        p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                        ParticipantState st = new ParticipantState(p.getUniqueId());
+                        participants.put(p.getUniqueId(), st);
+                        participantPlayers.put(p.getUniqueId(), p);
                     }
-                });
-                throw new RuntimeException("__cancel__");
-            } else {
-                int sec = cur[0];
-                countdownEndMillis = System.currentTimeMillis() + (sec * 1000L);
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    initPathForLivePositions();
                     for (Player p : placed) {
+                        try {
+                            var title = net.kyori.adventure.text.Component.text("GO!").color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
+                            var sub = net.kyori.adventure.text.Component.text("● ● ●").color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
+                            p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
+                                    net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
+                            p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+                        } catch (Throwable ignored) {}
+                    }
+                    cancel();
+                    return;
+                }
+
+                countdownEndMillis = System.currentTimeMillis() + (sec * 1000L);
+                for (Player p : placed) {
+                    try {
                         var title = net.kyori.adventure.text.Component.text(String.valueOf(sec)).color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
-                        // Build 3-dot lights: ● ● ● (red, yellow, green stages)
                         net.kyori.adventure.text.Component dot = net.kyori.adventure.text.Component.text("●");
                         var dark = net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY;
                         net.kyori.adventure.text.Component sub;
@@ -332,13 +419,12 @@ public class RaceManager {
                         p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
                                 net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
-                    }
-                });
+                    } catch (Throwable ignored) {}
+                }
+
+                sec--;
             }
-            cur[0]--;
-        }, 0L, 20L);
-        // Ensure cleanup after some time
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> { try { task.cancel(); } catch (Throwable ignored) {} }, (total + 2) * 20L);
+        }.runTaskTimer(plugin, 0L, 20L);
     }
 
     public boolean cancelRegistration(boolean announce) {

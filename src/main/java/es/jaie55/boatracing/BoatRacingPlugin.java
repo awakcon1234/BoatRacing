@@ -105,6 +105,17 @@ public class BoatRacingPlugin extends JavaPlugin {
                 raceManager.tickPlayer(e.getPlayer(), e.getTo());
             }
         }, this);
+
+        // Prevent racers from leaving their boat during countdown/race
+        Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            @org.bukkit.event.EventHandler(ignoreCancelled = true)
+            public void onVehicleExit(org.bukkit.event.vehicle.VehicleExitEvent e) {
+                if (raceManager == null) return;
+                if (!(e.getExited() instanceof org.bukkit.entity.Player p)) return;
+                if (!raceManager.shouldPreventBoatExit(p.getUniqueId())) return;
+                e.setCancelled(true);
+            }
+        }, this);
     
 // Removed bStats metrics and the external update checker per configuration.
         // If you need to re-enable update checking or metrics, re-add a custom implementation and config keys.

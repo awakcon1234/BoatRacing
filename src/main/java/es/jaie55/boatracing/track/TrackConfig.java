@@ -188,6 +188,10 @@ public class TrackConfig {
         try {
             File f = new File(tracksDir, name + ".yml");
             YamlConfiguration cfg = new YamlConfiguration();
+            // Ensure world is always persisted once when possible (prevents waitingSpawn-only tracks from losing their world on reload)
+            if (this.worldName == null && this.waitingSpawn != null && this.waitingSpawn.getWorld() != null) {
+                this.worldName = this.waitingSpawn.getWorld().getName();
+            }
             if (this.worldName != null) cfg.set("world", this.worldName);
             List<Map<String,Object>> s = new ArrayList<>();
             for (Location loc : this.starts) {
@@ -323,8 +327,12 @@ public class TrackConfig {
     }
     public void clearCenterline() { this.centerline.clear(); }
 
-    public org.bukkit.Location getWaitingSpawn() { return waitingSpawn; }
-    public void setWaitingSpawn(org.bukkit.Location loc) { this.waitingSpawn = loc == null ? null : loc.clone(); }
+    public org.bukkit.Location getWaitingSpawn() { return withTrackWorld(waitingSpawn); }
+    public void setWaitingSpawn(org.bukkit.Location loc) {
+        if (loc == null) { this.waitingSpawn = null; return; }
+        if (this.worldName == null && loc.getWorld() != null) this.worldName = loc.getWorld().getName();
+        this.waitingSpawn = withTrackWorld(loc);
+    }
 
     // --- Helpers ---
     private static org.bukkit.util.BoundingBox snapBoxToWhole(org.bukkit.util.BoundingBox box) {
@@ -405,6 +413,7 @@ public class TrackConfig {
         if (this.worldName == null && src.getWorld() != null) this.worldName = src.getWorld().getName();
         if (this.worldName == null) return src.clone();
         org.bukkit.World w = org.bukkit.Bukkit.getWorld(this.worldName);
+        if (w == null) return src.clone();
         return new org.bukkit.Location(w, src.getX(), src.getY(), src.getZ(), src.getYaw(), src.getPitch());
     }
     private Region overrideRegionWorld(Region r) {

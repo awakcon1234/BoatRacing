@@ -135,6 +135,7 @@ public class ScoreboardService {
         ph.put("racer_name", p.getName()); ph.put("racer_color", colorTagFor(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
         ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
+        ph.put("countdown", formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
         java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.waiting.lines", java.util.List.of()), ph);
         if (lines.isEmpty()) {
             lines = parseLines(p, java.util.List.of(
@@ -147,7 +148,7 @@ public class ScoreboardService {
                 "<gray>Màu: <white>%racer_color%",
                 "<gray>Biểu tượng: <white>%icon%",
                 "<gray>Số đua: <white>%number%",
-                    "<gray>Bắt đầu: <white>đang chờ..."), ph);
+                    "<gray>Bắt đầu: <white>%countdown%"), ph);
         }
         applySidebarComponents(p, sb, title, lines);
     }
@@ -168,12 +169,17 @@ public class ScoreboardService {
             int percent = (int) Math.round(rm.getLapProgressRatio(p.getUniqueId()) * 100.0);
             ph.put("lap_current", String.valueOf(st.currentLap+1)); ph.put("lap_total", String.valueOf(laps));
             ph.put("position", String.valueOf(pos)); ph.put("joined", String.valueOf(order.size())); ph.put("progress", String.valueOf(percent));
+            int totalCp = plugin.getTrackConfig().getCheckpoints().size();
+            int passedCp = (st.nextCheckpointIndex);
+            ph.put("checkpoint_passed", String.valueOf(passedCp));
+            ph.put("checkpoint_total", String.valueOf(totalCp));
             lines = parseLines(p, cfgStringList("scoreboard.templates.racing.lines", java.util.List.of()), ph);
             if (lines.isEmpty()) {
                 lines = parseLines(p, java.util.List.of(
                         "<gray>Đường: <white>%track%",
                         "<gray>Thời gian: <white>%timer%",
                         "<gray>Vòng: <white>%lap_current%/%lap_total%",
+                        "<gray>Checkpoint: <white>%checkpoint_passed%/%checkpoint_total%",
                         "<gray>Vị trí: <white>%position%/%joined%",
                         "<gray>Tiến độ: <white>%progress%%"), ph);
             }
@@ -275,6 +281,7 @@ public class ScoreboardService {
         int percent = (int) Math.round(rm.getLapProgressRatio(p.getUniqueId()) * 100.0);
         int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
         int totalCp = plugin.getTrackConfig().getCheckpoints().size();
+        int passedCp = (st == null ? 0 : st.nextCheckpointIndex);
         double bps = lastBps.getOrDefault(p.getUniqueId(), 0.0);
         double kmh = bps * 3.6;
         double bph = bps * 3600.0;
@@ -289,6 +296,7 @@ public class ScoreboardService {
         String speedColor = resolveSpeedColorByUnit(bps, unit);
         ph.put("position", String.valueOf(pos)); ph.put("racer_name", p.getName()); ph.put("lap_current", String.valueOf(lapCurrent)); ph.put("lap_total", String.valueOf(lapTotal));
         ph.put("progress", String.valueOf(percent)); ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp));
+        ph.put("checkpoint_passed", String.valueOf(passedCp));
         // Speed placeholders (configurable unit + back-compat)
         ph.put("speed", speedVal);
         ph.put("speed_unit", speedUnit);
@@ -396,13 +404,48 @@ public class ScoreboardService {
         try { return MiniMessage.miniMessage().deserialize(s); } catch (Throwable ignored) { return Text.c(s); }
     }
 
-    private String cfgString(String path, String def) { return plugin.getConfig().getString(path, def); }
+    private String cfgString(String path, String def) {
+        String v = plugin.getConfig().getString(path);
+        if (v != null) return v;
+        String alt = altUiPath(path);
+        if (alt != null) {
+            String av = plugin.getConfig().getString(alt);
+            if (av != null) return av;
+        }
+        return def;
+    }
+
     private java.util.List<String> cfgStringList(String path, java.util.List<String> def) {
         java.util.List<String> out = plugin.getConfig().getStringList(path);
-        return (out == null || out.isEmpty()) ? def : out;
+        if (out != null && !out.isEmpty()) return out;
+        String alt = altUiPath(path);
+        if (alt != null) {
+            java.util.List<String> ao = plugin.getConfig().getStringList(alt);
+            if (ao != null && !ao.isEmpty()) return ao;
+        }
+        return def;
     }
+
     private int cfgInt(String path, int def) { return plugin.getConfig().getInt(path, def); }
-    private boolean cfgBool(String path, boolean def) { return plugin.getConfig().getBoolean(path, def); }
+
+    private boolean cfgBool(String path, boolean def) {
+        if (plugin.getConfig().contains(path)) return plugin.getConfig().getBoolean(path, def);
+        String alt = altUiPath(path);
+        if (alt != null && plugin.getConfig().contains(alt)) return plugin.getConfig().getBoolean(alt, def);
+        return def;
+    }
+
+    // Support both legacy keys (scoreboard.templates/actionbar.*) and current keys (racing.ui.templates.*)
+    private static String altUiPath(String path) {
+        if (path == null) return null;
+        if (path.startsWith("scoreboard.templates.")) {
+            return "racing.ui.templates." + path.substring("scoreboard.templates.".length());
+        }
+        if (path.startsWith("scoreboard.actionbar.")) {
+            return "racing.ui.templates.actionbar." + path.substring("scoreboard.actionbar.".length());
+        }
+        return null;
+    }
 
     private static String colorTagFor(org.bukkit.DyeColor dc) {
         // MiniMessage supports a specific set of color names (e.g. gold, red, light_purple, dark_aqua, etc.)

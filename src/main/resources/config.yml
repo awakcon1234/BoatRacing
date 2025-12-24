@@ -47,13 +47,14 @@ racing:
           - "<gray>Màu: <white>%racer_color%"
           - "<gray>Biểu tượng: <white>%icon%"
           - "<gray>Số đua: <white>%number%"
-          - "<gray>Bắt đầu: <white>đang chờ..."
+          - "<gray>Bắt đầu: <white>%countdown%"
       racing:
         title: "<gold>Đang đua"
         lines:
           - "<gray>Đường: <white>%track%"
           - "<gray>Thời gian: <white>%timer%"
           - "<gray>Vòng: <white>%lap_current%/%lap_total%"
+          - "<gray>Checkpoint: <white>%checkpoint_passed%/%checkpoint_total%"
           - "<gray>Vị trí: <white>%position%/%joined%"
           - "<gray>Tiến độ: <white>%progress%%"
       completed:
@@ -72,9 +73,9 @@ racing:
         enabled: true
         # Waiting placeholders: %countdown% %joined% %max%
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> • <gray>%joined%/%max%</gray>"
-        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_total% %speed_color%
+        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
         # %speed% chooses unit based on scoreboard.speed.unit (bps|kmh). Example: <%speed_color%>%speed% %speed_unit%</%speed_color%>
-        racing: "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>"
+        racing: "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>"
 
 # Speed unit and color thresholds
 scoreboard:
