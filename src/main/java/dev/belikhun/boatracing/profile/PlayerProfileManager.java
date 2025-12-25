@@ -34,6 +34,95 @@ public class PlayerProfileManager {
         public String speedUnit = ""; // "kmh" | "bps"; empty = inherit global
     }
 
+    /**
+     * Standard racer display used everywhere a racer is printed:
+     * <color><icon> <number> <name>
+     *
+     * This method returns a MiniMessage-formatted string (e.g. "<red>⚡ 12 Belikhun").
+     */
+    public String formatRacerMini(UUID id, String name) {
+        if (id == null) return fallbackRacerMini(name);
+        Profile p = get(id);
+        String n = (name == null || name.isBlank()) ? shortId(id) : name;
+        String icon = (p.icon == null || p.icon.isBlank()) ? "•" : p.icon;
+        String number = (p.number > 0) ? String.valueOf(p.number) : "-";
+        return miniColorTag(p.color) + icon + " " + number + " " + n;
+    }
+
+    /**
+     * Standard racer display for legacy chat (uses &-color codes), same shape:
+     * <color><icon> <number> <name>
+     */
+    public String formatRacerLegacy(UUID id, String name) {
+        if (id == null) return fallbackRacerLegacy(name);
+        Profile p = get(id);
+        String n = (name == null || name.isBlank()) ? shortId(id) : name;
+        String icon = (p.icon == null || p.icon.isBlank()) ? "•" : p.icon;
+        String number = (p.number > 0) ? String.valueOf(p.number) : "-";
+        return legacyColorCode(p.color) + icon + " " + number + " " + n;
+    }
+
+    private static String fallbackRacerMini(String name) {
+        String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
+        return "<white>• - " + n;
+    }
+
+    private static String fallbackRacerLegacy(String name) {
+        String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
+        return "&f• - " + n;
+    }
+
+    private static String shortId(UUID id) {
+        if (id == null) return "(không rõ)";
+        String s = id.toString();
+        return s.length() >= 8 ? s.substring(0, 8) : s;
+    }
+
+    private static String miniColorTag(DyeColor dc) {
+        if (dc == null) return "<white>";
+        return switch (dc) {
+            case WHITE -> "<white>";
+            case ORANGE -> "<gold>";
+            case MAGENTA -> "<light_purple>";
+            case LIGHT_BLUE -> "<blue>";
+            case YELLOW -> "<yellow>";
+            case LIME -> "<green>";
+            case PINK -> "<light_purple>";
+            case GRAY, LIGHT_GRAY -> "<gray>";
+            case CYAN -> "<aqua>";
+            case PURPLE -> "<dark_purple>";
+            case BLUE -> "<blue>";
+            case BROWN -> "<gold>";
+            case GREEN -> "<green>";
+            case RED -> "<red>";
+            case BLACK -> "<black>";
+            default -> "<white>";
+        };
+    }
+
+    private static String legacyColorCode(DyeColor dc) {
+        if (dc == null) return "&f";
+        return switch (dc) {
+            case WHITE -> "&f";
+            case ORANGE -> "&6";
+            case MAGENTA -> "&d";
+            case LIGHT_BLUE -> "&9";
+            case YELLOW -> "&e";
+            case LIME -> "&a";
+            case PINK -> "&d";
+            case GRAY -> "&8";
+            case LIGHT_GRAY -> "&7";
+            case CYAN -> "&b";
+            case PURPLE -> "&5";
+            case BLUE -> "&1";
+            case BROWN -> "&6";
+            case GREEN -> "&2";
+            case RED -> "&c";
+            case BLACK -> "&0";
+            default -> "&f";
+        };
+    }
+
     public PlayerProfileManager(File dataFolder) {
         this.file = new File(dataFolder, "profiles.yml");
         load();

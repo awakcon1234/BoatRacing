@@ -279,7 +279,7 @@ public class AdminRaceGUI implements Listener {
             Text.msg(p, "&cKhông thể mở đăng ký lúc này.");
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
         } else {
-            Text.msg(p, "&aĐã mở đăng ký cho &f" + tname);
+            Text.msg(p, "&a📝 Đã mở đăng ký cho &f" + tname);
             p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
             open(p);
         }
@@ -312,9 +312,9 @@ public class AdminRaceGUI implements Listener {
         if (participants.isEmpty()) { Text.msg(p, "&cKhông có người tham gia đã đăng ký. Hãy mở đăng ký trước."); return; }
         List<Player> placed = rm.placeAtStartsWithBoats(participants);
         if (placed.isEmpty()) { Text.msg(p, "&cKhông còn vị trí bắt đầu trống trên đường đua này."); return; }
-        if (placed.size() < participants.size()) { Text.msg(p, "&7Một số người chơi đăng ký không thể được đặt do thiếu vị trí bắt đầu."); }
+        if (placed.size() < participants.size()) { Text.msg(p, "&e⚠ Một số người chơi đã đăng ký không thể vào vị trí xuất phát do thiếu slot."); }
         rm.startLightsCountdown(placed);
-        Text.msg(p, "&aĐã bắt đầu cuộc đua.");
+        Text.msg(p, "&a▶ Đã bắt đầu cuộc đua.");
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.2f);
         open(p);
     }
@@ -336,7 +336,7 @@ public class AdminRaceGUI implements Listener {
             return;
         }
         rm.forceStart();
-        Text.msg(p, "&aĐã force start.");
+        Text.msg(p, "&a⚡ Đã bắt đầu ngay.");
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
         open(p);
     }
@@ -349,7 +349,7 @@ public class AdminRaceGUI implements Listener {
         if (!any) {
             Text.msg(p, "&7Không có gì để dừng.");
         } else {
-            Text.msg(p, "&aĐã dừng.");
+            Text.msg(p, "&a⏹ Đã dừng cuộc đua.");
         }
         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
         open(p);

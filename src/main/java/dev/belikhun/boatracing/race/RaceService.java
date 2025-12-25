@@ -2,6 +2,7 @@ package dev.belikhun.boatracing.race;
 
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.track.TrackConfig;
+import dev.belikhun.boatracing.util.Text;
 
 import java.io.File;
 import java.util.*;
@@ -136,6 +137,39 @@ public class RaceService {
         if (rm == null) return false;
         boolean changed = rm.handleRacerDisconnect(playerId);
         if (changed) trackByPlayer.remove(playerId);
+        return changed;
+    }
+
+    /**
+     * Remove the player from any race/registration/countdown state and teleport them back to their world spawn.
+     * This is used by the UX hotbar "leave" actions.
+     */
+    public synchronized boolean leaveToLobby(org.bukkit.entity.Player p) {
+        if (p == null) return false;
+        java.util.UUID id = p.getUniqueId();
+
+        RaceManager rm = findRaceFor(id);
+        if (rm == null) return false;
+
+        boolean changed = false;
+        try { changed = rm.handleRacerDisconnect(id); } catch (Throwable ignored) { changed = false; }
+        trackByPlayer.remove(id);
+
+        try {
+            if (p.isInsideVehicle()) p.leaveVehicle();
+        } catch (Throwable ignored) {}
+
+        try {
+            org.bukkit.Location spawn = (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null);
+            if (spawn != null) p.teleport(spawn);
+            p.setFallDistance(0f);
+        } catch (Throwable ignored) {}
+
+        // Player-facing confirmation (Vietnamese UX rule)
+        try {
+            Text.msg(p, "&a⎋ Đã rời khỏi cuộc đua.");
+        } catch (Throwable ignored) {}
+
         return changed;
     }
 

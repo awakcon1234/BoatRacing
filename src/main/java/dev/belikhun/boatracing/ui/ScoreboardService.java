@@ -271,10 +271,11 @@ public class ScoreboardService {
 
         String tpl = cfgString(
                 "scoreboard.actionbar.completed",
-                "<gold>#%finish_pos%</gold> <white>%racer_name%</white> <gray>•</gray> <white>%finish_time%</white> <gray>•</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
+            "<gold>#%finish_pos%</gold> %racer_display% <gray>•</gray> <white>%finish_time%</white> <gray>•</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
         );
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         ph.put("racer_name", p.getName());
+        ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("finish_pos", String.valueOf(pos));
         ph.put("finish_time", fmt(t));
         ph.put("avg_speed", speedVal);
@@ -406,6 +407,7 @@ public class ScoreboardService {
                 long delta = Math.max(0L, t - best);
                 java.util.Map<String,String> ph = new java.util.HashMap<>();
                 ph.put("racer_name", name);
+                ph.put("racer_display", racerDisplay(s.id, name));
                 ph.put("finish_pos", String.valueOf(s.finishPosition));
                 ph.put("finish_time", fmt(t));
                 ph.put("delta_time", fmt(delta));
@@ -413,8 +415,8 @@ public class ScoreboardService {
                         ? "scoreboard.templates.ended.winner_line"
                         : "scoreboard.templates.ended.delta_line";
                 String def = (s.finishPosition == 1 || delta == 0L)
-                        ? "<gold>#%finish_pos% %racer_name%</gold> <gray>•</gray> <white>%finish_time%</white>"
-                        : "<yellow>#%finish_pos% %racer_name%</yellow> <gray>•</gray> <white>+%delta_time%</white>";
+                    ? "<gold>#%finish_pos%</gold> %racer_display% <gray>•</gray> <white>%finish_time%</white>"
+                    : "<yellow>#%finish_pos%</yellow> %racer_display% <gray>•</gray> <white>+%delta_time%</white>";
                 lines.add(parse(p, cfgString(key, def), ph));
             }
 
@@ -433,8 +435,11 @@ public class ScoreboardService {
             String name = nameOf(s.id);
             long t = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + s.penaltySeconds*1000L;
             java.util.Map<String,String> ph = new java.util.HashMap<>();
-            ph.put("racer_name", name); ph.put("finish_pos", String.valueOf(s.finishPosition)); ph.put("finish_time", fmt(t));
-            lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_line", "<white>%finish_pos%) %racer_name%"), ph));
+            ph.put("racer_name", name);
+            ph.put("racer_display", racerDisplay(s.id, name));
+            ph.put("finish_pos", String.valueOf(s.finishPosition));
+            ph.put("finish_time", fmt(t));
+            lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_line", "<white>%finish_pos%)</white> %racer_display%"), ph));
             lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_time_line", "<gray>  thời gian: <white>%finish_time%"), ph));
             shown += 2;
             if (shown >= maxFinished) break; // avoid overflow
@@ -454,9 +459,12 @@ public class ScoreboardService {
             String name = nameOf(id);
             double progressPct = rm.getLapProgressRatio(id) * 100.0;
             java.util.Map<String,String> ph = new java.util.HashMap<>();
-            ph.put("racer_name", name); ph.put("position", String.valueOf(pos)); ph.put("progress", fmt2(progressPct));
+            ph.put("racer_name", name);
+            ph.put("racer_display", racerDisplay(id, name));
+            ph.put("position", String.valueOf(pos));
+            ph.put("progress", fmt2(progressPct));
             ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
-            lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_line", "<white>%position%) %racer_name%"), ph));
+            lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_line", "<white>%position%)</white> %racer_display%"), ph));
             lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_progress_line", "<gray>  tiến độ: <white>%progress%%"), ph));
             count += 2;
             if (count >= limit) break;
@@ -507,7 +515,7 @@ public class ScoreboardService {
         if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
         // Default template uses the dynamic %speed_color% placeholder as a MiniMessage tag name
         // so that servers can get auto-colored speed without touching config
-        String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position% %racer_name% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>");
+        String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position%</gray> %racer_display% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>");
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         var st = rm.getParticipantState(p.getUniqueId());
         int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
@@ -532,7 +540,11 @@ public class ScoreboardService {
         else if ("bph".equals(unit)) { speedVal = fmt2(bph); speedUnit = "bph"; }
         else { speedVal = fmt2(kmh); speedUnit = "km/h"; unit = "kmh"; }
         String speedColor = resolveSpeedColorByUnit(bps, unit);
-        ph.put("position", String.valueOf(pos)); ph.put("racer_name", p.getName()); ph.put("lap_current", String.valueOf(lapCurrent)); ph.put("lap_total", String.valueOf(lapTotal));
+        ph.put("position", String.valueOf(pos));
+        ph.put("racer_name", p.getName());
+        ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
+        ph.put("lap_current", String.valueOf(lapCurrent));
+        ph.put("lap_total", String.valueOf(lapTotal));
         ph.put("progress", fmt2(progressPct));
         ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
         ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp));
@@ -548,6 +560,14 @@ public class ScoreboardService {
         Component c = parse(p, tpl, ph);
         sendActionBar(p, c);
         log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed(bps)=" + fmt2(bps) + " unit=" + unit);
+    }
+
+    private String racerDisplay(UUID id, String name) {
+        try {
+            if (pm != null) return pm.formatRacerMini(id, name);
+        } catch (Throwable ignored) {}
+        String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
+        return "<white>• - " + n;
     }
 
     private static String fmt2(double v) {

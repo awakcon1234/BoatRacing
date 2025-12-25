@@ -28,6 +28,8 @@ public class BoatRacingPlugin extends JavaPlugin {
     private dev.belikhun.boatracing.ui.AdminRaceGUI adminRaceGUI;
     private dev.belikhun.boatracing.profile.PlayerProfileManager profileManager;
     private dev.belikhun.boatracing.ui.ProfileGUI profileGUI;
+    private dev.belikhun.boatracing.ui.TrackSelectGUI trackSelectGUI;
+    private dev.belikhun.boatracing.ui.HotbarService hotbarService;
     private dev.belikhun.boatracing.ui.ScoreboardService scoreboardService;
     private String prefix;
     private TrackConfig trackConfig;
@@ -46,6 +48,8 @@ public class BoatRacingPlugin extends JavaPlugin {
     public dev.belikhun.boatracing.ui.AdminRaceGUI getAdminRaceGUI() { return adminRaceGUI; }
     public dev.belikhun.boatracing.profile.PlayerProfileManager getProfileManager() { return profileManager; }
     public dev.belikhun.boatracing.ui.ProfileGUI getProfileGUI() { return profileGUI; }
+    public dev.belikhun.boatracing.ui.TrackSelectGUI getTrackSelectGUI() { return trackSelectGUI; }
+    public dev.belikhun.boatracing.ui.HotbarService getHotbarService() { return hotbarService; }
     public dev.belikhun.boatracing.ui.ScoreboardService getScoreboardService() { return scoreboardService; }
     public dev.belikhun.boatracing.race.RaceService getRaceService() { return raceService; }
     public TrackConfig getTrackConfig() { return trackConfig; }
@@ -71,10 +75,12 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.adminRaceGUI = new dev.belikhun.boatracing.ui.AdminRaceGUI(this);
     this.profileManager = new dev.belikhun.boatracing.profile.PlayerProfileManager(getDataFolder());
     this.profileGUI = new dev.belikhun.boatracing.ui.ProfileGUI(this);
+    this.trackSelectGUI = new dev.belikhun.boatracing.ui.TrackSelectGUI(this);
     this.trackConfig = new TrackConfig(this, getDataFolder());
     this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
     this.raceService = new dev.belikhun.boatracing.race.RaceService(this);
     this.scoreboardService = new dev.belikhun.boatracing.ui.ScoreboardService(this);
+    this.hotbarService = new dev.belikhun.boatracing.ui.HotbarService(this);
     this.setupWizard = new SetupWizard(this);
     this.tracksGUI = new dev.belikhun.boatracing.ui.AdminTracksGUI(this, trackLibrary);
     // Team GUI removed
@@ -82,6 +88,8 @@ public class BoatRacingPlugin extends JavaPlugin {
     Bukkit.getPluginManager().registerEvents(tracksGUI, this);
     Bukkit.getPluginManager().registerEvents(adminRaceGUI, this);
     Bukkit.getPluginManager().registerEvents(profileGUI, this);
+    Bukkit.getPluginManager().registerEvents(trackSelectGUI, this);
+    Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.ui.HotbarListener(this, hotbarService), this);
     try {
         if (scoreboardService != null) {
             scoreboardService.start();
@@ -89,6 +97,11 @@ public class BoatRacingPlugin extends JavaPlugin {
             scoreboardService.setDebug(sbDebug);
             if (sbDebug) getLogger().info("[SB] Debug enabled via config");
         }
+    } catch (Throwable ignored) {}
+
+    // Hotbar UX items
+    try {
+        if (hotbarService != null) hotbarService.start();
     } catch (Throwable ignored) {}
     
     dev.belikhun.boatracing.track.SelectionManager.init(this);
@@ -326,6 +339,10 @@ public class BoatRacingPlugin extends JavaPlugin {
         // Ensure we cleanly stop scheduled tasks and remove plugin-spawned boats.
         try {
             if (scoreboardService != null) scoreboardService.stop();
+        } catch (Throwable ignored) {}
+
+        try {
+            if (hotbarService != null) hotbarService.stop();
         } catch (Throwable ignored) {}
 
         try {

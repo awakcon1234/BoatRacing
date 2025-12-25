@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -48,6 +49,7 @@ public class RaceManager {
     private final java.util.Map<UUID, ParticipantState> participants = new java.util.HashMap<>();
     private final java.util.Map<UUID, Player> participantPlayers = new java.util.HashMap<>();
     private final java.util.Map<UUID, UUID> spawnedBoatByPlayer = new java.util.HashMap<>();
+    private final java.util.Map<UUID, org.bukkit.GameMode> previousGameModes = new java.util.HashMap<>();
     private final java.util.Set<UUID> countdownPlayers = new java.util.HashSet<>();
     private long raceStartMillis = 0L;
     // Countdown end (millis) for the start countdown; 0 if no countdown active
@@ -66,6 +68,7 @@ public class RaceManager {
     private BukkitRunnable countdownFreezeTask;
     private BukkitTask startLightsBlinkTask;
     private BukkitTask postFinishCleanupTask;
+    private BukkitTask allFinishedFireworksTask;
     private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
     private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
     private final java.util.Map<Block, BlockData> countdownBarrierRestore = new java.util.HashMap<>();
@@ -479,6 +482,54 @@ public class RaceManager {
         return cp != null ? cp : getStartRespawnLocation(deathLocation);
     }
 
+    /**
+     * UX action: respawn immediately.
+     * - During countdown: snap back to the locked start position.
+     * - During race: teleport to last checkpoint (or start if none).
+     */
+    public boolean manualRespawnAtCheckpoint(Player p) {
+        if (p == null || !p.isOnline()) return false;
+        UUID id = p.getUniqueId();
+
+        // Countdown: snap to lock and ensure boat.
+        if (isCountdownActiveFor(id)) {
+            org.bukkit.Location lock = getCountdownLockLocation(id);
+            if (lock != null) {
+                try {
+                    if (lock.getWorld() == null && p.getWorld() != null) lock.setWorld(p.getWorld());
+                } catch (Throwable ignored) {}
+                try {
+                    if (lock.getWorld() != null) p.teleport(lock);
+                    p.setFallDistance(0f);
+                } catch (Throwable ignored) {}
+                try { ensureRacerHasBoat(p); } catch (Throwable ignored) {}
+                try { p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.15f); } catch (Throwable ignored) {}
+                try { Text.msg(p, "&a⟲ Đã đưa bạn về vị trí xuất phát."); } catch (Throwable ignored) {}
+                return true;
+            }
+        }
+
+        // Running race: use the same respawn logic as death.
+        ParticipantState s = participants.get(id);
+        if (s == null || s.finished) return false;
+
+        org.bukkit.Location target = getRaceRespawnLocation(id, p.getLocation());
+        if (target == null) return false;
+        try {
+            if (target.getWorld() == null && p.getWorld() != null) target.setWorld(p.getWorld());
+        } catch (Throwable ignored) {}
+        if (target.getWorld() == null) return false;
+
+        try {
+            p.teleport(target);
+            p.setFallDistance(0f);
+        } catch (Throwable ignored) {}
+        try { ensureRacerHasBoat(p); } catch (Throwable ignored) {}
+        try { p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.15f); } catch (Throwable ignored) {}
+        try { Text.msg(p, "&a⟲ Đã đưa bạn về checkpoint gần nhất."); } catch (Throwable ignored) {}
+        return true;
+    }
+
     public void ensureRacerHasBoat(Player p) {
         if (p == null || !p.isOnline()) return;
         UUID id = p.getUniqueId();
@@ -864,7 +915,7 @@ public class RaceManager {
 
     private void notifyCheckpointPassed(Player p, int passed, int total) {
         try {
-            var sub = net.kyori.adventure.text.Component.text("Điểm kiểm tra " + passed + "/" + total)
+            var sub = net.kyori.adventure.text.Component.text("✅ Điểm kiểm tra " + passed + "/" + total)
                     .color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
             p.showTitle(net.kyori.adventure.title.Title.title(
                     net.kyori.adventure.text.Component.empty(),
@@ -880,7 +931,7 @@ public class RaceManager {
 
     private void notifyLapCompleted(Player p, int lap, int total) {
         try {
-            var sub = net.kyori.adventure.text.Component.text("Hoàn thành vòng " + lap + "/" + total)
+            var sub = net.kyori.adventure.text.Component.text("🏁 Hoàn thành vòng " + lap + "/" + total)
                     .color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
             p.showTitle(net.kyori.adventure.title.Title.title(
                     net.kyori.adventure.text.Component.empty(),
@@ -904,14 +955,25 @@ public class RaceManager {
         s.finishPosition = Math.max(1, pos);
         Player p = participantPlayers.get(uuid);
         if (p != null) {
-            Text.msg(p, "&6Bạn đã về đích! Vị trí: &e" + s.finishPosition);
+            // Rich finish board (10 lines) in vanilla chat height.
+            try { sendFinishBoard(p, s); } catch (Throwable ignored) {}
+            try {
+                p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.0f);
+            } catch (Throwable ignored) {}
         }
 
         // If everybody is finished, immediately reset start lights and schedule a cleanup.
         try {
             boolean allFinished = !participants.isEmpty() && participants.values().stream().allMatch(x -> x != null && x.finished);
             if (allFinished) {
+                // Mark race as ended so end-of-race effects (fireworks/scoreboard) can run.
+                running = false;
+                try { stopRaceTicker(); } catch (Throwable ignored) {}
                 try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
+
+                // Celebration: fireworks + switch everyone in this race to spectator.
+                try { spawnAllFinishedFireworks(); } catch (Throwable ignored) {}
+                try { setAllInvolvedSpectator(); } catch (Throwable ignored) {}
 
                 if (plugin != null) {
                     int sec = 15;
@@ -933,6 +995,188 @@ public class RaceManager {
                 }
             }
         } catch (Throwable ignored) {}
+    }
+
+    private static String fmtMs(long ms) {
+        long t = Math.max(0L, ms);
+        long totalSec = t / 1000L;
+        long m = totalSec / 60L;
+        long s = totalSec % 60L;
+        long msPart = t % 1000L;
+        return String.format(Locale.ROOT, "%02d:%02d.%03d", m, s, msPart);
+    }
+
+    private static String fmt1(double v) {
+        if (!Double.isFinite(v)) return "0.0";
+        return String.format(Locale.ROOT, "%.1f", v);
+    }
+
+    private static String fmt2(double v) {
+        if (!Double.isFinite(v)) return "0.00";
+        return String.format(Locale.ROOT, "%.2f", v);
+    }
+
+    private void sendFinishBoard(Player p, ParticipantState s) {
+        if (p == null || s == null) return;
+
+        int racersTotal = Math.max(1, participants.size());
+        int place = (s.finishPosition > 0 ? s.finishPosition : 1);
+
+        long rawMs = Math.max(0L, s.finishTimeMillis - getRaceStartMillis());
+        long penaltyMs = Math.max(0L, s.penaltySeconds) * 1000L;
+        long finalMs = rawMs + penaltyMs;
+
+        double dist = Math.max(0.0, s.distanceBlocks);
+        double seconds = Math.max(0.001, finalMs / 1000.0);
+        double avgBps = dist / seconds;
+        double avgKmh = avgBps * 3.6;
+        long avgLapMs = (getTotalLaps() <= 0) ? finalMs : (finalMs / (long) getTotalLaps());
+
+        String track = null;
+        try { track = trackConfig != null ? trackConfig.getCurrentName() : null; } catch (Throwable ignored) { track = null; }
+        if (track == null || track.isBlank()) track = "(không rõ)";
+
+        int cps = 0;
+        try { cps = (trackConfig != null && trackConfig.getCheckpoints() != null) ? trackConfig.getCheckpoints().size() : 0; }
+        catch (Throwable ignored) { cps = 0; }
+
+        // 10 lines total (Minecraft default chat height).
+        Text.tell(p, "&6&l┏━━━━━━━━━━━━━━━ &e🏁 KẾT QUẢ &6&l━━━━━━━━━━━━━━━┓");
+        Text.tell(p, "&eHạng: &f#" + place + "&7/&f" + racersTotal + "   &8•   &eThời gian: &f" + fmtMs(finalMs));
+        Text.tell(p, "&eThời gian thực: &f" + fmtMs(rawMs) + "   &8•   &ePhạt: &c+" + fmtMs(penaltyMs));
+        Text.tell(p, "&eĐường đua: &f" + track);
+        Text.tell(p, "&eVòng: &f" + getTotalLaps() + "/" + getTotalLaps() + "   &8•   &eCheckpoint: &f" + cps + "&7/vòng");
+        Text.tell(p, "&eQuãng đường: &f" + fmt1(dist) + "&7m");
+        Text.tell(p, "&eTốc độ TB: &f" + fmt2(avgBps) + "&7 bps &8(≈ &f" + fmt2(avgKmh) + "&7 km/h)");
+        Text.tell(p, "&eTB mỗi vòng: &f" + fmtMs(avgLapMs));
+        Text.tell(p, "&7Gợi ý: &f/boatracing profile &7để chỉnh màu/số/biểu tượng.");
+        Text.tell(p, "&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+    }
+
+    private void setAllInvolvedSpectator() {
+        if (plugin == null) return;
+        for (UUID id : getInvolved()) {
+            if (id == null) continue;
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || !p.isOnline()) continue;
+            try {
+                previousGameModes.putIfAbsent(id, p.getGameMode());
+                p.setGameMode(org.bukkit.GameMode.SPECTATOR);
+            } catch (Throwable ignored) {}
+        }
+    }
+
+    private void restorePreviousGameModes() {
+        if (plugin == null) { previousGameModes.clear(); return; }
+        for (var en : new java.util.HashMap<>(previousGameModes).entrySet()) {
+            UUID id = en.getKey();
+            org.bukkit.GameMode gm = en.getValue();
+            if (id == null || gm == null) continue;
+            Player p = Bukkit.getPlayer(id);
+            if (p == null || !p.isOnline()) continue;
+            try { p.setGameMode(gm); } catch (Throwable ignored) {}
+        }
+        previousGameModes.clear();
+    }
+
+    private void stopAllFinishedFireworks() {
+        if (allFinishedFireworksTask != null) {
+            try { allFinishedFireworksTask.cancel(); } catch (Throwable ignored) {}
+            allFinishedFireworksTask = null;
+        }
+    }
+
+    private static org.bukkit.Color randomFestiveColor(java.util.Random rnd) {
+        if (rnd == null) rnd = new java.util.Random();
+        org.bukkit.Color[] colors = new org.bukkit.Color[] {
+                org.bukkit.Color.RED,
+                org.bukkit.Color.LIME,
+                org.bukkit.Color.AQUA,
+                org.bukkit.Color.YELLOW,
+                org.bukkit.Color.FUCHSIA,
+                org.bukkit.Color.ORANGE,
+                org.bukkit.Color.WHITE,
+                org.bukkit.Color.PURPLE,
+                org.bukkit.Color.BLUE
+        };
+        return colors[rnd.nextInt(colors.length)];
+    }
+
+    private void spawnAllFinishedFireworks() {
+        if (plugin == null) return;
+        if (allFinishedFireworksTask != null) return;
+
+        org.bukkit.Location base = null;
+        try {
+            Region fin = trackConfig.getFinish();
+            if (fin != null) base = centerOf(fin);
+        } catch (Throwable ignored) { base = null; }
+        if (base == null) {
+            try { base = trackConfig.getStartCenter(); } catch (Throwable ignored) { base = null; }
+        }
+        if (base == null || base.getWorld() == null) return;
+
+        final org.bukkit.Location origin = base.clone();
+        final java.util.Random rnd = new java.util.Random();
+        final double radius = 8.0;
+
+        // Periodic, festive show around the finish line. Runs until the track is closed (stop()).
+        allFinishedFireworksTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            if (plugin == null) { stopAllFinishedFireworks(); return; }
+            // NOTE: Do not cancel just because 'running' was true; we flip running=false when all finish.
+            // Starting a new countdown explicitly stops this task.
+
+            org.bukkit.World w = origin.getWorld();
+            if (w == null) return;
+
+            int perBurst = 2;
+            for (int i = 0; i < perBurst; i++) {
+                double a = rnd.nextDouble() * Math.PI * 2.0;
+                double r = Math.sqrt(rnd.nextDouble()) * radius;
+                double dx = Math.cos(a) * r;
+                double dz = Math.sin(a) * r;
+
+                org.bukkit.Location spawn = origin.clone().add(dx, 0.0, dz);
+                spawn.setY(spawn.getY() + 1.8 + (rnd.nextDouble() * 0.6));
+
+                try {
+                    org.bukkit.entity.Firework fw = w.spawn(spawn, org.bukkit.entity.Firework.class);
+                    org.bukkit.inventory.meta.FireworkMeta meta = fw.getFireworkMeta();
+                    meta.setPower(1); // fly up a bit
+
+                    org.bukkit.FireworkEffect.Type type = switch (rnd.nextInt(4)) {
+                        case 0 -> org.bukkit.FireworkEffect.Type.BALL;
+                        case 1 -> org.bukkit.FireworkEffect.Type.BALL_LARGE;
+                        case 2 -> org.bukkit.FireworkEffect.Type.BURST;
+                        default -> org.bukkit.FireworkEffect.Type.STAR;
+                    };
+
+                    meta.addEffect(org.bukkit.FireworkEffect.builder()
+                            .with(type)
+                            .flicker(true)
+                            .trail(true)
+                            .withColor(
+                                    randomFestiveColor(rnd),
+                                    randomFestiveColor(rnd),
+                                    randomFestiveColor(rnd)
+                            )
+                            .build());
+                    fw.setFireworkMeta(meta);
+
+                    try {
+                        fw.setVelocity(new Vector(
+                                (rnd.nextDouble() - 0.5) * 0.15,
+                                0.35 + rnd.nextDouble() * 0.15,
+                                (rnd.nextDouble() - 0.5) * 0.15
+                        ));
+                    } catch (Throwable ignored) {}
+
+                    plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                        try { fw.detonate(); } catch (Throwable ignored) {}
+                    }, 8L + rnd.nextInt(10));
+                } catch (Throwable ignored) {}
+            }
+        }, 0L, 12L);
     }
 
     /**
@@ -1026,7 +1270,7 @@ public class RaceManager {
             java.util.List<org.bukkit.entity.Player> placed = placeAtStartsWithBoats(participants);
             if (placed.isEmpty()) { cancelRegistration(false); waitingEndMillis = 0L; return; }
             if (placed.size() < participants.size()) {
-                for (org.bukkit.entity.Player p : participants) if (!placed.contains(p)) dev.belikhun.boatracing.util.Text.msg(p, "&7Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
+                for (org.bukkit.entity.Player p : participants) if (!placed.contains(p)) dev.belikhun.boatracing.util.Text.msg(p, "&e⚠ Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
             }
             this.registering = false;
             waitingEndMillis = 0L;
@@ -1086,7 +1330,21 @@ public class RaceManager {
     }
 
     public boolean leave(Player p) {
-        return registered.remove(p.getUniqueId());
+        if (p == null) return false;
+        boolean removed = registered.remove(p.getUniqueId());
+        if (!removed) return false;
+
+        // If the last racer leaves during registration, reset the waiting timer so the next join
+        // gets a full countdown again.
+        if (registering && registered.isEmpty()) {
+            waitingEndMillis = 0L;
+            if (registrationStartTask != null) {
+                try { registrationStartTask.cancel(); } catch (Throwable ignored) {}
+                registrationStartTask = null;
+            }
+        }
+
+        return true;
     }
 
     public void forceStart() {
@@ -1103,7 +1361,7 @@ public class RaceManager {
         java.util.List<Player> placed = placeAtStartsWithBoats(participants);
         if (placed.isEmpty()) return;
         if (placed.size() < participants.size()) {
-            for (Player p : participants) if (!placed.contains(p)) dev.belikhun.boatracing.util.Text.msg(p, "&7Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
+            for (Player p : participants) if (!placed.contains(p)) dev.belikhun.boatracing.util.Text.msg(p, "&e⚠ Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
         }
         startLightsCountdown(placed);
     }
@@ -1191,6 +1449,9 @@ public class RaceManager {
             try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
             postFinishCleanupTask = null;
         }
+
+        // Stop the "all finished" firework show if it was running.
+        stopAllFinishedFireworks();
 
         // Stop any prior countdown before starting a new one.
         if (countdownTask != null) {
@@ -1309,8 +1570,10 @@ public class RaceManager {
 
                     for (Player p : placed) {
                         try {
-                            var title = net.kyori.adventure.text.Component.text("BẮT ĐẦU!").color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
-                            var sub = net.kyori.adventure.text.Component.text("● ● ●").color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
+                            var title = net.kyori.adventure.text.Component.text("🟢 BẮT ĐẦU!")
+                                .color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
+                            var sub = net.kyori.adventure.text.Component.text("⚡ Chạy thôi!")
+                                .color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
                             p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
                                     net.kyori.adventure.title.Title.Times.times(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
                             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
@@ -1567,6 +1830,8 @@ public class RaceManager {
         // If we were freezing boats during countdown, restore physics regardless of how we stop.
         try { restoreCountdownBoatPhysics(); } catch (Throwable ignored) {}
         try { clearCountdownBarriers(); } catch (Throwable ignored) {}
+        try { restorePreviousGameModes(); } catch (Throwable ignored) {}
+        try { stopAllFinishedFireworks(); } catch (Throwable ignored) {}
 
         if (postFinishCleanupTask != null) {
             try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
@@ -1618,6 +1883,8 @@ public class RaceManager {
         countdownPlayers.clear();
         countdownLockLocation.clear();
         spawnedBoatByPlayer.clear();
+        previousGameModes.clear();
+        allFinishedFireworksTask = null;
         return hadAny || wasRunning || wasRegistering;
     }
 
@@ -1711,6 +1978,9 @@ public class RaceManager {
         // Remove from live race state.
         if (participants.remove(id) != null) changed = true;
         if (participantPlayers.remove(id) != null) changed = true;
+
+        // If they were put into spectator, forget their original mode.
+        try { previousGameModes.remove(id); } catch (Throwable ignored) {}
 
         // Remove their spawned boat entity even if they're offline.
         UUID boatId = spawnedBoatByPlayer.remove(id);
