@@ -903,42 +903,8 @@ public class RaceManager {
         // Initialize start lights (progress bar).
         try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
 
-        // Enforce a hard freeze every tick, not just on VehicleMoveEvent.
-        countdownFreezeTask = new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (plugin == null) { cancel(); return; }
-                if (running) { cancel(); return; }
-                if (countdownTask == null || countdownPlayers.isEmpty()) { cancel(); return; }
-
-                for (UUID id : new java.util.ArrayList<>(countdownPlayers)) {
-                    Player p = Bukkit.getPlayer(id);
-                    if (p == null || !p.isOnline()) continue;
-                    org.bukkit.Location lock = countdownLockLocation.get(id);
-                    if (lock == null) continue;
-
-                    try {
-                        org.bukkit.entity.Entity v = p.getVehicle();
-                        if (v instanceof org.bukkit.entity.Boat boat) {
-                            boat.setVelocity(new Vector(0, 0, 0));
-                            // Always snap back to the fixed lock location (prevents TPS-lag inching).
-                            boat.teleport(lock);
-                        } else {
-                            // Fallback: keep the player on the lock spot.
-                            p.teleport(lock);
-                        }
-                    } catch (Throwable ignored) {}
-                }
-            }
-
-            @Override
-            public synchronized void cancel() throws IllegalStateException {
-                super.cancel();
-                if (countdownFreezeTask == this) countdownFreezeTask = null;
-            }
-        };
-        countdownFreezeTask.runTaskTimer(plugin, 0L, 1L);
-
+        // Create the countdown task first so the freeze task (delay 0) doesn't cancel itself
+        // on the first tick due to countdownTask being null.
         countdownTask = new BukkitRunnable() {
             private int sec = total;
 
@@ -1044,6 +1010,43 @@ public class RaceManager {
                 if (countdownTask == this) countdownTask = null;
             }
         };
+
+        // Enforce a hard freeze every tick, not just on VehicleMoveEvent.
+        countdownFreezeTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (plugin == null) { cancel(); return; }
+                if (running) { cancel(); return; }
+                if (countdownTask == null || countdownPlayers.isEmpty()) { cancel(); return; }
+
+                for (UUID id : new java.util.ArrayList<>(countdownPlayers)) {
+                    Player p = Bukkit.getPlayer(id);
+                    if (p == null || !p.isOnline()) continue;
+                    org.bukkit.Location lock = countdownLockLocation.get(id);
+                    if (lock == null) continue;
+
+                    try {
+                        org.bukkit.entity.Entity v = p.getVehicle();
+                        if (v instanceof org.bukkit.entity.Boat boat) {
+                            boat.setVelocity(new Vector(0, 0, 0));
+                            // Always snap back to the fixed lock location (prevents TPS-lag inching).
+                            boat.teleport(lock);
+                        } else {
+                            // Fallback: keep the player on the lock spot.
+                            p.teleport(lock);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            @Override
+            public synchronized void cancel() throws IllegalStateException {
+                super.cancel();
+                if (countdownFreezeTask == this) countdownFreezeTask = null;
+            }
+        };
+        countdownFreezeTask.runTaskTimer(plugin, 0L, 1L);
+
         countdownTask.runTaskTimer(plugin, 0L, 20L);
     }
 
