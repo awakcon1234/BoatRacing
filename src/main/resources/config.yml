@@ -13,6 +13,16 @@ racing:
     checkpoints: false
     # Logs per-second drift/rotation deltas during the 10s start countdown freeze.
     countdown-freeze: false
+    # Logs chosen boat type and spawned entity type.
+    boat-selection: false
+
+  countdown:
+    barrier:
+      # Place temporary barrier blocks in front of boats during the start countdown.
+      enabled: true
+
+  # After everyone finishes, keep the results visible for this many seconds, then cleanup.
+  post-finish-cleanup-seconds: 15
   # Time penalty applied if a racer moves forward before the countdown ends (in seconds)
   false-start-penalty-seconds: 3.0
   # Enable/disable false start penalty during the light countdown

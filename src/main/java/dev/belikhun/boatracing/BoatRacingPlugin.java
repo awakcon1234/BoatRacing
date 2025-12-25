@@ -322,7 +322,14 @@ public class BoatRacingPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        // Nothing to persist
+        // Ensure we cleanly stop scheduled tasks and remove plugin-spawned boats.
+        try {
+            if (scoreboardService != null) scoreboardService.stop();
+        } catch (Throwable ignored) {}
+
+        try {
+            if (raceService != null) raceService.stopAll(false);
+        } catch (Throwable ignored) {}
     }
 
     @Override

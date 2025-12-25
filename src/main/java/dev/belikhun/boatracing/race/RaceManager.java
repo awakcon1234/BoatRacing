@@ -20,6 +20,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Lightable;
 
@@ -63,17 +64,23 @@ public class RaceManager {
     private BukkitTask registrationStartTask;
     private BukkitRunnable countdownTask;
     private BukkitRunnable countdownFreezeTask;
+    private BukkitTask postFinishCleanupTask;
     private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
     private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
+    private final java.util.Map<Block, BlockData> countdownBarrierRestore = new java.util.HashMap<>();
     // NOTE: We intentionally do not use Boat physics setters (maxSpeed/deceleration/workOnLand)
     // because they are deprecated in modern Paper. Countdown freezing is enforced via snapping.
 
     private static final class PreferredBoatData {
         final boolean chest;
+        final boolean raft;
         final String baseType; // Boat.Type name (e.g. OAK, SPRUCE, BAMBOO)
-        PreferredBoatData(boolean chest, String baseType) {
+        final String raw;
+        PreferredBoatData(boolean chest, boolean raft, String baseType, String raw) {
             this.chest = chest;
+            this.raft = raft;
             this.baseType = baseType;
+            this.raw = raw;
         }
     }
 
@@ -92,16 +99,28 @@ public class RaceManager {
         catch (Throwable ignored) { return false; }
     }
 
+    private boolean debugBoatSelection() {
+        try { return plugin != null && plugin.getConfig().getBoolean("racing.debug.boat-selection", false); }
+        catch (Throwable ignored) { return false; }
+    }
+
+    private boolean countdownBarriersEnabled() {
+        try { return plugin != null && plugin.getConfig().getBoolean("racing.countdown.barrier.enabled", true); }
+        catch (Throwable ignored) { return true; }
+    }
+
     private PreferredBoatData resolvePreferredBoat(UUID id) {
-        if (id == null) return new PreferredBoatData(false, null);
+        if (id == null) return new PreferredBoatData(false, false, null, null);
         if (!(plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br) || br.getProfileManager() == null) {
-            return new PreferredBoatData(false, null);
+            return new PreferredBoatData(false, false, null, null);
         }
         String bt;
         try { bt = br.getProfileManager().getBoatType(id); }
         catch (Throwable ignored) { bt = null; }
 
-        if (bt == null || bt.isBlank()) return new PreferredBoatData(false, null);
+        if (bt == null || bt.isBlank()) return new PreferredBoatData(false, false, null, null);
+
+        final String raw = bt;
 
         Material pref = null;
         try {
@@ -111,10 +130,12 @@ public class RaceManager {
         } catch (Throwable ignored) { pref = null; }
 
         boolean chest = false;
+        boolean raft = false;
         String base = null;
 
         if (pref != null) {
             chest = pref.name().endsWith("_CHEST_BOAT") || pref.name().endsWith("_CHEST_RAFT");
+            raft = pref.name().endsWith("_RAFT") || pref.name().endsWith("_CHEST_RAFT");
             base = pref.name()
                     .replace("_CHEST_BOAT", "").replace("_BOAT", "")
                     .replace("_CHEST_RAFT", "").replace("_RAFT", "");
@@ -122,11 +143,158 @@ public class RaceManager {
             // Back-compat: accept older stored values like "OAK" or "SPRUCE".
             String norm = bt.trim().toUpperCase(java.util.Locale.ROOT);
             chest = norm.endsWith("_CHEST_BOAT") || norm.endsWith("_CHEST_RAFT") || norm.contains("CHEST_BOAT") || norm.contains("CHEST_RAFT");
+            raft = norm.endsWith("_RAFT") || norm.endsWith("_CHEST_RAFT") || norm.contains("RAFT");
             try { base = org.bukkit.entity.Boat.Type.valueOf(norm).name(); }
             catch (IllegalArgumentException ignored) { base = null; }
         }
 
-        return new PreferredBoatData(chest, base);
+        if (debugBoatSelection()) {
+            try {
+                dbg("[BOATDBG] resolvePreferredBoat player=" + id
+                        + " raw='" + raw + "' material=" + (pref == null ? "null" : pref.name())
+                        + " chest=" + chest + " raft=" + raft + " base=" + base);
+            } catch (Throwable ignored) {}
+        }
+
+        return new PreferredBoatData(chest, raft, base, raw);
+    }
+
+    private static EntityType resolveSpawnEntityType(PreferredBoatData pref) {
+        boolean chest = pref != null && pref.chest;
+        boolean raft = pref != null && pref.raft;
+
+        if (raft) {
+            try { return EntityType.valueOf(chest ? "CHEST_RAFT" : "RAFT"); }
+            catch (Throwable ignored) {}
+        }
+        return chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
+    }
+
+    private static BlockFace yawToFace(float yaw) {
+        float y = yaw;
+        y = (y % 360.0f + 360.0f) % 360.0f;
+        // Vanilla-ish mapping: 0=south, 90=west, 180=north, 270=east
+        if (y >= 315.0f || y < 45.0f) return BlockFace.SOUTH;
+        if (y < 135.0f) return BlockFace.WEST;
+        if (y < 225.0f) return BlockFace.NORTH;
+        return BlockFace.EAST;
+    }
+
+    private static BlockFace rotateLeft(BlockFace f) {
+        return switch (f) {
+            case NORTH -> BlockFace.WEST;
+            case WEST -> BlockFace.SOUTH;
+            case SOUTH -> BlockFace.EAST;
+            case EAST -> BlockFace.NORTH;
+            default -> BlockFace.WEST;
+        };
+    }
+
+    private static BlockFace rotateRight(BlockFace f) {
+        return switch (f) {
+            case NORTH -> BlockFace.EAST;
+            case EAST -> BlockFace.SOUTH;
+            case SOUTH -> BlockFace.WEST;
+            case WEST -> BlockFace.NORTH;
+            default -> BlockFace.EAST;
+        };
+    }
+
+    private void clearCountdownBarriers() {
+        if (countdownBarrierRestore.isEmpty()) return;
+        for (var e : new java.util.HashMap<>(countdownBarrierRestore).entrySet()) {
+            try {
+                Block b = e.getKey();
+                BlockData prev = e.getValue();
+                if (b != null && prev != null) {
+                    b.setBlockData(prev, false);
+                }
+            } catch (Throwable ignored) {}
+        }
+        countdownBarrierRestore.clear();
+    }
+
+    private void placeCountdownBarriers() {
+        if (plugin == null) return;
+        if (!countdownBarriersEnabled()) return;
+
+        // Make sure we aren't leaving old barriers behind.
+        clearCountdownBarriers();
+
+        for (org.bukkit.Location lock : countdownLockLocation.values()) {
+            if (lock == null || lock.getWorld() == null) continue;
+            try {
+                BlockFace front = yawToFace(lock.getYaw());
+                BlockFace left = rotateLeft(front);
+                BlockFace right = rotateRight(front);
+                BlockFace back = front.getOppositeFace();
+
+                // Build a tighter barrier cage around the boat:
+                // - A full ring around (front/back/left/right + diagonals)
+                // - Extra reinforcement 2 blocks in front
+                // - Two vertical layers at and above waterline
+                //
+                // Note: placing barriers at the boat's block Y may replace WATER; we only do this when the block is
+                // AIR/WATER to avoid griefing solid builds, and we restore on countdown end.
+
+                Block origin = lock.getBlock();
+
+                java.util.Set<Block> targets = new java.util.LinkedHashSet<>();
+
+                // 1-block ring around origin
+                Block f1 = origin.getRelative(front, 1);
+                Block b1 = origin.getRelative(back, 1);
+                Block l1 = origin.getRelative(left, 1);
+                Block r1 = origin.getRelative(right, 1);
+                targets.add(f1);
+                targets.add(b1);
+                targets.add(l1);
+                targets.add(r1);
+                targets.add(f1.getRelative(left));
+                targets.add(f1.getRelative(right));
+                targets.add(b1.getRelative(left));
+                targets.add(b1.getRelative(right));
+
+                // 2 blocks in front (wider wall)
+                Block f2 = origin.getRelative(front, 2);
+                targets.add(f2);
+                targets.add(f2.getRelative(left));
+                targets.add(f2.getRelative(right));
+
+                // Also add 2 blocks to sides (helps prevent sideways drift)
+                Block l2 = origin.getRelative(left, 2);
+                Block r2 = origin.getRelative(right, 2);
+                targets.add(l2);
+                targets.add(r2);
+
+                for (Block base : targets) {
+                    if (base == null) continue;
+
+                    // Place at waterline (dy=0) and above (dy=1..2)
+                    for (int dy = 0; dy <= 2; dy++) {
+                        Block target = base.getRelative(BlockFace.UP, dy);
+                        Material t = target.getType();
+
+                        boolean canReplace;
+                        if (dy == 0) {
+                            // Waterline: allow AIR or WATER only.
+                            canReplace = t == Material.AIR || t == Material.WATER;
+                        } else {
+                            // Above: only place in air.
+                            canReplace = t == Material.AIR;
+                        }
+
+                        if (!canReplace) continue;
+
+                        if (!countdownBarrierRestore.containsKey(target)) {
+                            try { countdownBarrierRestore.put(target, target.getBlockData().clone()); }
+                            catch (Throwable ignored) { countdownBarrierRestore.put(target, target.getBlockData()); }
+                        }
+                        target.setType(Material.BARRIER, false);
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
     }
 
     private static float absAngleDelta(float a, float b) {
@@ -273,7 +441,7 @@ public class RaceManager {
 
 
             PreferredBoatData pref = resolvePreferredBoat(id);
-            EntityType spawnType = pref.chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
+            EntityType spawnType = resolveSpawnEntityType(pref);
             var ent = (target.getWorld() != null ? target.getWorld() : p.getWorld()).spawnEntity(target, spawnType);
 
             try {
@@ -311,6 +479,12 @@ public class RaceManager {
                     else countdownLockLocation.put(id, p.getLocation().clone());
                 }
             } catch (Throwable ignored) {}
+
+            if (debugBoatSelection()) {
+                try {
+                    dbg("[BOATDBG] ensureRacerHasBoat player=" + p.getName() + " raw='" + pref.raw + "' spawnType=" + spawnType.name() + " base=" + base);
+                } catch (Throwable ignored) {}
+            }
         } catch (Throwable ignored) {}
     }
 
@@ -661,6 +835,33 @@ public class RaceManager {
         if (p != null) {
             Text.msg(p, "&6Bạn đã về đích! Vị trí: &e" + s.finishPosition);
         }
+
+        // If everybody is finished, immediately reset start lights and schedule a cleanup.
+        try {
+            boolean allFinished = !participants.isEmpty() && participants.values().stream().allMatch(x -> x != null && x.finished);
+            if (allFinished) {
+                try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
+
+                if (plugin != null) {
+                    int sec = 15;
+                    try { sec = Math.max(0, plugin.getConfig().getInt("racing.post-finish-cleanup-seconds", 15)); } catch (Throwable ignored) {}
+
+                    if (postFinishCleanupTask != null) {
+                        try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
+                        postFinishCleanupTask = null;
+                    }
+
+                    if (sec <= 0) {
+                        try { stop(false); } catch (Throwable ignored) {}
+                    } else {
+                        postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                            try { stop(false); } catch (Throwable ignored) {}
+                            postFinishCleanupTask = null;
+                        }, sec * 20L);
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
     }
 
     /**
@@ -865,7 +1066,7 @@ public class RaceManager {
                 p.teleport(target);
 
                 PreferredBoatData pref = resolvePreferredBoat(p.getUniqueId());
-                EntityType spawnType = pref.chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
+                EntityType spawnType = resolveSpawnEntityType(pref);
                 var spawnWorld = (boatSpawn.getWorld() != null ? boatSpawn.getWorld() : p.getWorld());
                 var ent = spawnWorld.spawnEntity(boatSpawn, spawnType);
 
@@ -897,6 +1098,12 @@ public class RaceManager {
                     try { ent.addPassenger(p); } catch (Throwable ignored) {}
                 }
                 placed.add(p);
+
+                if (debugBoatSelection()) {
+                    try {
+                        dbg("[BOATDBG] placeAtStarts player=" + p.getName() + " raw='" + pref.raw + "' spawnType=" + spawnType.name() + " base=" + base);
+                    } catch (Throwable ignored) {}
+                }
             } catch (Throwable ignored) {}
             slot++;
         }
@@ -907,6 +1114,12 @@ public class RaceManager {
     public void startLightsCountdown(List<Player> placed) {
         if (placed.isEmpty()) return;
         this.registering = false;
+
+        // Cancel any scheduled post-finish cleanup when starting a new countdown.
+        if (postFinishCleanupTask != null) {
+            try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
+            postFinishCleanupTask = null;
+        }
 
         // Stop any prior countdown before starting a new one.
         if (countdownTask != null) {
@@ -921,6 +1134,7 @@ public class RaceManager {
         countdownPlayers.clear();
         countdownLockLocation.clear();
         countdownDebugLastLog.clear();
+        clearCountdownBarriers();
         restoreCountdownBoatPhysics();
         for (Player p : placed) {
             if (p != null) {
@@ -957,6 +1171,9 @@ public class RaceManager {
             }
         }
 
+        // Place temporary barrier blocks in front of each start position to prevent forward motion.
+        try { placeCountdownBarriers(); } catch (Throwable ignored) {}
+
         final int total = 10; // 10..1..GO
         this.countdownEndMillis = System.currentTimeMillis() + (total * 1000L);
 
@@ -974,6 +1191,9 @@ public class RaceManager {
                     // Start!
                     try { setStartLightsProgress(1.0); } catch (Throwable ignored) {}
 
+                    // Remove temporary barriers before the race starts.
+                    try { clearCountdownBarriers(); } catch (Throwable ignored) {}
+
                     running = true;
                     raceStartMillis = System.currentTimeMillis();
                     countdownEndMillis = 0L;
@@ -985,6 +1205,7 @@ public class RaceManager {
                     countdownPlayers.clear();
                     countdownLockLocation.clear();
                     countdownDebugLastLog.clear();
+                    clearCountdownBarriers();
                     restoreCountdownBoatPhysics();
 
                     participants.clear();
@@ -1229,6 +1450,12 @@ public class RaceManager {
 
         // If we were freezing boats during countdown, restore physics regardless of how we stop.
         try { restoreCountdownBoatPhysics(); } catch (Throwable ignored) {}
+        try { clearCountdownBarriers(); } catch (Throwable ignored) {}
+
+        if (postFinishCleanupTask != null) {
+            try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
+            postFinishCleanupTask = null;
+        }
 
         // Snapshot players to clean up before wiping state.
         java.util.Set<UUID> toCleanup = new java.util.HashSet<>();
@@ -1320,6 +1547,7 @@ public class RaceManager {
                 countdownFreezeTask = null;
             }
             countdownEndMillis = 0L;
+            try { clearCountdownBarriers(); } catch (Throwable ignored) {}
             try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
             changed = true;
         }

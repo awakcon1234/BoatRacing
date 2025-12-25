@@ -148,5 +148,19 @@ public class RaceService {
         for (UUID id : involved) trackByPlayer.remove(id);
         return any;
     }
+
+    /**
+     * Stop all races and clear internal maps. Intended for plugin shutdown/unload.
+     */
+    public synchronized void stopAll(boolean teleportToSpawn) {
+        java.util.Set<UUID> touched = new java.util.HashSet<>();
+        for (RaceManager rm : raceByTrack.values()) {
+            if (rm == null) continue;
+            try { touched.addAll(rm.getInvolved()); } catch (Throwable ignored) {}
+            try { rm.stop(teleportToSpawn); } catch (Throwable ignored) {}
+        }
+        for (UUID id : touched) trackByPlayer.remove(id);
+        raceByTrack.clear();
+    }
 }
 
