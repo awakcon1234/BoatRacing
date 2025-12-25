@@ -70,8 +70,17 @@ public class ScoreboardService {
         }
         sidebars.clear();
         lastCounts.clear();
+        lastState.clear();
+        lastLocations.clear();
+        lastLocationTimes.clear();
+        lastBps.clear();
         try { if (lib != null) lib.close(); } catch (Throwable ignored) {}
         log("ScoreboardService stopped and cleaned up.");
+    }
+
+    public void restart() {
+        stop();
+        start();
     }
 
     public void forceTick() { tick(); }
@@ -88,6 +97,9 @@ public class ScoreboardService {
             return;
         }
         log("tick: online=" + Bukkit.getOnlinePlayers().size() + ", libLoaded=" + (lib != null));
+
+        java.util.Set<java.util.UUID> onlineIds = new java.util.HashSet<>();
+        for (Player p : Bukkit.getOnlinePlayers()) onlineIds.add(p.getUniqueId());
 
         java.util.Map<RaceManager, TickContext> ctxByRace = new java.util.HashMap<>();
 
@@ -122,6 +134,32 @@ public class ScoreboardService {
                 updateFor(p, rm, ctx, trackName);
             } catch (Throwable ignored) {}
         }
+
+        // Prevent memory growth when players disconnect/reconnect.
+        pruneOfflineCaches(onlineIds);
+    }
+
+    private void pruneOfflineCaches(java.util.Set<java.util.UUID> onlineIds) {
+        final java.util.Set<java.util.UUID> online = (onlineIds == null) ? java.util.Set.of() : onlineIds;
+
+        // Sidebars must be closed explicitly to avoid scoreboard artifacts.
+        for (java.util.UUID id : new java.util.HashSet<>(sidebars.keySet())) {
+            if (online.contains(id)) continue;
+            Sidebar sb = sidebars.remove(id);
+            try { if (sb != null) sb.close(); } catch (Throwable ignored) {}
+            lastCounts.remove(id);
+            lastState.remove(id);
+            lastLocations.remove(id);
+            lastLocationTimes.remove(id);
+            lastBps.remove(id);
+        }
+
+        // Defensive cleanup for any leftover entries.
+        lastCounts.keySet().removeIf(id -> !online.contains(id));
+        lastState.keySet().removeIf(id -> !online.contains(id));
+        lastLocations.keySet().removeIf(id -> !online.contains(id));
+        lastLocationTimes.keySet().removeIf(id -> !online.contains(id));
+        lastBps.keySet().removeIf(id -> !online.contains(id));
     }
 
     private TickContext buildTickContext(RaceManager rm) {
@@ -428,12 +466,17 @@ public class ScoreboardService {
 
     private Sidebar ensureSidebar(Player p) {
         if (lib == null) return null;
-        return sidebars.computeIfAbsent(p.getUniqueId(), id -> {
+        Sidebar sb = sidebars.computeIfAbsent(p.getUniqueId(), id -> {
             Sidebar s = lib.createSidebar();
-            s.addPlayer(p);
+            try { s.addPlayer(p); } catch (Throwable ignored) {}
             log("Created sidebar for " + p.getName());
             return s;
         });
+
+        // Edge case: player disconnects/reconnects while we keep the Sidebar cached by UUID.
+        // ScoreboardLibrary requires adding the (new) Player instance again after reconnect.
+        try { sb.addPlayer(p); } catch (Throwable ignored) {}
+        return sb;
     }
 
     private void applySidebarComponents(Player p, Sidebar sidebar, Component title, java.util.List<Component> lines) {

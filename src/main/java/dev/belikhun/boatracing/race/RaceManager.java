@@ -1313,45 +1313,45 @@ public class RaceManager {
 
                     try {
                         org.bukkit.entity.Entity v = p.getVehicle();
-                        if (v instanceof org.bukkit.entity.Boat boat) {
-                            org.bukkit.Location before = dbg ? boat.getLocation() : null;
+                        if (v != null && ((v instanceof org.bukkit.entity.Boat) || (v instanceof org.bukkit.entity.ChestBoat))) {
+                            org.bukkit.Location before = dbg ? v.getLocation() : null;
 
                             // Ensure lock has a world (teleport returns false if lock world is null).
                             if (lock.getWorld() == null) {
-                                try { lock.setWorld(boat.getWorld()); } catch (Throwable ignored) {}
+                                try { lock.setWorld(v.getWorld()); } catch (Throwable ignored) {}
                             }
 
                             // Stop velocity (prevents drift/false-start movement).
-                            boat.setVelocity(new Vector(0, 0, 0));
+                            v.setVelocity(new Vector(0, 0, 0));
 
                             // Always snap back to the fixed lock location (prevents TPS-lag inching).
                             boolean tpOk;
                             try {
                                 // Paper teleport flags: retaining passengers is default since 1.21.10, but explicit is fine.
-                                tpOk = boat.teleport(lock, io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
+                                tpOk = v.teleport(lock, io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
                             } catch (Throwable t) {
-                                try { tpOk = boat.teleport(lock); } catch (Throwable ignored) { tpOk = false; }
+                                try { tpOk = v.teleport(lock); } catch (Throwable ignored) { tpOk = false; }
                             }
                             boolean nmsOk = false;
                             if (!tpOk) {
-                                try { nmsOk = dev.belikhun.boatracing.util.EntityForceTeleport.nms(boat, lock); } catch (Throwable ignored) { nmsOk = false; }
+                                try { nmsOk = dev.belikhun.boatracing.util.EntityForceTeleport.nms(v, lock); } catch (Throwable ignored) { nmsOk = false; }
                             }
                             // Re-zero in case teleport preserved any motion
-                            boat.setVelocity(new Vector(0, 0, 0));
-                            try { boat.setRotation(lock.getYaw(), lock.getPitch()); } catch (Throwable ignored) {}
+                            v.setVelocity(new Vector(0, 0, 0));
+                            try { v.setRotation(lock.getYaw(), lock.getPitch()); } catch (Throwable ignored) {}
 
                             if (dbg) {
                                 Long prev = countdownDebugLastLog.get(id);
                                 if (prev == null || (now - prev) >= 1000L) {
                                     countdownDebugLastLog.put(id, now);
-                                    org.bukkit.Location cur = (before != null ? before : boat.getLocation());
+                                    org.bukkit.Location cur = (before != null ? before : v.getLocation());
                                     double dx = cur.getX() - lock.getX();
                                     double dy = cur.getY() - lock.getY();
                                     double dz = cur.getZ() - lock.getZ();
                                     float dyaw = absAngleDelta(cur.getYaw(), lock.getYaw());
                                     float dpitch = Math.abs(cur.getPitch() - lock.getPitch());
                                     try {
-                                        String bw = (boat.getWorld() == null ? "?" : boat.getWorld().getName());
+                                        String bw = (v.getWorld() == null ? "?" : v.getWorld().getName());
                                         String lw = (lock.getWorld() == null ? "null" : lock.getWorld().getName());
                                         boolean chunkLoaded = false;
                                         try { chunkLoaded = lock.getWorld() != null && lock.getWorld().isChunkLoaded(lock.getBlockX() >> 4, lock.getBlockZ() >> 4); } catch (Throwable ignored2) {}
@@ -1362,7 +1362,7 @@ public class RaceManager {
                                                 + " boatWorld=" + bw
                                                 + " lockWorld=" + lw
                                                 + " chunkLoaded=" + chunkLoaded
-                                                + " passengers=" + (boat.getPassengers() == null ? 0 : boat.getPassengers().size())
+                                                + " passengers=" + (v.getPassengers() == null ? 0 : v.getPassengers().size())
                                                 + " dPos=" + String.format(java.util.Locale.ROOT, "(%.4f,%.4f,%.4f)", dx, dy, dz)
                                                 + " dYaw=" + String.format(java.util.Locale.ROOT, "%.2f", dyaw)
                                                 + " dPitch=" + String.format(java.util.Locale.ROOT, "%.2f", dpitch)

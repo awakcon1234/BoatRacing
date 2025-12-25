@@ -109,7 +109,8 @@ public class BoatRacingPlugin extends JavaPlugin {
             @org.bukkit.event.EventHandler(ignoreCancelled = true)
             public void onVehicleMove(org.bukkit.event.vehicle.VehicleMoveEvent e) {
                 if (raceService == null) return;
-                if (!(e.getVehicle() instanceof org.bukkit.entity.Boat boat)) return;
+                org.bukkit.entity.Entity vehicle = e.getVehicle();
+                if (!(vehicle instanceof org.bukkit.entity.Boat) && !(vehicle instanceof org.bukkit.entity.ChestBoat)) return;
                 org.bukkit.Location to = e.getTo();
                 org.bukkit.Location from = e.getFrom();
                 if (to == null || from == null) return;
@@ -120,7 +121,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 // Tick checkpoints using the vehicle position (players in boats may not fire PlayerMoveEvent reliably)
                 // Tick checkpoints using the vehicle position (players in boats may not fire PlayerMoveEvent reliably)
                 // Route to the correct race manager per player (supports multiple concurrent races).
-                    for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
+                    for (org.bukkit.entity.Entity passenger : vehicle.getPassengers()) {
                         if (passenger instanceof org.bukkit.entity.Player p) {
                             RaceManager raceManager = raceService.findRaceFor(p.getUniqueId());
                             if (raceManager == null || !raceManager.isRunning()) continue;
@@ -145,7 +146,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 
                 boolean hasCountdownRacer = false;
                 org.bukkit.Location lock = null;
-                for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
+                for (org.bukkit.entity.Entity passenger : vehicle.getPassengers()) {
                     if (passenger instanceof org.bukkit.entity.Player p) {
                         RaceManager raceManager = raceService.findRaceFor(p.getUniqueId());
                         if (raceManager != null && raceManager.isCountdownActiveFor(p.getUniqueId())) {
@@ -162,23 +163,23 @@ public class BoatRacingPlugin extends JavaPlugin {
                     if (target != null) {
                         // Ensure lock has a world; Bukkit teleport returns false if world is null.
                         try {
-                            if (target.getWorld() == null) target.setWorld(boat.getWorld());
+                            if (target.getWorld() == null) target.setWorld(vehicle.getWorld());
                         } catch (Throwable ignored) {}
 
-                        boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                        vehicle.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
 
                         boolean tpOk;
                         try {
-                            tpOk = boat.teleport(target, io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
+                            tpOk = vehicle.teleport(target, io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
                         } catch (Throwable t) {
-                            try { tpOk = boat.teleport(target); } catch (Throwable ignored) { tpOk = false; }
+                            try { tpOk = vehicle.teleport(target); } catch (Throwable ignored) { tpOk = false; }
                         }
                         if (!tpOk) {
-                            try { dev.belikhun.boatracing.util.EntityForceTeleport.nms(boat, target); } catch (Throwable ignored) {}
+                            try { dev.belikhun.boatracing.util.EntityForceTeleport.nms(vehicle, target); } catch (Throwable ignored) {}
                         }
 
-                        boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                        try { boat.setRotation(target.getYaw(), target.getPitch()); } catch (Throwable ignored) {}
+                        vehicle.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                        try { vehicle.setRotation(target.getYaw(), target.getPitch()); } catch (Throwable ignored) {}
                     }
                 } catch (Throwable ignored) {}
             }
@@ -418,6 +419,15 @@ public class BoatRacingPlugin extends JavaPlugin {
                 // After reload, also merge any new defaults into config.yml
                 try { mergeConfigDefaults(); } catch (Throwable ignored) {}
                 this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
+
+                // Restart scoreboard so update-ticks/templates changes apply immediately.
+                try {
+                    if (scoreboardService != null) {
+                        scoreboardService.restart();
+                        boolean sbDebug = getConfig().getBoolean("scoreboard.debug", false);
+                        scoreboardService.setDebug(sbDebug);
+                    }
+                } catch (Throwable ignored) {}
                 // Team features removed; nothing to re-create
                 // ViaVersion integration removed; nothing to re-apply
                 Text.msg(p, "&aĐã tải lại plugin.");
