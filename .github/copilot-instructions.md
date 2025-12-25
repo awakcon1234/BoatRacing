@@ -6,7 +6,7 @@
 
 ## Big-picture architecture (how it actually works)
 - **Runtime racing is per-track**: multiple races can run concurrently, keyed by track name.
-  - Orchestrator: [src/main/java/dev/belikhun/boatracing/race/RaceService.java](/src/main/java/dev/belikhun/boatracing/race/RaceService.java) maps `trackName -> RaceManager` and `playerId -> trackName`.
+  - Orchestrator: [src/main/java/dev/belikhun/boatracing/race/RaceService.java](../src/main/java/dev/belikhun/boatracing/race/RaceService.java) maps `trackName -> RaceManager` and `playerId -> trackName`.
   - Single race instance: [src/main/java/dev/belikhun/boatracing/race/RaceManager.java](../src/main/java/dev/belikhun/boatracing/race/RaceManager.java) owns the entire lifecycle for one track (registration, countdowns, running, finish/standings, cleanup).
 - **Track editing is separate from racing**:
   - Admin “current track” editing uses the plugin’s `TrackLibrary` + `TrackConfig` (selected track in GUI/commands).
