@@ -89,9 +89,28 @@ public class RaceManager {
         this.trackConfig = trackConfig;
     }
 
+    public TrackConfig getTrackConfig() { return trackConfig; }
+
     public boolean isRunning() { return running; }
     public boolean isRegistering() { return registering; }
     public Set<UUID> getRegistered() { return Collections.unmodifiableSet(registered); }
+
+    public boolean isAnyCountdownActive() {
+        return countdownTask != null && !countdownPlayers.isEmpty();
+    }
+
+    public boolean isInvolved(UUID id) {
+        if (id == null) return false;
+        return registered.contains(id) || participants.containsKey(id) || countdownPlayers.contains(id);
+    }
+
+    public java.util.Set<UUID> getInvolved() {
+        java.util.Set<UUID> out = new java.util.HashSet<>();
+        out.addAll(registered);
+        out.addAll(participants.keySet());
+        out.addAll(countdownPlayers);
+        return out;
+    }
 
     public boolean shouldPreventBoatExit(UUID id) {
         if (id == null) return false;
@@ -656,24 +675,30 @@ public class RaceManager {
         }
         this.registering = true;
         this.totalLaps = laps;
-        // start waiting window based on config (default 30s)
+        // Waiting countdown should only start once at least 1 racer is waiting.
+        this.waitingEndMillis = 0L;
+        return true;
+    }
+
+    private void ensureRegistrationCountdownScheduledIfNeeded() {
+        if (plugin == null) return;
+        if (!registering) return;
+        if (registrationStartTask != null) return;
+        if (registered.isEmpty()) return;
+
         int waitSec = Math.max(1, plugin.getConfig().getInt("racing.registration-seconds", 30));
         this.waitingEndMillis = System.currentTimeMillis() + (waitSec * 1000L);
-        // schedule transition to start
+
         registrationStartTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             registrationStartTask = null;
-            // if registration canceled or no longer registering, abort
             if (!registering) { waitingEndMillis = 0L; return; }
-            // if nobody registered, just cancel registration
             if (registered.isEmpty()) { cancelRegistration(false); waitingEndMillis = 0L; return; }
-            // collect online registered players
             java.util.List<org.bukkit.entity.Player> participants = new java.util.ArrayList<>();
             for (java.util.UUID id : new java.util.LinkedHashSet<>(registered)) {
                 org.bukkit.entity.Player rp = plugin.getServer().getPlayer(id);
                 if (rp != null && rp.isOnline()) participants.add(rp);
             }
             if (participants.isEmpty()) { cancelRegistration(false); waitingEndMillis = 0L; return; }
-            // place and start countdown
             java.util.List<org.bukkit.entity.Player> placed = placeAtStartsWithBoats(participants);
             if (placed.isEmpty()) { cancelRegistration(false); waitingEndMillis = 0L; return; }
             if (placed.size() < participants.size()) {
@@ -683,13 +708,14 @@ public class RaceManager {
             waitingEndMillis = 0L;
             startLightsCountdown(placed);
         }, waitSec * 20L);
-        return true;
     }
 
     public boolean join(Player p) {
         if (!registering) return false;
         boolean added = registered.add(p.getUniqueId());
         if (added) {
+            // Start the waiting countdown only after the first racer joins.
+            ensureRegistrationCountdownScheduledIfNeeded();
             try {
                 // Ensure player isn't stuck in an old vehicle when joining.
                 if (p.isInsideVehicle()) p.leaveVehicle();

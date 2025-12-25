@@ -96,14 +96,16 @@ public class AdminRaceGUI implements Listener {
 
     private ItemStack statusItem() {
         TrackLibrary lib = plugin.getTrackLibrary();
-        TrackConfig cfg = plugin.getTrackConfig();
-        RaceManager rm = plugin.getRaceManager();
         String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : "(unsaved)";
-        boolean running = rm.isRunning();
-        boolean registering = rm.isRegistering();
-        int regs = rm.getRegistered().size();
-        int laps = rm.getTotalLaps();
-        int participants = running ? rm.getParticipants().size() : 0;
+
+        RaceManager rm = (lib != null && lib.getCurrent() != null) ? plugin.getRaceService().getOrCreate(lib.getCurrent()) : null;
+        TrackConfig cfg = (rm != null) ? rm.getTrackConfig() : plugin.getTrackConfig();
+
+        boolean running = rm != null && rm.isRunning();
+        boolean registering = rm != null && rm.isRegistering();
+        int regs = rm != null ? rm.getRegistered().size() : 0;
+        int laps = rm != null ? rm.getTotalLaps() : plugin.getRaceService().getDefaultLaps();
+        int participants = (rm != null && running) ? rm.getParticipants().size() : 0;
         int starts = cfg.getStarts().size();
         int lights = cfg.getLights().size();
         int cps = cfg.getCheckpoints().size();
@@ -255,11 +257,17 @@ public class AdminRaceGUI implements Listener {
     }
 
     private void doOpenRegistration(Player p) {
-        TrackConfig cfg = plugin.getTrackConfig();
         TrackLibrary lib = plugin.getTrackLibrary();
-        RaceManager rm = plugin.getRaceManager();
         String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
         if (tname == null) { Text.msg(p, "&cChưa có đường đua được chọn."); return; }
+
+        RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+        if (rm == null) {
+            Text.msg(p, "&cKhông thể tải đường đua: &f" + tname);
+            return;
+        }
+        TrackConfig cfg = rm.getTrackConfig();
+
         if (!cfg.isReady()) {
             Text.msg(p, "&cĐường đua chưa sẵn sàng: &7" + String.join(", ", cfg.missingRequirements()));
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
@@ -278,11 +286,17 @@ public class AdminRaceGUI implements Listener {
     }
 
     private void doStart(Player p) {
-        TrackConfig cfg = plugin.getTrackConfig();
         TrackLibrary lib = plugin.getTrackLibrary();
-        RaceManager rm = plugin.getRaceManager();
         String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
         if (tname == null) { Text.msg(p, "&cChưa có đường đua được chọn."); return; }
+
+        RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+        if (rm == null) {
+            Text.msg(p, "&cKhông thể tải đường đua: &f" + tname);
+            return;
+        }
+        TrackConfig cfg = rm.getTrackConfig();
+
         if (!cfg.isReady()) {
             Text.msg(p, "&cĐường đua chưa sẵn sàng: &7" + String.join(", ", cfg.missingRequirements()));
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
@@ -307,9 +321,15 @@ public class AdminRaceGUI implements Listener {
 
     private void doForceStart(Player p) {
         TrackLibrary lib = plugin.getTrackLibrary();
-        RaceManager rm = plugin.getRaceManager();
         String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
         if (tname == null) { Text.msg(p, "&cChưa có đường đua được chọn."); return; }
+
+        RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+        if (rm == null) {
+            Text.msg(p, "&cKhông thể tải đường đua: &f" + tname);
+            return;
+        }
+
         if (rm.getRegistered().isEmpty()) {
             Text.msg(p, "&cKhông có người tham gia đã đăng ký. &7Mở đăng ký trước.");
             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
@@ -322,8 +342,10 @@ public class AdminRaceGUI implements Listener {
     }
 
     private void doStop(Player p) {
-        RaceManager rm = plugin.getRaceManager();
-        boolean any = rm.stop(true);
+        TrackLibrary lib = plugin.getTrackLibrary();
+        String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
+        boolean any = false;
+        if (tname != null) any = plugin.getRaceService().stopRace(tname, true);
         if (!any) {
             Text.msg(p, "&7Không có gì để dừng.");
         } else {

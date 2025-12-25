@@ -33,7 +33,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     private String prefix;
     private TrackConfig trackConfig;
     private TrackLibrary trackLibrary;
-    private RaceManager raceManager;
+    private es.jaie55.boatracing.race.RaceService raceService;
     private SetupWizard setupWizard;
     private es.jaie55.boatracing.ui.AdminTracksGUI tracksGUI;
     // Last latest-version announced in console due to 5-minute silent checks (to avoid duplicate prints)
@@ -50,7 +50,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     public es.jaie55.boatracing.profile.PlayerProfileManager getProfileManager() { return profileManager; }
     public es.jaie55.boatracing.ui.ProfileGUI getProfileGUI() { return profileGUI; }
     public es.jaie55.boatracing.ui.ScoreboardService getScoreboardService() { return scoreboardService; }
-    public RaceManager getRaceManager() { return raceManager; }
+    public es.jaie55.boatracing.race.RaceService getRaceService() { return raceService; }
     public TrackConfig getTrackConfig() { return trackConfig; }
     public TrackLibrary getTrackLibrary() { return trackLibrary; }
     public es.jaie55.boatracing.ui.AdminTracksGUI getTracksGUI() { return tracksGUI; }
@@ -76,7 +76,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.profileGUI = new es.jaie55.boatracing.ui.ProfileGUI(this);
     this.trackConfig = new TrackConfig(this, getDataFolder());
     this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
-    this.raceManager = new RaceManager(this, trackConfig);
+    this.raceService = new es.jaie55.boatracing.race.RaceService(this);
     this.scoreboardService = new es.jaie55.boatracing.ui.ScoreboardService(this);
     this.setupWizard = new SetupWizard(this);
     this.tracksGUI = new es.jaie55.boatracing.ui.AdminTracksGUI(this, trackLibrary);
@@ -102,14 +102,16 @@ public class BoatRacingPlugin extends JavaPlugin {
 
             @org.bukkit.event.EventHandler
             public void onMove(org.bukkit.event.player.PlayerMoveEvent e) {
-                if (raceManager == null || !raceManager.isRunning()) return;
                 if (e.getTo() == null) return;
-                raceManager.tickPlayer(e.getPlayer(), e.getFrom(), e.getTo());
+                if (raceService == null) return;
+                var rm = raceService.findRaceFor(e.getPlayer().getUniqueId());
+                if (rm == null || !rm.isRunning()) return;
+                rm.tickPlayer(e.getPlayer(), e.getFrom(), e.getTo());
             }
 
             @org.bukkit.event.EventHandler(ignoreCancelled = true)
             public void onVehicleMove(org.bukkit.event.vehicle.VehicleMoveEvent e) {
-                if (raceManager == null) return;
+                if (raceService == null) return;
                 if (!(e.getVehicle() instanceof org.bukkit.entity.Boat boat)) return;
                 org.bukkit.Location to = e.getTo();
                 org.bukkit.Location from = e.getFrom();
@@ -119,9 +121,12 @@ public class BoatRacingPlugin extends JavaPlugin {
                 try { cpDbg = getConfig().getBoolean("racing.debug.checkpoints", false); } catch (Throwable ignored) {}
 
                 // Tick checkpoints using the vehicle position (players in boats may not fire PlayerMoveEvent reliably)
-                if (raceManager.isRunning()) {
+                // Tick checkpoints using the vehicle position (players in boats may not fire PlayerMoveEvent reliably)
+                // Route to the correct race manager per player (supports multiple concurrent races).
                     for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
                         if (passenger instanceof org.bukkit.entity.Player p) {
+                            RaceManager raceManager = raceService.findRaceFor(p.getUniqueId());
+                            if (raceManager == null || !raceManager.isRunning()) continue;
                             if (cpDbg) {
                                 long now = System.currentTimeMillis();
                                 Long prev = lastCpDbg.get(p.getUniqueId());
@@ -129,7 +134,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                                     lastCpDbg.put(p.getUniqueId(), now);
                                     getLogger().info("[CPDBG] VehicleMoveEvent tick for " + p.getName()
                                             + " to=" + es.jaie55.boatracing.util.Text.fmtPos(to)
-                                            + " checkpoints=" + trackConfig.getCheckpoints().size()
+                                            + " checkpoints=" + (raceManager.getTrackConfig() == null ? 0 : raceManager.getTrackConfig().getCheckpoints().size())
                                             + " expectedNext=" + (raceManager.getParticipantState(p.getUniqueId()) == null ? "?" : (raceManager.getParticipantState(p.getUniqueId()).nextCheckpointIndex + 1))
                                     );
                                 }
@@ -137,15 +142,18 @@ public class BoatRacingPlugin extends JavaPlugin {
                             raceManager.tickPlayer(p, from, to);
                         }
                     }
-                    return;
-                }
 
                 // Freeze boats during the start countdown so racers can't move before GO
+                // (only if at least one passenger is in countdown in their race).
+
                 boolean hasCountdownRacer = false;
+                org.bukkit.Location lock = null;
                 for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
                     if (passenger instanceof org.bukkit.entity.Player p) {
-                        if (raceManager.isCountdownActiveFor(p.getUniqueId())) {
+                        RaceManager raceManager = raceService.findRaceFor(p.getUniqueId());
+                        if (raceManager != null && raceManager.isCountdownActiveFor(p.getUniqueId())) {
                             hasCountdownRacer = true;
+                            lock = raceManager.getCountdownLockLocation(p.getUniqueId());
                             break;
                         }
                     }
@@ -160,15 +168,6 @@ public class BoatRacingPlugin extends JavaPlugin {
 
                 try {
                     boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                    org.bukkit.Location lock = null;
-                    for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
-                        if (passenger instanceof org.bukkit.entity.Player p) {
-                            if (raceManager.isCountdownActiveFor(p.getUniqueId())) {
-                                lock = raceManager.getCountdownLockLocation(p.getUniqueId());
-                                if (lock != null) break;
-                            }
-                        }
-                    }
                     boat.teleport(lock != null ? lock : from);
                 } catch (Throwable ignored) {}
             }
@@ -178,9 +177,11 @@ public class BoatRacingPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
             @org.bukkit.event.EventHandler(ignoreCancelled = true)
             public void onVehicleExit(org.bukkit.event.vehicle.VehicleExitEvent e) {
-                if (raceManager == null) return;
+                if (raceService == null) return;
                 if (!(e.getExited() instanceof org.bukkit.entity.Player p)) return;
-                if (!raceManager.shouldPreventBoatExit(p.getUniqueId())) return;
+                RaceManager rm = raceService.findRaceFor(p.getUniqueId());
+                if (rm == null) return;
+                if (!rm.shouldPreventBoatExit(p.getUniqueId())) return;
                 e.setCancelled(true);
             }
         }, this);
@@ -189,9 +190,11 @@ public class BoatRacingPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
             @org.bukkit.event.EventHandler
             public void onRespawn(org.bukkit.event.player.PlayerRespawnEvent e) {
-                if (raceManager == null) return;
+                if (raceService == null) return;
                 org.bukkit.entity.Player p = e.getPlayer();
                 if (p == null) return;
+                RaceManager raceManager = raceService.findRaceFor(p.getUniqueId());
+                if (raceManager == null) return;
                 org.bukkit.Location target = raceManager.getRaceRespawnLocation(p.getUniqueId(), p.getLocation());
                 if (target != null && target.getWorld() != null) {
                     e.setRespawnLocation(target);
@@ -214,18 +217,18 @@ public class BoatRacingPlugin extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
             @org.bukkit.event.EventHandler
             public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
-                if (raceManager == null) return;
+                if (raceService == null) return;
                 org.bukkit.entity.Player p = e.getPlayer();
                 if (p == null) return;
-                try { raceManager.handleRacerDisconnect(p.getUniqueId()); } catch (Throwable ignored) {}
+                try { raceService.handleDisconnect(p.getUniqueId()); } catch (Throwable ignored) {}
             }
 
             @org.bukkit.event.EventHandler
             public void onKick(org.bukkit.event.player.PlayerKickEvent e) {
-                if (raceManager == null) return;
+                if (raceService == null) return;
                 org.bukkit.entity.Player p = e.getPlayer();
                 if (p == null) return;
-                try { raceManager.handleRacerDisconnect(p.getUniqueId()); } catch (Throwable ignored) {}
+                try { raceService.handleDisconnect(p.getUniqueId()); } catch (Throwable ignored) {}
             }
         }, this);
     
@@ -424,41 +427,41 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race open <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
-                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        if (!trackConfig.isReady()) {
-                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements()));
+                        RaceManager rm = raceService.getOrCreate(tname);
+                        if (rm == null) { Text.msg(p, "&cTrack not found or failed to load: &f" + tname); return true; }
+                        if (!rm.getTrackConfig().isReady()) {
+                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", rm.getTrackConfig().missingRequirements()));
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        int laps = raceManager.getTotalLaps();
-                        boolean ok = raceManager.openRegistration(laps, null);
+                        int laps = rm.getTotalLaps();
+                        boolean ok = rm.openRegistration(laps, null);
                         if (!ok) Text.msg(p, "&cKhông thể mở đăng ký lúc này.");
                         return true;
                     }
                     case "join" -> {
                         if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race join <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
-                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        if (!trackConfig.isReady()) {
-                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements()));
+                        RaceManager rm = raceService.getOrCreate(tname);
+                        if (rm == null) { Text.msg(p, "&cTrack not found or failed to load: &f" + tname); return true; }
+                        if (!rm.getTrackConfig().isReady()) {
+                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", rm.getTrackConfig().missingRequirements()));
                             return true;
                         }
-                        // Team requirement removed: racers can join solo
-                        if (!raceManager.join(p)) {
-                            Text.msg(p, "&cĐăng ký chưa mở.");
+                        // Tracks are open by default: joining auto-opens registration if needed.
+                        if (!raceService.join(tname, p)) {
+                            Text.msg(p, "&cKhông thể tham gia đăng ký lúc này.");
                         }
                         return true;
                     }
                     case "leave" -> {
                         if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race leave <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
-                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        boolean removed = raceManager.leave(p);
+                        RaceManager rm = raceService.getOrCreate(tname);
+                        if (rm == null) { Text.msg(p, "&cTrack not found or failed to load: &f" + tname); return true; }
+                        boolean removed = raceService.leave(tname, p);
                         if (!removed) {
-                            if (!raceManager.isRegistering()) {
+                            if (!rm.isRegistering()) {
                                 Text.msg(p, "&cĐăng ký chưa mở.");
                             } else {
                                 Text.msg(p, "&7Bạn chưa đăng ký.");
@@ -474,14 +477,14 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race force <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
-                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        if (raceManager.getRegistered().isEmpty()) {
+                        RaceManager rm = raceService.getOrCreate(tname);
+                        if (rm == null) { Text.msg(p, "&cTrack not found or failed to load: &f" + tname); return true; }
+                        if (rm.getRegistered().isEmpty()) {
                             Text.msg(p, "&cKhông có người tham gia đã đăng ký. &7Mở đăng ký trước: &f/" + label + " race open");
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
-                        raceManager.forceStart();
+                        rm.forceStart();
                         return true;
                     }
                     case "start" -> {
@@ -492,10 +495,10 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race start <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
-                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        if (!trackConfig.isReady()) {
-                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", trackConfig.missingRequirements()));
+                        RaceManager raceManager = raceService.getOrCreate(tname);
+                        if (raceManager == null) { Text.msg(p, "&cTrack not found or failed to load: &f" + tname); return true; }
+                        if (!raceManager.getTrackConfig().isReady()) {
+                            Text.msg(p, "&cTrack is not ready: &7" + String.join(", ", raceManager.getTrackConfig().missingRequirements()));
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }
@@ -527,9 +530,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         }
                         if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race stop <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
-                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        boolean any = raceManager.stop(true);
+                        boolean any = raceService.stopRace(tname, true);
                         if (!any) {
                             Text.msg(p, "&7Không có gì để dừng.");
                         }
@@ -538,21 +539,22 @@ public class BoatRacingPlugin extends JavaPlugin {
                     case "status" -> {
                         if (args.length < 3) { Text.msg(p, "&cCách dùng: /" + label + " race status <track>"); return true; }
                         String tname = args[2];
-                        if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
-                        if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        String cur = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
+                        RaceManager raceManager = raceService.getOrCreate(tname);
+                        if (raceManager == null) { Text.msg(p, "&cTrack not found or failed to load: &f" + tname); return true; }
+                        var tc = raceManager.getTrackConfig();
+                        String cur = tc.getCurrentName() != null ? tc.getCurrentName() : tname;
                         boolean running = raceManager.isRunning();
                         boolean registering = raceManager.isRegistering();
                         int regs = raceManager.getRegistered().size();
                         int laps = raceManager.getTotalLaps();
-                        int participants = running ? raceManager.getParticipants().size() : 0;
-                        int starts = trackConfig.getStarts().size();
-                        int lights = trackConfig.getLights().size();
-                        int cps = trackConfig.getCheckpoints().size();
-                        boolean hasFinish = trackConfig.getFinish() != null;
-                        boolean hasPit = trackConfig.getPitlane() != null; // pit mechanic removed
-                        boolean ready = trackConfig.isReady();
-                        java.util.List<String> missing = ready ? java.util.Collections.emptyList() : trackConfig.missingRequirements();
+                        int participants = running ? raceManager.getInvolved().size() : 0;
+                        int starts = tc.getStarts().size();
+                        int lights = tc.getLights().size();
+                        int cps = tc.getCheckpoints().size();
+                        boolean hasFinish = tc.getFinish() != null;
+                        boolean hasPit = tc.getPitlane() != null; // pit mechanic removed
+                        boolean ready = tc.isReady();
+                        java.util.List<String> missing = ready ? java.util.Collections.emptyList() : tc.missingRequirements();
 
                         Text.msg(p, "&eTrạng thái cuộc đua:");
                         Text.tell(p, "&7Đường đua: &f" + cur);
@@ -743,7 +745,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                             return true;
                         }
                         int laps = Math.max(1, Integer.parseInt(args[2]));
-                        raceManager.setTotalLaps(laps);
+                        if (raceService != null) raceService.setDefaultLaps(laps);
                         Text.msg(p, "&aĐã đặt số vòng là &f" + laps);
                         p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
                         if (setupWizard != null) setupWizard.afterAction(p);
