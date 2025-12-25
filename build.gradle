@@ -4,7 +4,7 @@ plugins {
     id 'com.gradleup.shadow' version '9.2.1'
 }
 
-group = 'es.jaie55'
+group = 'dev.belikhun'
 version = '1.0.9'
 
 description = 'BoatRacing Bukkit/Spigot plugin'

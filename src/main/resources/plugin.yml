@@ -1,5 +1,5 @@
 name: BoatRacing
-main: es.jaie55.boatracing.BoatRacingPlugin
+main: dev.belikhun.boatracing.BoatRacingPlugin
 version: ${version}
 api-version: '1.21'
 authors: [Jaie55]
