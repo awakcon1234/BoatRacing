@@ -37,18 +37,23 @@ racing:
     # How often to update scoreboard + actionbar (in server ticks). Lower = faster but more CPU.
     # Recommended: 5 (0.25s) or 10 (0.5s)
     update-ticks: 5
-    # Customizable scoreboard templates (MiniMessage + %PlaceholderAPI% + %plugin_placeholders%)
-    # Available plugin placeholders vary by context, typical ones:
-    #   {player_name} {color} {icon} {number} {wins} {completed}
-    #   {track} {laps} {joined} {max}
-    #   {timer} {lap_current} {lap_total} {position} {progress}
-    # For 'completed': {finish_pos} {finish_time} for finished racers; same {position} {progress} for unfinished racers.
+    # Customizable scoreboard templates (MiniMessage + PlaceholderAPI + internal %placeholders%).
+    # IMPORTANT: internal placeholders use the %name% format.
+    #
+    # Common player placeholders (most contexts):
+    #   %racer_name% %racer_display% %racer_color% %icon% %number%
+    # Lobby-only: %completed% %wins%
+    #
+    # Waiting: %track% %laps% %joined% %max% %countdown%
+    # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %progress% %progress_int% %checkpoint_passed% %checkpoint_total%
+    # Completed (finished racers): %finish_pos% %finish_time% (plus %racer_display%)
+    # Ended (everyone finished): also provides %delta_time%
     templates:
       lobby:
         title: "<gold>BoatRacing"
         lines:
           - "<yellow>Hồ sơ của bạn"
-          - "<gray>Tên: %racer_color%%racer_name%"
+          - "<gray>Tên: %racer_display%"
           - "<gray>Màu: <white>%racer_color%"
           - "<gray>Biểu tượng: <white>%icon%"
           - "<gray>Số đua: <white>%number%"
@@ -63,7 +68,7 @@ racing:
           - "<gray>Vòng: <white>%laps%"
           - "<gray>Người chơi: <white>%joined%/%max%"
           - "<yellow>Tay đua"
-          - "<gray>Tên: %racer_color%%racer_name%"
+          - "<gray>Tên: %racer_display%"
           - "<gray>Màu: <white>%racer_color%"
           - "<gray>Biểu tượng: <white>%icon%"
           - "<gray>Số đua: <white>%number%"
@@ -104,10 +109,10 @@ racing:
         enabled: true
         # Waiting placeholders: %countdown% %joined% %max%
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>"
-        # Racing placeholders: %position% %racer_name% %lap_current% %lap_total% %progress% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
+        # Racing placeholders: %position% %racer_display% %lap_current% %lap_total% %progress% %progress_int% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
         # %speed% chooses unit based on scoreboard.speed.unit (bps|kmh). Example: <%speed_color%>%speed% %speed_unit%</%speed_color%>
         racing: "<gray>#%position%</gray> %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>"
-        # Completed placeholders: %finish_pos% %racer_name% %finish_time% %avg_speed% %speed_unit% %speed_color%
+        # Completed placeholders: %finish_pos% %racer_display% %finish_time% %avg_speed% %speed_unit% %speed_color%
         completed: "<gold>#%finish_pos%</gold> %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
 
 # Speed unit and color thresholds
