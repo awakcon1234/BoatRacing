@@ -64,6 +64,7 @@ public class RaceManager {
     private BukkitTask registrationStartTask;
     private BukkitRunnable countdownTask;
     private BukkitRunnable countdownFreezeTask;
+    private BukkitTask startLightsBlinkTask;
     private BukkitTask postFinishCleanupTask;
     private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
     private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
@@ -162,12 +163,32 @@ public class RaceManager {
     private static EntityType resolveSpawnEntityType(PreferredBoatData pref) {
         boolean chest = pref != null && pref.chest;
         boolean raft = pref != null && pref.raft;
+        String base = pref != null ? pref.baseType : null;
 
-        if (raft) {
-            try { return EntityType.valueOf(chest ? "CHEST_RAFT" : "RAFT"); }
+        // Modern Paper exposes per-variant entity types (e.g. OAK_BOAT, OAK_CHEST_BOAT, BAMBOO_RAFT, BAMBOO_CHEST_RAFT).
+        // Prefer spawning the exact entity type to avoid defaulting to OAK.
+        if (base != null && !base.isBlank()) {
+            String candidate = null;
+
+            // Bamboo uses RAFT variants instead of BOAT variants in modern Minecraft.
+            if (raft || "BAMBOO".equalsIgnoreCase(base)) {
+                candidate = "BAMBOO_" + (chest ? "CHEST_RAFT" : "RAFT");
+            } else {
+                candidate = base.toUpperCase(java.util.Locale.ROOT) + (chest ? "_CHEST_BOAT" : "_BOAT");
+            }
+
+            try { return EntityType.valueOf(candidate); }
             catch (Throwable ignored) {}
         }
-        return chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
+
+        // Fallbacks (older API servers may still have BOAT/CHEST_BOAT only).
+        try {
+            return EntityType.valueOf(chest ? "CHEST_BOAT" : "BOAT");
+        } catch (Throwable ignored) {}
+
+        // Last resort: OAK variants exist virtually everywhere.
+        try { return EntityType.valueOf(chest ? "OAK_CHEST_BOAT" : "OAK_BOAT"); }
+        catch (Throwable ignored) { return EntityType.BOAT; }
     }
 
     private static BlockFace yawToFace(float yaw) {
@@ -221,7 +242,9 @@ public class RaceManager {
         // Make sure we aren't leaving old barriers behind.
         clearCountdownBarriers();
 
-        for (org.bukkit.Location lock : countdownLockLocation.values()) {
+        for (var en : countdownLockLocation.entrySet()) {
+            final java.util.UUID playerId = en.getKey();
+            org.bukkit.Location lock = en.getValue();
             if (lock == null || lock.getWorld() == null) continue;
             try {
                 BlockFace front = yawToFace(lock.getYaw());
@@ -238,6 +261,10 @@ public class RaceManager {
                 // AIR/WATER to avoid griefing solid builds, and we restore on countdown end.
 
                 Block origin = lock.getBlock();
+
+                // Visual stopper: place a stair directly in front of the boat during countdown.
+                // Restored via countdownBarrierRestore after countdown ends.
+                Block stopper = origin.getRelative(front, 1);
 
                 java.util.Set<Block> targets = new java.util.LinkedHashSet<>();
 
@@ -293,8 +320,52 @@ public class RaceManager {
                         target.setType(Material.BARRIER, false);
                     }
                 }
+
+                // Place the stair stopper after barriers so it remains visible.
+                try {
+                    if (stopper != null) {
+                        // Only place on the waterline block.
+                        Material cur = stopper.getType();
+                        boolean canReplace = cur == Material.AIR || cur == Material.WATER || cur == Material.BARRIER;
+                        if (canReplace) {
+                            if (!countdownBarrierRestore.containsKey(stopper)) {
+                                try { countdownBarrierRestore.put(stopper, stopper.getBlockData().clone()); }
+                                catch (Throwable ignored) { countdownBarrierRestore.put(stopper, stopper.getBlockData()); }
+                            }
+
+                            org.bukkit.block.data.BlockData prev = countdownBarrierRestore.get(stopper);
+                            boolean wasWater = prev != null && prev.getMaterial() == Material.WATER;
+
+                            PreferredBoatData pref = resolvePreferredBoat(playerId);
+                            Material stairMat = resolveStopperStairMaterial(pref);
+                            org.bukkit.block.data.type.Stairs stairs = (org.bukkit.block.data.type.Stairs) Bukkit.createBlockData(stairMat);
+                            // Face the stair toward the boat so the "flat" side looks like a stopper.
+                            try { stairs.setFacing(back); } catch (Throwable ignored) {}
+                            try { stairs.setHalf(org.bukkit.block.data.Bisected.Half.BOTTOM); } catch (Throwable ignored) {}
+                            try {
+                                if (stairs instanceof org.bukkit.block.data.Waterlogged wl) wl.setWaterlogged(wasWater);
+                            } catch (Throwable ignored) {}
+
+                            stopper.setBlockData(stairs, false);
+                        }
+                    }
+                } catch (Throwable ignored) {}
             } catch (Throwable ignored) {}
         }
+    }
+
+    private static Material resolveStopperStairMaterial(PreferredBoatData pref) {
+        String base = (pref != null ? pref.baseType : null);
+        if (base == null || base.isBlank()) return Material.OAK_STAIRS;
+
+        String name = base.toUpperCase(java.util.Locale.ROOT) + "_STAIRS";
+        try {
+            Material m;
+            try { m = Material.valueOf(name); }
+            catch (IllegalArgumentException ignored) { m = Material.matchMaterial(name); }
+            if (m != null && m.isBlock() && m.name().endsWith("_STAIRS")) return m;
+        } catch (Throwable ignored) {}
+        return Material.OAK_STAIRS;
     }
 
     private static float absAngleDelta(float a, float b) {
@@ -1130,6 +1201,10 @@ public class RaceManager {
             try { countdownFreezeTask.cancel(); } catch (Throwable ignored) {}
             countdownFreezeTask = null;
         }
+        if (startLightsBlinkTask != null) {
+            try { startLightsBlinkTask.cancel(); } catch (Throwable ignored) {}
+            startLightsBlinkTask = null;
+        }
 
         countdownPlayers.clear();
         countdownLockLocation.clear();
@@ -1177,7 +1252,7 @@ public class RaceManager {
         final int total = 10; // 10..1..GO
         this.countdownEndMillis = System.currentTimeMillis() + (total * 1000L);
 
-        // Initialize start lights (progress bar).
+        // Initialize start lights.
         try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
 
         // Create the countdown task first so the freeze task (delay 0) doesn't cancel itself
@@ -1190,6 +1265,12 @@ public class RaceManager {
                 if (sec <= 0) {
                     // Start!
                     try { setStartLightsProgress(1.0); } catch (Throwable ignored) {}
+
+                    // Visual cue: blink start lights 3 times on GO.
+                    try { blinkStartLights(3, 4L); } catch (Throwable ignored) {}
+
+                    // Audio/visual cue: firework "gun shot" at the start.
+                    try { spawnStartFirework(); } catch (Throwable ignored) {}
 
                     // Remove temporary barriers before the race starts.
                     try { clearCountdownBarriers(); } catch (Throwable ignored) {}
@@ -1241,8 +1322,9 @@ public class RaceManager {
 
                 // Update start lights as a progress bar.
                 try {
-                    double progress = (double) (total - sec) / (double) total;
-                    setStartLightsProgress(progress);
+                    // Light one lamp per second for the last N seconds (N = number of configured lights).
+                    // Example with 5 lamps: lights stay off until sec==5, then 1..5 lamps light up as sec goes 5..1.
+                    setStartLightsCountdownSeconds(sec);
                 } catch (Throwable ignored) {}
 
                 countdownEndMillis = System.currentTimeMillis() + (sec * 1000L);
@@ -1408,6 +1490,40 @@ public class RaceManager {
         }
     }
 
+    // Countdown mode: light up 1 lamp per second during the last N seconds.
+    // If there are 5 lamps, they light up when sec==5 down to sec==1.
+    private void setStartLightsCountdownSeconds(int countdownSeconds) {
+        if (plugin == null) return;
+        java.util.List<Block> lights = trackConfig.getLights();
+        if (lights == null || lights.isEmpty()) return;
+        int n = lights.size();
+        int sec = Math.max(0, countdownSeconds);
+
+        int litCount;
+        if (sec <= 0) {
+            litCount = n;
+        } else if (sec > n) {
+            litCount = 0;
+        } else {
+            litCount = (n - sec) + 1;
+        }
+
+        setStartLightsLitCount(litCount);
+    }
+
+    private void setStartLightsLitCount(int litCount) {
+        if (plugin == null) return;
+        java.util.List<Block> lights = trackConfig.getLights();
+        if (lights == null || lights.isEmpty()) return;
+        int n = lights.size();
+        int on = Math.max(0, Math.min(n, litCount));
+        for (int i = 0; i < n; i++) {
+            Block b = lights.get(i);
+            if (b == null) continue;
+            setLampLit(b, i < on);
+        }
+    }
+
     private static void setLampLit(Block b, boolean lit) {
         try {
             if (b == null) return;
@@ -1476,6 +1592,10 @@ public class RaceManager {
             try { countdownFreezeTask.cancel(); } catch (Throwable ignored) {}
             countdownFreezeTask = null;
         }
+        if (startLightsBlinkTask != null) {
+            try { startLightsBlinkTask.cancel(); } catch (Throwable ignored) {}
+            startLightsBlinkTask = null;
+        }
 
         // Turn off start lights when stopping.
         try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
@@ -1499,6 +1619,75 @@ public class RaceManager {
         countdownLockLocation.clear();
         spawnedBoatByPlayer.clear();
         return hadAny || wasRunning || wasRegistering;
+    }
+
+    private void blinkStartLights(int blinks, long intervalTicks) {
+        if (plugin == null) return;
+        int times = Math.max(1, blinks);
+        long step = Math.max(1L, intervalTicks);
+
+        if (startLightsBlinkTask != null) {
+            try { startLightsBlinkTask.cancel(); } catch (Throwable ignored) {}
+            startLightsBlinkTask = null;
+        }
+
+        // 3 blinks => ON/OFF repeated 3 times (6 toggles). Start from current "on" state.
+        final int totalToggles = times * 2;
+        startLightsBlinkTask = plugin.getServer().getScheduler().runTaskTimer(plugin, new Runnable() {
+            int toggles = 0;
+            boolean on = false;
+
+            @Override
+            public void run() {
+                if (plugin == null) {
+                    try { if (startLightsBlinkTask != null) startLightsBlinkTask.cancel(); } catch (Throwable ignored) {}
+                    startLightsBlinkTask = null;
+                    return;
+                }
+                // toggle
+                on = !on;
+                try { setStartLightsProgress(on ? 1.0 : 0.0); } catch (Throwable ignored) {}
+
+                toggles++;
+                if (toggles >= totalToggles) {
+                    try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
+                    try { if (startLightsBlinkTask != null) startLightsBlinkTask.cancel(); } catch (Throwable ignored) {}
+                    startLightsBlinkTask = null;
+                }
+            }
+        }, 0L, step);
+    }
+
+    private void spawnStartFirework() {
+        if (plugin == null) return;
+        org.bukkit.Location loc = null;
+        try { loc = trackConfig.getStartCenter(); } catch (Throwable ignored) {}
+        if (loc == null) {
+            try {
+                java.util.List<org.bukkit.Location> starts = trackConfig.getStarts();
+                if (starts != null && !starts.isEmpty()) loc = starts.get(0);
+            } catch (Throwable ignored) {}
+        }
+        if (loc == null || loc.getWorld() == null) return;
+
+        org.bukkit.Location spawn = loc.clone().add(0.0, 2.0, 0.0);
+        try {
+            org.bukkit.entity.Firework fw = spawn.getWorld().spawn(spawn, org.bukkit.entity.Firework.class);
+            org.bukkit.inventory.meta.FireworkMeta meta = fw.getFireworkMeta();
+            meta.setPower(0);
+            try {
+                meta.addEffect(org.bukkit.FireworkEffect.builder()
+                        .with(org.bukkit.FireworkEffect.Type.BALL)
+                        .flicker(true)
+                        .trail(true)
+                        .withColor(org.bukkit.Color.WHITE)
+                        .build());
+            } catch (Throwable ignored) {}
+            fw.setFireworkMeta(meta);
+            plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                try { fw.detonate(); } catch (Throwable ignored) {}
+            }, 1L);
+        } catch (Throwable ignored) {}
     }
 
     /**
