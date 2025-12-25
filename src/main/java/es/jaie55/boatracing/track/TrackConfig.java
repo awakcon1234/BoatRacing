@@ -329,7 +329,6 @@ public class TrackConfig {
     public boolean addLight(Block b) {
         if (b == null) return false;
         if (b.getType() != org.bukkit.Material.REDSTONE_LAMP) return false;
-        if (lights.size() >= 5) return false;
         for (Block existing : lights) {
             if (existing == null) continue;
             try {

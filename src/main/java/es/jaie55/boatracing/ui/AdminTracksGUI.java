@@ -484,20 +484,59 @@ public class AdminTracksGUI implements Listener {
             if (viewChunks <= 0) viewChunks = Bukkit.getViewDistance();
             int radiusBlocks = Math.max(16, (viewChunks + 1) * 16);
             double maxDistSq = (double) radiusBlocks * (double) radiusBlocks;
-            // Draw a continuous line: render every node in view.
-            int step = 1;
-
+            // Draw a continuous line by interpolating between nodes.
+            // This also draws the seam (last -> first) when endpoints are close.
             org.bukkit.Particle.DustOptions dust = new org.bukkit.Particle.DustOptions(org.bukkit.Color.fromRGB(170, 0, 255), 1.2f);
-            for (int i = 0; i < nodes.size(); i += step) {
-                org.bukkit.Location n = nodes.get(i);
-                org.bukkit.World nw = (n.getWorld() != null) ? n.getWorld() : pw;
-                // Use name match to be resilient across reloads, and use horizontal distance so Y differences don't hide particles.
-                if (!nw.getName().equals(pw.getName())) continue;
-                double dx = n.getX() - pl.getX();
-                double dz = n.getZ() - pl.getZ();
-                if ((dx * dx + dz * dz) <= maxDistSq) {
-                    double y = n.getY() + 2.0;
-                    pw.spawnParticle(org.bukkit.Particle.DUST, n.getX(), y, n.getZ(), 1, 0, 0, 0, 0, dust);
+
+            int n = nodes.size();
+            if (n <= 0) return;
+
+            boolean drawSeam = false;
+            if (n >= 2) {
+                org.bukkit.Location a0 = nodes.get(0);
+                org.bukkit.Location aN = nodes.get(n - 1);
+                if (a0 != null && aN != null) {
+                    org.bukkit.World w0 = (a0.getWorld() != null) ? a0.getWorld() : pw;
+                    org.bukkit.World wN = (aN.getWorld() != null) ? aN.getWorld() : pw;
+                    if (w0.getName().equals(pw.getName()) && wN.getName().equals(pw.getName())) {
+                        double dx = a0.getX() - aN.getX();
+                        double dz = a0.getZ() - aN.getZ();
+                        drawSeam = (dx * dx + dz * dz) <= (40.0 * 40.0);
+                    }
+                }
+            }
+
+            int segCount = drawSeam ? n : (n - 1);
+            double stepSize = 0.5; // blocks
+            int maxSamplesPerSeg = 24;
+
+            for (int i = 0; i < segCount; i++) {
+                org.bukkit.Location a = nodes.get(i);
+                org.bukkit.Location b = nodes.get((i + 1) % n);
+                if (a == null || b == null) continue;
+
+                org.bukkit.World aw = (a.getWorld() != null) ? a.getWorld() : pw;
+                org.bukkit.World bw = (b.getWorld() != null) ? b.getWorld() : pw;
+                // Use name match to be resilient across reloads.
+                if (!aw.getName().equals(pw.getName()) || !bw.getName().equals(pw.getName())) continue;
+
+                double dx = b.getX() - a.getX();
+                double dz = b.getZ() - a.getZ();
+                double dy = b.getY() - a.getY();
+                double len = Math.sqrt(dx * dx + dz * dz + dy * dy);
+                int samples = (len <= 0.0001) ? 1 : (int) Math.ceil(len / stepSize);
+                if (samples > maxSamplesPerSeg) samples = maxSamplesPerSeg;
+
+                for (int s = 0; s <= samples; s++) {
+                    double t = (samples <= 0) ? 0.0 : ((double) s / (double) samples);
+                    double x = a.getX() + dx * t;
+                    double z = a.getZ() + dz * t;
+                    double y = (a.getY() + dy * t) + 2.0;
+
+                    double ddx = x - pl.getX();
+                    double ddz = z - pl.getZ();
+                    if ((ddx * ddx + ddz * ddz) > maxDistSq) continue;
+                    pw.spawnParticle(org.bukkit.Particle.DUST, x, y, z, 1, 0, 0, 0, 0, dust);
                 }
             }
         }, 0L, 5L).getTaskId();

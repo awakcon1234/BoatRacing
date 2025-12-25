@@ -98,12 +98,15 @@ public class ScoreboardService {
             ctx.liveOrder = java.util.List.of();
             ctx.positionById = java.util.Map.of();
         }
-        if (!running && !registering) {
+        // Standings can be shown even while the race is running (finished racers should see results immediately).
+        if (!registering) {
             ctx.standings = rm.getStandings();
             ctx.anyFinished = ctx.standings.stream().anyMatch(s -> s.finished);
+            ctx.allFinished = !ctx.standings.isEmpty() && ctx.standings.stream().allMatch(s -> s.finished);
         } else {
             ctx.standings = java.util.List.of();
             ctx.anyFinished = false;
+            ctx.allFinished = false;
         }
 
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -130,11 +133,86 @@ public class ScoreboardService {
     }
 
     private void updateFor(Player p, TickContext ctx) {
-        if (ctx.running) { setState(p, "RACING"); applyRacingBoard(p, ctx); applyActionBarForRacing(p, ctx); return; }
-        if (ctx.registering) { setState(p, "WAITING"); applyWaitingBoard(p); applyActionBarForWaiting(p); return; }
-        if (ctx.anyFinished) { setState(p, "COMPLETED"); applyCompletedBoard(p, ctx); clearActionBar(p); return; }
+        if (ctx.registering) {
+            setState(p, "WAITING");
+            applyWaitingBoard(p);
+            applyActionBarForWaiting(p);
+            return;
+        }
+
+        var st = rm.getParticipantState(p.getUniqueId());
+
+        // Race ended: everybody finished -> show full results list for everyone.
+        if (ctx.allFinished) {
+            setState(p, "COMPLETED");
+            applyCompletedBoard(p, ctx);
+            if (st != null && st.finished) applyActionBarForCompleted(p, st);
+            else clearActionBar(p);
+            return;
+        }
+
+        if (ctx.running) {
+            if (st != null && st.finished) {
+                setState(p, "COMPLETED");
+                applyCompletedBoard(p, ctx);
+                applyActionBarForCompleted(p, st);
+                return;
+            }
+            setState(p, "RACING");
+            applyRacingBoard(p, ctx);
+            applyActionBarForRacing(p, ctx);
+            return;
+        }
+
+        if (ctx.anyFinished) {
+            setState(p, "COMPLETED");
+            applyCompletedBoard(p, ctx);
+            if (st != null && st.finished) applyActionBarForCompleted(p, st);
+            else clearActionBar(p);
+            return;
+        }
         setState(p, "LOBBY");
         applyLobbyBoard(p); clearActionBar(p);
+    }
+
+    private void applyActionBarForCompleted(Player p, RaceManager.ParticipantState st) {
+        if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
+        if (st == null || !st.finished) return;
+
+        int pos = st.finishPosition > 0 ? st.finishPosition : 1;
+        long t = Math.max(0L, st.finishTimeMillis - rm.getRaceStartMillis()) + st.penaltySeconds * 1000L;
+
+        double avgBps = 0.0;
+        try {
+            double seconds = Math.max(0.001, t / 1000.0);
+            avgBps = Math.max(0.0, st.distanceBlocks / seconds);
+        } catch (Throwable ignored) {}
+
+        // Per-player preferred unit overrides global
+        String unitPref = pm != null ? pm.get(p.getUniqueId()).speedUnit : "";
+        String unit = (unitPref != null && !unitPref.isEmpty()) ? unitPref.toLowerCase() : cfgString("scoreboard.speed.unit", "kmh").toLowerCase();
+
+        String speedVal;
+        String speedUnit;
+        if ("bps".equals(unit)) { speedVal = fmt2(avgBps); speedUnit = "bps"; }
+        else if ("bph".equals(unit)) { speedVal = fmt2(avgBps * 3600.0); speedUnit = "bph"; }
+        else { speedVal = fmt2(avgBps * 3.6); speedUnit = "km/h"; unit = "kmh"; }
+        String speedColor = resolveSpeedColorByUnit(avgBps, unit);
+
+        String tpl = cfgString(
+                "scoreboard.actionbar.completed",
+                "<gold>#%finish_pos%</gold> <white>%racer_name%</white> <gray>•</gray> <white>%finish_time%</white> <gray>•</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
+        );
+        java.util.Map<String,String> ph = new java.util.HashMap<>();
+        ph.put("racer_name", p.getName());
+        ph.put("finish_pos", String.valueOf(pos));
+        ph.put("finish_time", fmt(t));
+        ph.put("avg_speed", speedVal);
+        ph.put("speed_unit", speedUnit);
+        ph.put("speed_color", speedColor);
+
+        Component c = parse(p, tpl, ph);
+        sendActionBar(p, c);
     }
 
     private void applyLobbyBoard(Player p) {
@@ -199,7 +277,9 @@ public class ScoreboardService {
         if (st != null) {
             int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
             double progressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
-            ph.put("lap_current", String.valueOf(st.currentLap+1)); ph.put("lap_total", String.valueOf(laps));
+            int lapCurrent = st.finished ? laps : Math.min(laps, st.currentLap + 1);
+            ph.put("lap_current", String.valueOf(lapCurrent));
+            ph.put("lap_total", String.valueOf(laps));
             ph.put("position", String.valueOf(pos)); ph.put("joined", String.valueOf(ctx.liveOrder.size()));
             ph.put("progress", fmt2(progressPct));
             ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
@@ -225,10 +305,53 @@ public class ScoreboardService {
 
     private void applyCompletedBoard(Player p, TickContext ctx) {
         Sidebar sb = ensureSidebar(p);
-        Component title = parse(p, cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"), java.util.Map.of());
+        boolean ended = ctx != null && ctx.allFinished;
+        Component title = parse(p,
+                ended
+                        ? cfgString("scoreboard.templates.ended.title", cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"))
+                        : cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"),
+                java.util.Map.of());
         java.util.List<RaceManager.ParticipantState> standings = ctx.standings;
         java.util.List<Component> lines = new java.util.ArrayList<>();
-        // Header
+
+        if (ended) {
+            // Race ended: show full list ordered by placement/time.
+            for (String line : cfgStringList("scoreboard.templates.ended.header", java.util.List.of("<yellow>Kết quả"))) {
+                lines.add(parse(p, line, java.util.Map.of()));
+            }
+
+            long best = Long.MAX_VALUE;
+            for (RaceManager.ParticipantState s : standings) {
+                if (!s.finished) continue;
+                long t = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + s.penaltySeconds * 1000L;
+                if (t < best) best = t;
+            }
+            if (best == Long.MAX_VALUE) best = 0L;
+
+            for (RaceManager.ParticipantState s : standings) {
+                if (!s.finished) continue;
+                String name = nameOf(s.id);
+                long t = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + s.penaltySeconds * 1000L;
+                long delta = Math.max(0L, t - best);
+                java.util.Map<String,String> ph = new java.util.HashMap<>();
+                ph.put("racer_name", name);
+                ph.put("finish_pos", String.valueOf(s.finishPosition));
+                ph.put("finish_time", fmt(t));
+                ph.put("delta_time", fmt(delta));
+                String key = (s.finishPosition == 1 || delta == 0L)
+                        ? "scoreboard.templates.ended.winner_line"
+                        : "scoreboard.templates.ended.delta_line";
+                String def = (s.finishPosition == 1 || delta == 0L)
+                        ? "<gold>#%finish_pos% %racer_name%</gold> <gray>•</gray> <white>%finish_time%</white>"
+                        : "<yellow>#%finish_pos% %racer_name%</yellow> <gray>•</gray> <white>+%delta_time%</white>";
+                lines.add(parse(p, cfgString(key, def), ph));
+            }
+
+            applySidebarComponents(p, sb, title, lines);
+            return;
+        }
+
+        // Default completed board: some finished, others still racing.
         for (String line : cfgStringList("scoreboard.templates.completed.header", java.util.List.of("<yellow>Về đích"))) {
             lines.add(parse(p, line, java.util.Map.of()));
         }
@@ -312,8 +435,11 @@ public class ScoreboardService {
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         var st = rm.getParticipantState(p.getUniqueId());
         int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
-        int lapCurrent = st == null ? 0 : (st.currentLap + 1);
         int lapTotal = rm.getTotalLaps();
+        int lapCurrent = 0;
+        if (st != null) {
+            lapCurrent = st.finished ? lapTotal : Math.min(lapTotal, st.currentLap + 1);
+        }
         double progressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
         int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
         int totalCp = plugin.getTrackConfig().getCheckpoints().size();
@@ -368,6 +494,7 @@ public class ScoreboardService {
         boolean running;
         boolean registering;
         boolean anyFinished;
+        boolean allFinished;
         java.util.List<java.util.UUID> liveOrder = java.util.List.of();
         java.util.Map<java.util.UUID, Integer> positionById = java.util.Map.of();
         java.util.List<RaceManager.ParticipantState> standings = java.util.List.of();

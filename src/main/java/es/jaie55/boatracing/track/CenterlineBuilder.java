@@ -95,6 +95,50 @@ public final class CenterlineBuilder {
             appendDecimated(centerline, segment, 0.5);
             if (verbose) info(logger, "Segment " + i + " ok: nodes=" + segment.size() + " (after decimation total=" + centerline.size() + ")");
         }
+
+        // If the finish is very close to the start (typical circuit), close the loop for a continuous centerline.
+        // This avoids the visualizer showing two separate ends at the finish line.
+        try {
+            if (!centerline.isEmpty()) {
+                Location a = centerline.get(centerline.size() - 1); // last
+                Location b = centerline.get(0); // first
+                if (a == null || b == null) throw new IllegalStateException("null endpoints");
+                if (a.getWorld() == null || b.getWorld() == null || !a.getWorld().equals(b.getWorld())) throw new IllegalStateException("world mismatch");
+
+                double dx = a.getX() - b.getX();
+                double dz = a.getZ() - b.getZ();
+                double distSqXZ = dx * dx + dz * dz;
+                double closeDist = 32.0; // blocks
+                if (distSqXZ <= closeDist * closeDist) {
+                    // Prefer a deterministic stitch along the surface. This avoids A* sometimes choosing a nearby parallel lane.
+                    boolean stitched = tryStitchLoopOnSurface(centerline, a, b, logger, verbose);
+                    if (!stitched) {
+                        if (verbose) info(logger, "A* segment close: " + fmt(a) + " -> " + fmt(b));
+                        List<Location> segment = aStar2DWithRetries(a, b, corridorMargin, 64, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, "segment#close", verbose);
+                        if (segment == null || segment.isEmpty()) {
+                            warn(logger, "Centerline loop close failed: A* returned no path for close segment (" + fmt(a) + " -> " + fmt(b) + ")");
+                        } else {
+                            // Avoid duplicating the final node if already present.
+                            if (!segment.isEmpty()) {
+                                Location last = centerline.get(centerline.size() - 1);
+                                Location first = segment.get(0);
+                                if (last != null && first != null && last.getWorld() != null && last.getWorld().equals(first.getWorld())) {
+                                    double ddx = last.getX() - first.getX();
+                                    double ddy = last.getY() - first.getY();
+                                    double ddz = last.getZ() - first.getZ();
+                                    if ((ddx * ddx + ddy * ddy + ddz * ddz) < 0.01) {
+                                        segment = new ArrayList<>(segment.subList(1, segment.size()));
+                                    }
+                                }
+                            }
+                            appendDecimated(centerline, segment, 0.5);
+                            if (verbose) info(logger, "Segment close ok: nodes=" + segment.size() + " (after decimation total=" + centerline.size() + ")");
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
         if (verbose) info(logger, "Centerline build complete: totalNodes=" + centerline.size());
         return centerline;
     }
@@ -548,6 +592,90 @@ public final class CenterlineBuilder {
                 last = l;
             }
         }
+    }
+
+    private static boolean tryStitchLoopOnSurface(List<Location> centerline, Location from, Location to, Logger logger, boolean verbose) {
+        if (centerline == null || centerline.isEmpty() || from == null || to == null) return false;
+        World w = from.getWorld();
+        if (w == null || to.getWorld() == null || !w.equals(to.getWorld())) return false;
+
+        int x0 = from.getBlockX();
+        int z0 = from.getBlockZ();
+        int x1 = to.getBlockX();
+        int z1 = to.getBlockZ();
+        if (x0 == x1 && z0 == z1) return true;
+
+        // Only stitch very short seams; otherwise rely on A*.
+        int dx = x1 - x0;
+        int dz = z1 - z0;
+        if ((dx * dx + dz * dz) > (12 * 12)) return false;
+
+        java.util.List<int[]> line = bresenhamXZ(x0, z0, x1, z1);
+        if (line.size() <= 1) return false;
+
+        java.util.ArrayList<Location> stitch = new java.util.ArrayList<>(line.size());
+        java.util.Map<Long, Integer> cache = new java.util.HashMap<>();
+        int hintY = Math.max(w.getMinHeight(), Math.min(w.getMaxHeight() - 1, from.getBlockY() - 1));
+
+        // Skip the first point (already present as the last node).
+        for (int i = 1; i < line.size(); i++) {
+            int[] p = line.get(i);
+            int x = p[0];
+            int z = p[1];
+            int surfaceY = cachedSurfaceY(w, x, z, hintY, 4, cache);
+            if (surfaceY == Integer.MIN_VALUE) return false;
+            Material surface = w.getBlockAt(x, surfaceY, z).getType();
+            if (!ALLOWED.contains(surface)) return false;
+            if (!isClearAbove(w, x, surfaceY, z)) return false;
+
+            hintY = surfaceY;
+            stitch.add(new Location(w, x + 0.5, surfaceY + 1.0, z + 0.5));
+        }
+
+        // Avoid duplicating the first node if the last stitch point is already at the first node.
+        if (!stitch.isEmpty()) {
+            Location last = stitch.get(stitch.size() - 1);
+            if (last.getBlockX() == to.getBlockX() && last.getBlockZ() == to.getBlockZ()) {
+                // Keep it (it is the intended closure), but ensure we don't add a duplicate within epsilon.
+                Location firstNode = centerline.get(0);
+                double ddx = last.getX() - firstNode.getX();
+                double ddy = last.getY() - firstNode.getY();
+                double ddz2 = last.getZ() - firstNode.getZ();
+                if ((ddx * ddx + ddy * ddy + ddz2 * ddz2) < 0.01) {
+                    stitch.remove(stitch.size() - 1);
+                }
+            }
+        }
+
+        appendDecimated(centerline, stitch, 0.25);
+        if (verbose) info(logger, "Loop stitch ok: nodes=" + stitch.size() + " (total=" + centerline.size() + ")");
+        return true;
+    }
+
+    private static java.util.List<int[]> bresenhamXZ(int x0, int z0, int x1, int z1) {
+        java.util.ArrayList<int[]> out = new java.util.ArrayList<>();
+        int dx = Math.abs(x1 - x0);
+        int dz = Math.abs(z1 - z0);
+        int sx = x0 < x1 ? 1 : -1;
+        int sz = z0 < z1 ? 1 : -1;
+        int err = dx - dz;
+
+        int x = x0;
+        int z = z0;
+        while (true) {
+            out.add(new int[] { x, z });
+            if (x == x1 && z == z1) break;
+            int e2 = err << 1;
+            if (e2 > -dz) {
+                err -= dz;
+                x += sx;
+            }
+            if (e2 < dx) {
+                err += dx;
+                z += sz;
+            }
+        }
+        return out;
     }
 
     private static final class Node {

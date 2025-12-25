@@ -160,7 +160,16 @@ public class BoatRacingPlugin extends JavaPlugin {
 
                 try {
                     boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                    boat.teleport(from);
+                    org.bukkit.Location lock = null;
+                    for (org.bukkit.entity.Entity passenger : boat.getPassengers()) {
+                        if (passenger instanceof org.bukkit.entity.Player p) {
+                            if (raceManager.isCountdownActiveFor(p.getUniqueId())) {
+                                lock = raceManager.getCountdownLockLocation(p.getUniqueId());
+                                if (lock != null) break;
+                            }
+                        }
+                    }
+                    boat.teleport(lock != null ? lock : from);
                 } catch (Throwable ignored) {}
             }
         }, this);
@@ -173,6 +182,50 @@ public class BoatRacingPlugin extends JavaPlugin {
                 if (!(e.getExited() instanceof org.bukkit.entity.Player p)) return;
                 if (!raceManager.shouldPreventBoatExit(p.getUniqueId())) return;
                 e.setCancelled(true);
+            }
+        }, this);
+
+        // Respawn racers at their last checkpoint, or at start if all checkpoints were reached.
+        Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            @org.bukkit.event.EventHandler
+            public void onRespawn(org.bukkit.event.player.PlayerRespawnEvent e) {
+                if (raceManager == null) return;
+                org.bukkit.entity.Player p = e.getPlayer();
+                if (p == null) return;
+                org.bukkit.Location target = raceManager.getRaceRespawnLocation(p.getUniqueId(), p.getLocation());
+                if (target != null && target.getWorld() != null) {
+                    e.setRespawnLocation(target);
+
+                    // Play respawn cue after the respawn has applied.
+                    try {
+                        Bukkit.getScheduler().runTaskLater(BoatRacingPlugin.this, () -> {
+                            try {
+                                if (!p.isOnline()) return;
+                                try { raceManager.ensureRacerHasBoat(p); } catch (Throwable ignored) {}
+                                p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.2f);
+                            } catch (Throwable ignored) {}
+                        }, 2L);
+                    } catch (Throwable ignored) {}
+                }
+            }
+        }, this);
+
+        // Disqualify racers who disconnect mid-race and clean up their state/boat.
+        Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+            @org.bukkit.event.EventHandler
+            public void onQuit(org.bukkit.event.player.PlayerQuitEvent e) {
+                if (raceManager == null) return;
+                org.bukkit.entity.Player p = e.getPlayer();
+                if (p == null) return;
+                try { raceManager.handleRacerDisconnect(p.getUniqueId()); } catch (Throwable ignored) {}
+            }
+
+            @org.bukkit.event.EventHandler
+            public void onKick(org.bukkit.event.player.PlayerKickEvent e) {
+                if (raceManager == null) return;
+                org.bukkit.entity.Player p = e.getPlayer();
+                if (p == null) return;
+                try { raceManager.handleRacerDisconnect(p.getUniqueId()); } catch (Throwable ignored) {}
             }
         }, this);
     
