@@ -232,6 +232,27 @@ public class BoatRacingPlugin extends JavaPlugin {
         return null;
     }
 
+    private static org.bukkit.block.Block getTargetBlockLenient(org.bukkit.entity.Player p, int range) {
+        if (p == null) return null;
+        try {
+            try {
+                org.bukkit.block.Block b = p.getTargetBlockExact(range, org.bukkit.FluidCollisionMode.ALWAYS);
+                if (b != null) return b;
+            } catch (Throwable ignored) {}
+
+            try {
+                org.bukkit.block.Block b = p.getTargetBlockExact(range);
+                if (b != null) return b;
+            } catch (Throwable ignored) {}
+
+            try {
+                org.bukkit.util.RayTraceResult rr = p.rayTraceBlocks((double) range, org.bukkit.FluidCollisionMode.ALWAYS);
+                if (rr != null && rr.getHitBlock() != null) return rr.getHitBlock();
+            } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     @Override
     public void onDisable() {
         // Nothing to persist
@@ -455,13 +476,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         String tname = args[2];
                         if (!trackLibrary.exists(tname)) { Text.msg(p, "&cTrack not found: &f" + tname); return true; }
                         if (!trackLibrary.select(tname)) { Text.msg(p, "&cFailed to load track: &f" + tname); return true; }
-                        boolean any = false;
-                        if (raceManager.isRegistering()) {
-                            any |= raceManager.cancelRegistration(true);
-                        }
-                        if (raceManager.isRunning()) {
-                            any |= raceManager.cancelRace();
-                        }
+                        boolean any = raceManager.stop(true);
                         if (!any) {
                             Text.msg(p, "&7Không có gì để dừng.");
                         }
@@ -642,9 +657,14 @@ public class BoatRacingPlugin extends JavaPlugin {
                         if (setupWizard != null) setupWizard.afterAction(p);
                     }
                     case "addlight" -> {
-                        org.bukkit.block.Block target = p.getTargetBlockExact(6);
+                        org.bukkit.block.Block target = getTargetBlockLenient(p, 20);
                         if (target == null) {
-                            Text.msg(p, "&cHãy nhìn vào Đèn Redstone trong bán kính 6 block.");
+                            Text.msg(p, "&cHãy nhìn vào Đèn Redstone trong bán kính 20 block.");
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+                            return true;
+                        }
+                        if (target.getType() != org.bukkit.Material.REDSTONE_LAMP) {
+                            Text.msg(p, "&cBlock đang nhìn không phải Đèn Redstone: &f" + target.getType());
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
                             return true;
                         }

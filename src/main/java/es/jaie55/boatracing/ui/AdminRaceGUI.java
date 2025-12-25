@@ -21,7 +21,6 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
@@ -324,9 +323,7 @@ public class AdminRaceGUI implements Listener {
 
     private void doStop(Player p) {
         RaceManager rm = plugin.getRaceManager();
-        boolean any = false;
-        if (rm.isRegistering()) any |= rm.cancelRegistration(true);
-        if (rm.isRunning()) any |= rm.cancelRace();
+        boolean any = rm.stop(true);
         if (!any) {
             Text.msg(p, "&7Không có gì để dừng.");
         } else {

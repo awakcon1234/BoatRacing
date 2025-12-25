@@ -326,7 +326,20 @@ public class TrackConfig {
     public List<Region> getCheckpoints() { return Collections.unmodifiableList(checkpoints); }
 
     // Lights
-    public boolean addLight(Block b) { if (lights.size() >= 5) return false; lights.add(b); return true; }
+    public boolean addLight(Block b) {
+        if (b == null) return false;
+        if (b.getType() != org.bukkit.Material.REDSTONE_LAMP) return false;
+        if (lights.size() >= 5) return false;
+        for (Block existing : lights) {
+            if (existing == null) continue;
+            try {
+                if (existing.getWorld() != null && b.getWorld() != null && !existing.getWorld().equals(b.getWorld())) continue;
+                if (existing.getX() == b.getX() && existing.getY() == b.getY() && existing.getZ() == b.getZ()) return false;
+            } catch (Throwable ignored) {}
+        }
+        lights.add(b);
+        return true;
+    }
     public void clearLights() { lights.clear(); }
     public List<Block> getLights() { return Collections.unmodifiableList(lights); }
 

@@ -4,11 +4,17 @@ import es.jaie55.boatracing.track.TrackConfig;
 import es.jaie55.boatracing.track.Region;
 import es.jaie55.boatracing.util.Text;
 import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Boat;
+import org.bukkit.entity.ChestBoat;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -33,6 +39,8 @@ public class RaceManager {
     // runtime participant state
     private final java.util.Map<UUID, ParticipantState> participants = new java.util.HashMap<>();
     private final java.util.Map<UUID, Player> participantPlayers = new java.util.HashMap<>();
+    private final java.util.Map<UUID, UUID> spawnedBoatByPlayer = new java.util.HashMap<>();
+    private final java.util.Set<UUID> countdownPlayers = new java.util.HashSet<>();
     private long raceStartMillis = 0L;
     // Countdown end (millis) for the start countdown; 0 if no countdown active
     private volatile long countdownEndMillis = 0L;
@@ -43,6 +51,10 @@ public class RaceManager {
     private java.util.List<org.bukkit.Location> path = java.util.Collections.emptyList();
     private int[] gateIndex = new int[0]; // indices along path for each checkpoint and finish
     private boolean pathReady = false;
+
+    private BukkitRunnable raceTickTask;
+    private BukkitTask registrationStartTask;
+    private BukkitRunnable countdownTask;
 
     // Debug helpers
     private boolean debugTeleport() {
@@ -124,23 +136,46 @@ public class RaceManager {
 
         // Checkpoints
         java.util.List<Region> checkpoints = trackConfig.getCheckpoints();
-        int insideCp = -1;
-        for (int i = 0; i < checkpoints.size(); i++) {
-            Region r = checkpoints.get(i);
-            if (r != null && (r.containsXZ(to) || r.intersectsXZ(segFrom, to))) { insideCp = i; break; }
-        }
+
+        // Debug-only: report which checkpoint region (if any) the segment intersects.
         if (debugCheckpoints()) {
-            if (insideCp != s.lastInsideCheckpoint) {
-                s.lastInsideCheckpoint = insideCp;
-                if (insideCp >= 0) {
-                    dbg("[CPDBG] " + player.getName() + " entered checkpoint " + (insideCp + 1) + "/" + checkpoints.size()
+            int insideAny = -1;
+            for (int i = 0; i < checkpoints.size(); i++) {
+                Region r = checkpoints.get(i);
+                if (r != null && (r.containsXZ(to) || r.intersectsXZ(segFrom, to))) { insideAny = i; break; }
+            }
+            if (insideAny != s.lastInsideCheckpoint) {
+                s.lastInsideCheckpoint = insideAny;
+                if (insideAny >= 0) {
+                    dbg("[CPDBG] " + player.getName() + " entered checkpoint " + (insideAny + 1) + "/" + checkpoints.size()
                             + " at " + es.jaie55.boatracing.util.Text.fmtPos(to)
-                            + " expectedNext=" + (s.nextCheckpointIndex + 1));
+                            + " expectedNext=" + (s.nextCheckpointIndex + 1)
+                            + " awaitingFinish=" + s.awaitingFinish);
                 }
             }
         }
 
-        if (debugCheckpoints() && insideCp < 0 && s.nextCheckpointIndex >= 0 && s.nextCheckpointIndex < checkpoints.size()) {
+        // Gameplay: only advance in sequence, and allow consuming multiple checkpoints in a single swept segment.
+        if (!checkpoints.isEmpty() && !s.awaitingFinish) {
+            int advancedCount = 0;
+            while (advancedCount < 6 && s.nextCheckpointIndex >= 0 && s.nextCheckpointIndex < checkpoints.size()) {
+                Region expected = checkpoints.get(s.nextCheckpointIndex);
+                boolean hitExpected = expected != null && (expected.containsXZ(to) || expected.intersectsXZ(segFrom, to));
+                if (!hitExpected) break;
+
+                int hitIndex = s.nextCheckpointIndex;
+                boolean advanced = checkpointReachedInternal(player.getUniqueId(), hitIndex);
+                if (advanced) {
+                    notifyCheckpointPassed(player, hitIndex + 1, checkpoints.size());
+                    advancedCount++;
+                    if (s.awaitingFinish) break;
+                    continue;
+                }
+                break;
+            }
+        }
+
+        if (debugCheckpoints() && !s.awaitingFinish && s.nextCheckpointIndex >= 0 && s.nextCheckpointIndex < checkpoints.size()) {
             Region expected = checkpoints.get(s.nextCheckpointIndex);
             if (expected != null) {
                 org.bukkit.util.BoundingBox b = expected.getBox();
@@ -171,14 +206,6 @@ public class RaceManager {
                 }
             }
         }
-        if (insideCp >= 0) {
-            boolean advanced = checkpointReachedInternal(player.getUniqueId(), insideCp);
-            if (advanced) {
-                notifyCheckpointPassed(player, insideCp + 1, checkpoints.size());
-            } else if (debugCheckpoints()) {
-                dbg("[CPDBG] " + player.getName() + " hit checkpoint " + (insideCp + 1) + " but NOT advanced (expected=" + (s.nextCheckpointIndex + 1) + ")");
-            }
-        }
 
         // Finish detection
         // IMPORTANT: For checkpoint-based tracks, lap completion is driven by checkpoint flow.
@@ -192,14 +219,28 @@ public class RaceManager {
             dbg("[CPDBG] " + player.getName() + " entered finish at " + es.jaie55.boatracing.util.Text.fmtPos(to)
                     + " nextCheckpointIndex=" + (s.nextCheckpointIndex + 1));
         }
-        if (enteredFinish && checkpoints.isEmpty()) {
-            handleLapCompletion(player.getUniqueId());
+        if (enteredFinish) {
+            if (checkpoints.isEmpty()) {
+                completeLap(player.getUniqueId(), to);
+            } else if (s.awaitingFinish) {
+                s.awaitingFinish = false;
+                s.nextCheckpointIndex = 0;
+                completeLap(player.getUniqueId(), to);
+            } else if (debugCheckpoints()) {
+                dbg("[CPDBG] " + player.getName() + " entered finish but lap not ready (expectedNext=" + (s.nextCheckpointIndex + 1) + ")");
+            }
         }
 
         // Update live path index for player (for live positions)
         if (pathReady) {
             int seed = s.lastPathIndex;
-            s.lastPathIndex = nearestPathIndex(to, seed, 40);
+            if (s.awaitingFinish && gateIndex != null && gateIndex.length > 0) {
+                seed = gateIndex[gateIndex.length - 1];
+            } else if (s.nextCheckpointIndex == 0 && s.currentLap > 0) {
+                // After wrapping a lap, bias toward the start of the centerline.
+                seed = 0;
+            }
+            s.lastPathIndex = nearestPathIndex(to, seed, 80);
         }
 
         // Update last location for next swept tick.
@@ -221,10 +262,10 @@ public class RaceManager {
         if (checkpointIndex != s.nextCheckpointIndex) return false; // enforce sequence
         s.nextCheckpointIndex++;
         int totalCheckpoints = testCheckpointCount >= 0 ? testCheckpointCount : trackConfig.getCheckpoints().size();
-        if (s.nextCheckpointIndex >= totalCheckpoints) {
-            // wrapped around
-            s.nextCheckpointIndex = 0;
-            handleLapCompletion(uuid);
+        if (totalCheckpoints > 0 && s.nextCheckpointIndex >= totalCheckpoints) {
+            // Completed all checkpoints for this lap; now require crossing the finish line to complete the lap.
+            s.nextCheckpointIndex = totalCheckpoints;
+            s.awaitingFinish = true;
         }
         return true;
     }
@@ -236,7 +277,25 @@ public class RaceManager {
         participants.put(uuid, new ParticipantState(uuid));
     }
 
+    // test hook: allow tests to simulate finish crossing
+    void finishCrossedForTests(UUID uuid) {
+        ParticipantState s = participants.get(uuid);
+        if (s == null || s.finished) return;
+        // For checkpoint tracks, only complete lap when awaiting finish.
+        if ((testCheckpointCount >= 0 ? testCheckpointCount : trackConfig.getCheckpoints().size()) > 0) {
+            if (!s.awaitingFinish) return;
+            s.awaitingFinish = false;
+            s.nextCheckpointIndex = 0;
+        }
+        completeLap(uuid, null);
+    }
+
     void handleLapCompletion(UUID uuid) {
+        // Backward-compatible alias (kept for existing callers). Prefer completeLap.
+        completeLap(uuid, null);
+    }
+
+    private void completeLap(UUID uuid, Location pos) {
         ParticipantState s = participants.get(uuid);
         if (s == null || s.finished) return;
         s.currentLap++;
@@ -250,6 +309,12 @@ public class RaceManager {
             if (p != null) {
                 notifyLapCompleted(p, s.currentLap, getTotalLaps());
             }
+        }
+
+        // Reseed path index to avoid progress getting stuck after lap wrap.
+        if (pathReady) {
+            if (pos != null) s.lastPathIndex = nearestPathIndex(pos, 0, Math.max(200, path.size()));
+            else s.lastPathIndex = 0;
         }
     }
 
@@ -292,7 +357,7 @@ public class RaceManager {
         s.finishTimeMillis = System.currentTimeMillis();
         // compute position as number of already finished + 1
         int pos = (int) participants.values().stream().filter(x -> x.finished && x.finishTimeMillis > 0).count();
-        s.finishPosition = pos + 1;
+        s.finishPosition = Math.max(1, pos);
         Player p = participantPlayers.get(uuid);
         if (p != null) {
             Text.msg(p, "&6Bạn đã về đích! Vị trí: &e" + s.finishPosition);
@@ -338,6 +403,9 @@ public class RaceManager {
         // Used to edge-trigger finish crossings (avoid repeated lap completions when inside the finish area)
         public boolean wasInsideFinish = false;
 
+        // For checkpoint tracks: last checkpoint reached, now waiting to cross finish to complete the lap.
+        public boolean awaitingFinish = false;
+
         public ParticipantState(UUID id) { this.id = id; }
     }
 
@@ -350,13 +418,19 @@ public class RaceManager {
     }
 
     public boolean openRegistration(int laps, Object unused) {
+        // If there is an existing scheduled registration transition, cancel it.
+        if (registrationStartTask != null) {
+            try { registrationStartTask.cancel(); } catch (Throwable ignored) {}
+            registrationStartTask = null;
+        }
         this.registering = true;
         this.totalLaps = laps;
         // start waiting window based on config (default 30s)
         int waitSec = Math.max(1, plugin.getConfig().getInt("racing.registration-seconds", 30));
         this.waitingEndMillis = System.currentTimeMillis() + (waitSec * 1000L);
         // schedule transition to start
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+        registrationStartTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            registrationStartTask = null;
             // if registration canceled or no longer registering, abort
             if (!registering) { waitingEndMillis = 0L; return; }
             // if nobody registered, just cancel registration
@@ -456,15 +530,61 @@ public class RaceManager {
             if (slot >= starts.size()) break; // no more slots
             Location target = starts.get(slot).clone();
             try {
+                // If player is already in one of our boats (e.g. restarting), remove it first.
+                try {
+                    Entity curVeh = p.getVehicle();
+                    if (curVeh != null && isSpawnedBoat(curVeh)) {
+                        try { curVeh.eject(); } catch (Throwable ignored) {}
+                        try { curVeh.remove(); } catch (Throwable ignored) {}
+                    }
+                } catch (Throwable ignored) {}
+
                 // teleport player slightly above block
                 target.setY(target.getY() + 1.0);
                 p.teleport(target);
-                // spawn a boat and set player as passenger
-                // Spawn the boat in the target location's world to support cross-world starts
-                var ent = (target.getWorld() != null ? target.getWorld() : p.getWorld()).spawnEntity(target, EntityType.BOAT);
-                if (ent instanceof Boat) {
-                    Boat b = (Boat) ent;
+
+                // Spawn a boat matching player's preference (ProfileGUI). Default is OAK.
+                Material pref = null;
+                try {
+                    if (plugin instanceof es.jaie55.boatracing.BoatRacingPlugin br && br.getProfileManager() != null) {
+                        String bt = br.getProfileManager().getBoatType(p.getUniqueId());
+                        if (bt != null && !bt.isBlank()) {
+                            try { pref = Material.valueOf(bt); } catch (IllegalArgumentException ignored) {
+                                pref = Material.matchMaterial(bt);
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) { pref = null; }
+
+                boolean chest = pref != null && (pref.name().endsWith("_CHEST_BOAT") || pref.name().endsWith("_CHEST_RAFT"));
+                EntityType spawnType = chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
+                var ent = (target.getWorld() != null ? target.getWorld() : p.getWorld()).spawnEntity(target, spawnType);
+
+                try {
+                    markSpawnedBoat(ent);
+                    spawnedBoatByPlayer.put(p.getUniqueId(), ent.getUniqueId());
+                } catch (Throwable ignored) {}
+
+                // Apply variant when possible.
+                String base = null;
+                if (pref != null) {
+                    base = pref.name();
+                    base = base.replace("_CHEST_BOAT", "").replace("_BOAT", "")
+                               .replace("_CHEST_RAFT", "").replace("_RAFT", "");
+                }
+                if (ent instanceof Boat b) {
+                    if (base != null) {
+                        try { b.setBoatType(Boat.Type.valueOf(base)); } catch (Throwable ignored) {}
+                    }
                     b.addPassenger(p);
+                } else if (ent instanceof ChestBoat cb) {
+                    if (base != null) {
+                        try { cb.setBoatType(Boat.Type.valueOf(base)); } catch (Throwable ignored) {}
+                    }
+                    cb.addPassenger(p);
+                } else {
+                    // Fallback: still seat the player if possible
+                    try { ent.addPassenger(p); } catch (Throwable ignored) {}
                 }
                 placed.add(p);
             } catch (Throwable ignored) {}
@@ -477,10 +597,22 @@ public class RaceManager {
     public void startLightsCountdown(List<Player> placed) {
         if (placed.isEmpty()) return;
         this.registering = false;
-        final int total = 3; // 3..2..1..GO
+
+        // Stop any prior countdown before starting a new one.
+        if (countdownTask != null) {
+            try { countdownTask.cancel(); } catch (Throwable ignored) {}
+            countdownTask = null;
+        }
+
+        countdownPlayers.clear();
+        for (Player p : placed) {
+            if (p != null) countdownPlayers.add(p.getUniqueId());
+        }
+
+        final int total = 10; // 10..1..GO
         this.countdownEndMillis = System.currentTimeMillis() + (total * 1000L);
 
-        new BukkitRunnable() {
+        countdownTask = new BukkitRunnable() {
             private int sec = total;
 
             @Override
@@ -498,6 +630,7 @@ public class RaceManager {
                         participantPlayers.put(p.getUniqueId(), p);
                     }
                     initPathForLivePositions();
+                    startRaceTicker();
 
 					if (debugCheckpoints()) {
 						try {
@@ -527,7 +660,9 @@ public class RaceManager {
                         net.kyori.adventure.text.Component dot = net.kyori.adventure.text.Component.text("●");
                         var dark = net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY;
                         net.kyori.adventure.text.Component sub;
-                        if (sec == 3) {
+                        if (sec > 3) {
+                            sub = net.kyori.adventure.text.Component.text("● ● ●").color(dark);
+                        } else if (sec == 3) {
                             sub = net.kyori.adventure.text.Component.empty()
                                     .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.RED)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
@@ -545,26 +680,201 @@ public class RaceManager {
                         }
                         p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
                                 net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
-                        p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
+                        if (sec == 3) {
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 0.90f);
+                        } else if (sec == 2) {
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 1.05f);
+                        } else if (sec == 1) {
+                            p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 1.25f);
+                        } else {
+                            p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
+                        }
                     } catch (Throwable ignored) {}
                 }
 
                 sec--;
             }
-        }.runTaskTimer(plugin, 0L, 20L);
+
+            @Override
+            public synchronized void cancel() throws IllegalStateException {
+                super.cancel();
+                if (countdownTask == this) countdownTask = null;
+            }
+        };
+        countdownTask.runTaskTimer(plugin, 0L, 20L);
     }
 
     public boolean cancelRegistration(boolean announce) {
         boolean had = registering || !registered.isEmpty();
         registering = false;
         registered.clear();
+        waitingEndMillis = 0L;
+        if (registrationStartTask != null) {
+            try { registrationStartTask.cancel(); } catch (Throwable ignored) {}
+            registrationStartTask = null;
+        }
         return had;
     }
 
     public boolean cancelRace() {
-        boolean was = running;
+        return stop(true);
+    }
+
+    /**
+     * Stop ANY active state (registering / countdown / running) and clean up:
+     * - remove plugin-spawned boats
+     * - reset all runtime state
+     * - teleport affected players back to their world spawn
+     */
+    public boolean stop(boolean teleportToSpawn) {
+        boolean wasRunning = running;
+        boolean wasRegistering = registering;
+        boolean wasCountdown = countdownEndMillis > System.currentTimeMillis();
+        boolean hadAny = wasRunning || wasRegistering || wasCountdown || !registered.isEmpty() || !participants.isEmpty() || !countdownPlayers.isEmpty();
+
+        // Snapshot players to clean up before wiping state.
+        java.util.Set<UUID> toCleanup = new java.util.HashSet<>();
+        toCleanup.addAll(registered);
+        toCleanup.addAll(participants.keySet());
+        toCleanup.addAll(countdownPlayers);
+
+        // Stop scheduled tasks first.
+        if (registrationStartTask != null) {
+            try { registrationStartTask.cancel(); } catch (Throwable ignored) {}
+            registrationStartTask = null;
+        }
+        if (countdownTask != null) {
+            try { countdownTask.cancel(); } catch (Throwable ignored) {}
+            countdownTask = null;
+        }
+        stopRaceTicker();
+
+        // Reset state flags.
         running = false;
-        return was;
+        registering = false;
+        countdownEndMillis = 0L;
+        waitingEndMillis = 0L;
+        raceStartMillis = 0L;
+
+        // Clean up entities/players.
+        cleanupPlayers(toCleanup, teleportToSpawn);
+
+        // Reset all runtime collections.
+        registered.clear();
+        participants.clear();
+        participantPlayers.clear();
+        countdownPlayers.clear();
+        spawnedBoatByPlayer.clear();
+        return hadAny || wasRunning || wasRegistering;
+    }
+
+    private NamespacedKey spawnedBoatKey() {
+        try {
+            if (plugin == null) return null;
+            return new NamespacedKey(plugin, "boatracing_spawned_boat");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private void markSpawnedBoat(Entity e) {
+        if (e == null) return;
+        NamespacedKey key = spawnedBoatKey();
+        if (key == null) return;
+        try { e.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1); } catch (Throwable ignored) {}
+    }
+
+    private boolean isSpawnedBoat(Entity e) {
+        if (e == null) return false;
+        if (!(e instanceof Boat) && !(e instanceof ChestBoat)) return false;
+        NamespacedKey key = spawnedBoatKey();
+        if (key == null) return false;
+        try { return e.getPersistentDataContainer().has(key, PersistentDataType.BYTE); }
+        catch (Throwable ignored) { return false; }
+    }
+
+    private void cleanupPlayers(java.util.Set<UUID> ids, boolean teleportToSpawn) {
+        if (plugin == null || ids == null || ids.isEmpty()) return;
+        for (UUID id : ids) {
+            if (id == null) continue;
+            Player p = null;
+            try { p = plugin.getServer().getPlayer(id); } catch (Throwable ignored) {}
+            if (p == null || !p.isOnline()) continue;
+
+            // Remove their spawned boat if we have a handle.
+            UUID boatId = spawnedBoatByPlayer.get(id);
+            if (boatId != null) {
+                try {
+                    Entity ent = plugin.getServer().getEntity(boatId);
+                    if (ent != null && isSpawnedBoat(ent)) {
+                        try { ent.eject(); } catch (Throwable ignored) {}
+                        try { ent.remove(); } catch (Throwable ignored) {}
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            // If player is still in a spawned boat, remove it too.
+            try {
+                Entity veh = p.getVehicle();
+                if (veh != null) {
+                    if (isSpawnedBoat(veh)) {
+                        try { veh.eject(); } catch (Throwable ignored) {}
+                        try { veh.remove(); } catch (Throwable ignored) {}
+                    } else {
+                        try { p.leaveVehicle(); } catch (Throwable ignored) {}
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            if (teleportToSpawn) {
+                try {
+                    org.bukkit.Location spawn = p.getWorld() != null ? p.getWorld().getSpawnLocation() : null;
+                    if (spawn != null) p.teleport(spawn);
+                    p.setFallDistance(0f);
+                } catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    private void startRaceTicker() {
+        stopRaceTicker();
+        raceTickTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                if (!running) { cancel(); return; }
+                boolean anyActive = false;
+                for (var e : participantPlayers.entrySet()) {
+                    Player p = e.getValue();
+                    if (p == null || !p.isOnline()) continue;
+                    ParticipantState st = participants.get(e.getKey());
+                    if (st == null || st.finished) continue;
+                    anyActive = true;
+                    try {
+                        org.bukkit.entity.Entity veh = p.getVehicle();
+                        org.bukkit.Location loc = (veh != null ? veh.getLocation() : p.getLocation());
+                        tickPlayer(p, null, loc);
+                    } catch (Throwable ignored) {}
+                }
+                if (!anyActive) {
+                    cancel();
+                }
+            }
+
+            @Override
+            public synchronized void cancel() throws IllegalStateException {
+                super.cancel();
+                if (raceTickTask == this) raceTickTask = null;
+            }
+        };
+        raceTickTask.runTaskTimer(plugin, 1L, 1L);
+    }
+
+    private void stopRaceTicker() {
+        BukkitRunnable t = raceTickTask;
+        raceTickTask = null;
+        if (t != null) {
+            try { t.cancel(); } catch (Throwable ignored) {}
+        }
     }
 
     public java.util.Set<UUID> getParticipants() { return java.util.Collections.unmodifiableSet(registered); }
@@ -617,16 +927,44 @@ public class RaceManager {
             double d = node.distanceSquared(pos);
             if (d < best) { best = d; bestIdx = i; }
         }
+
+        // If we failed to find a close match in the local window (e.g., after lap wrap), do a full scan.
+        // Threshold: 64 blocks squared.
+        if (best > (64.0 * 64.0)) {
+            for (int i = 0; i < n; i++) {
+                org.bukkit.Location node = path.get(i);
+                if (node.getWorld() == null || !node.getWorld().equals(w)) continue;
+                double d = node.distanceSquared(pos);
+                if (d < best) { best = d; bestIdx = i; }
+            }
+        }
         return bestIdx;
     }
 
     private double normalizedIndexClamped(ParticipantState s) {
         if (!pathReady || path.isEmpty()) return 0.0;
         int idx = Math.max(0, Math.min(s.lastPathIndex, path.size() - 1));
-        // Clamp upper bound to next gate to avoid showing progress beyond next checkpoint
+        // Clamp upper bound to next gate to avoid showing progress beyond next checkpoint.
+        // IMPORTANT: Handle wrap-around (e.g. finish near start) where nextGate index may be < prevGate.
         int nextGate = (gateIndex == null || gateIndex.length == 0) ? (path.size() - 1)
                 : (s.nextCheckpointIndex < gateIndex.length ? gateIndex[s.nextCheckpointIndex] : path.size() - 1);
-        if (idx > nextGate) idx = nextGate;
+        int prevGate = 0;
+        if (gateIndex != null && gateIndex.length > 0 && s.nextCheckpointIndex > 0) {
+            int pi = Math.min(s.nextCheckpointIndex - 1, gateIndex.length - 1);
+            prevGate = gateIndex[pi];
+        }
+
+        if (prevGate <= nextGate) {
+            if (idx > nextGate) idx = nextGate;
+        } else {
+            // Segment wraps around end->start. Valid indices are [prevGate..end] U [0..nextGate].
+            // If we are in the "gap" (nextGate..prevGate), clamp to nearest boundary.
+            if (idx > nextGate && idx < prevGate) {
+                int dToNext = idx - nextGate;
+                int dToPrev = prevGate - idx;
+                idx = (dToNext <= dToPrev) ? nextGate : prevGate;
+            }
+        }
         return (path.size() <= 1) ? 0.0 : ((double) idx) / (double) (path.size() - 1);
     }
 

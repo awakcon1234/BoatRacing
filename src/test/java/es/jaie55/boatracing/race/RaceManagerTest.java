@@ -24,7 +24,13 @@ public class RaceManagerTest {
         rm.checkpointReached(u, 0);
         assertEquals(0, rm.getParticipantState(u).currentLap);
         rm.checkpointReached(u, 1);
-        // should have completed a lap
+
+        // last checkpoint reached -> waiting for finish
+        assertEquals(0, rm.getParticipantState(u).currentLap);
+        assertTrue(rm.getParticipantState(u).awaitingFinish);
+
+        // crossing finish completes the lap
+        rm.finishCrossedForTests(u);
         assertEquals(1, rm.getParticipantState(u).currentLap);
     }
 
