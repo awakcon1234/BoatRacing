@@ -271,7 +271,7 @@ public class ScoreboardService {
 
         String tpl = cfgString(
                 "scoreboard.actionbar.completed",
-            "<gold>#%finish_pos%</gold> %racer_display% <gray>•</gray> <white>%finish_time%</white> <gray>•</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
+            "<gold>#%finish_pos%</gold> %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
         );
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         ph.put("racer_name", p.getName());
@@ -415,8 +415,8 @@ public class ScoreboardService {
                         ? "scoreboard.templates.ended.winner_line"
                         : "scoreboard.templates.ended.delta_line";
                 String def = (s.finishPosition == 1 || delta == 0L)
-                    ? "<gold>#%finish_pos%</gold> %racer_display% <gray>•</gray> <white>%finish_time%</white>"
-                    : "<yellow>#%finish_pos%</yellow> %racer_display% <gray>•</gray> <white>+%delta_time%</white>";
+                    ? "<gold>#%finish_pos%</gold> %racer_display% <gray>●</gray> <white>%finish_time%</white>"
+                    : "<yellow>#%finish_pos%</yellow> %racer_display% <gray>●</gray> <white>+%delta_time%</white>";
                 lines.add(parse(p, cfgString(key, def), ph));
             }
 
@@ -500,7 +500,7 @@ public class ScoreboardService {
     // --- ActionBar support ---
     private void applyActionBarForWaiting(Player p, RaceManager rm) {
         if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
-        String tpl = cfgString("scoreboard.actionbar.waiting", "<yellow>Start in <white>%countdown%</white> • <gray>%joined%/%max%</gray>");
+        String tpl = cfgString("scoreboard.actionbar.waiting", "<yellow>Start in <white>%countdown%</white> ● <gray>%joined%/%max%</gray>");
         int countdown = rm.getCountdownRemainingSeconds();
         int joined = rm.getRegistered().size();
         int max = rm.getTrackConfig().getStarts().size();
@@ -567,7 +567,7 @@ public class ScoreboardService {
             if (pm != null) return pm.formatRacerMini(id, name);
         } catch (Throwable ignored) {}
         String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
-        return "<white>• - " + n;
+        return "<white>● - " + n;
     }
 
     private static String fmt2(double v) {

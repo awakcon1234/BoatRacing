@@ -90,7 +90,15 @@ public class ProfileGUI implements Listener {
             String icon = prof.icon == null ? "" : prof.icon;
             String num = prof.number > 0 ? ("#" + prof.number) : "(chưa có số)";
             String boat = (prof.boatType==null || prof.boatType.isEmpty()) ? "(mặc định)" : prettyMat(prof.boatType);
-            im.displayName(Text.item("&f&lXem trước"));
+
+            String racerDisplay = null;
+            try {
+                PlayerProfileManager pm = plugin.getProfileManager();
+                if (pm != null) racerDisplay = pm.formatRacerLegacy(p.getUniqueId(), p.getName());
+            } catch (Throwable ignored) {}
+            if (racerDisplay == null || racerDisplay.isBlank()) racerDisplay = "&f" + p.getName();
+            im.displayName(Text.item(racerDisplay));
+
             List<String> lore = new ArrayList<>();
             lore.add("&7Màu: &f" + prof.color.name());
             lore.add("&7Số: &f" + num);

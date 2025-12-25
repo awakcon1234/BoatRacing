@@ -611,7 +611,7 @@
 
     private void openTeamView(Player p, Team team) {
     int size = 36; // more space to arrange buttons clearly
-    Inventory inv = Bukkit.createInventory(null, size, Text.title("Đội • " + team.getName()));
+    Inventory inv = Bukkit.createInventory(null, size, Text.title("Đội ● " + team.getName()));
 
         // Header banner with team info
         ItemStack header = new ItemStack(bannerForColor(team.getColor()));

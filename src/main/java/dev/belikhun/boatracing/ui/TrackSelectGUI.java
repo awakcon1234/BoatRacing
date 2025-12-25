@@ -90,8 +90,8 @@ public class TrackSelectGUI implements Listener {
         } else {
             mat = Material.FILLED_MAP;
             lore.add("&aSẵn sàng để thi đấu");
-            lore.add("&7• &fNhấp trái&7: &aTham gia đăng ký");
-            lore.add("&7• &fNhấp phải&7: &eXem trạng thái");
+            lore.add("&7● &fNhấp trái&7: &aTham gia đăng ký");
+            lore.add("&7● &fNhấp phải&7: &eXem trạng thái");
         }
 
         ItemStack it = new ItemStack(mat);

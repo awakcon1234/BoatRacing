@@ -605,7 +605,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                         Text.tell(p, running ? "&aĐang chạy &7(Tham gia: &f" + participants + "&7)" : "&7Không có cuộc đua đang chạy.");
                         Text.tell(p, registering ? "&eĐăng ký mở &7(Đã đăng ký: &f" + regs + "&7)" : "&7Đăng ký đóng.");
                         Text.tell(p, "&7Số vòng: &f" + laps);
-                        Text.tell(p, "&7Vị trí bắt đầu: &f" + starts + " &8• &7Đèn xuất phát: &f" + lights + "/5 &8• &7Vạch kết thúc: &f" + (hasFinish?"có":"không"));
+                        Text.tell(p, "&7Vị trí bắt đầu: &f" + starts + " &8● &7Đèn xuất phát: &f" + lights + "/5 &8● &7Vạch kết thúc: &f" + (hasFinish?"có":"không"));
                         Text.tell(p, "&7Điểm checkpoint: &f" + cps);
                         // pit mechanic removed
                         if (ready) {

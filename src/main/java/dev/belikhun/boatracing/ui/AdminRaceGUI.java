@@ -122,7 +122,7 @@ public class AdminRaceGUI implements Listener {
             lore.add(running ? "&aĐang chạy &7(Tham gia: &f" + participants + "&7)" : "&7Không có cuộc đua đang chạy.");
             lore.add(registering ? "&eĐăng ký mở &7(Đã đăng ký: &f" + regs + "&7)" : "&7Đăng ký đóng.");
             lore.add("&7Số vòng: &f" + laps);
-            lore.add("&7Bắt đầu: &f" + starts + " &8• &7Đèn: &f" + lights + "/5 &8• &7Đích: &f" + (hasFinish?"có":"không") + " &8• &7Pit: &f" + (hasPit?"có":"không"));
+            lore.add("&7Bắt đầu: &f" + starts + " &8● &7Đèn: &f" + lights + "/5 &8● &7Đích: &f" + (hasFinish?"có":"không") + " &8● &7Pit: &f" + (hasPit?"có":"không"));
             lore.add("&7Checkpoints: &f" + cps);
             // pit mechanic removed
             lore.add(" ");

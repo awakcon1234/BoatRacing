@@ -30,8 +30,25 @@
 
 ## Language / localization (project rule)
 - All **player-facing text must be Vietnamese** (chat messages, GUI titles, item names/lore, ActionBar/Title, scoreboard templates).
+  - Player-facing messages should look **professional** and consistent.
+  - Formatting is allowed and encouraged where appropriate (colors, bold, italic, underline, etc.).
+  - Using supported Unicode icons in messages is encouraged (but follow the Minecraft-safe symbol policy below).
   - Prefer existing helpers like `Text.msg(...)`, `Text.item(...)`, `Text.title(...)` and the MiniMessage templates in `config.yml`.
   - Console logs can be English, but anything a player can see must not be.
+
+## UI text consistency rules (must-follow)
+- **Minecraft-safe symbols only** (avoid lookalikes that render inconsistently):
+  - Bullet/separator: `●` (do not use `•`)
+  - Success check: `✔` (do not use `✅`, `✓`)
+  - Error/deny cross: `❌` (do not use `✖`, `✗`, `✘`)
+  - Info: `ℹ`
+  - Waiting/countdown: `⌛` (do not use `⏳`)
+- **Racer display format is standardized** everywhere a player sees it:
+  - Format: `<color><icon> <number> <name>`
+  - Prefer using the centralized helpers in `PlayerProfileManager`:
+    - `formatRacerMini(UUID, String)` for MiniMessage strings (scoreboard/actionbar/templates)
+    - `formatRacerLegacy(UUID, String)` for legacy `&` colored strings (chat/item names)
+  - In templates, prefer `%racer_display%` instead of manually concatenating `%racer_name%`, `%icon%`, `%number%`.
 
 ## Developer workflows (Windows)
 - Build: `.\gradlew.bat clean build`

@@ -915,7 +915,7 @@ public class RaceManager {
 
     private void notifyCheckpointPassed(Player p, int passed, int total) {
         try {
-            var sub = net.kyori.adventure.text.Component.text("✅ Điểm kiểm tra " + passed + "/" + total)
+            var sub = net.kyori.adventure.text.Component.text("✔ Điểm kiểm tra " + passed + "/" + total)
                     .color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
             p.showTitle(net.kyori.adventure.title.Title.title(
                     net.kyori.adventure.text.Component.empty(),
@@ -1041,16 +1041,16 @@ public class RaceManager {
         catch (Throwable ignored) { cps = 0; }
 
         // 10 lines total (Minecraft default chat height).
-        Text.tell(p, "&6&l┏━━━━━━━━━━━━━━━ &e🏁 KẾT QUẢ &6&l━━━━━━━━━━━━━━━┓");
-        Text.tell(p, "&eHạng: &f#" + place + "&7/&f" + racersTotal + "   &8•   &eThời gian: &f" + fmtMs(finalMs));
-        Text.tell(p, "&eThời gian thực: &f" + fmtMs(rawMs) + "   &8•   &ePhạt: &c+" + fmtMs(penaltyMs));
+        Text.tell(p, "&6&l┏━━━━━━━━━━━━━━━━━━━━━━ &eKẾT QUẢ &6&l━━━━━━━━━━━━━━━━━━━━━━┓");
+        Text.tell(p, "&eHạng: &f#" + place + "&7/&f" + racersTotal + "   &8●   &eThời gian: &f" + fmtMs(finalMs));
+        Text.tell(p, "&eThời gian thực: &f" + fmtMs(rawMs) + "   &8●   &ePhạt: &c+" + fmtMs(penaltyMs));
         Text.tell(p, "&eĐường đua: &f" + track);
-        Text.tell(p, "&eVòng: &f" + getTotalLaps() + "/" + getTotalLaps() + "   &8•   &eCheckpoint: &f" + cps + "&7/vòng");
+        Text.tell(p, "&eVòng: &f" + getTotalLaps() + "/" + getTotalLaps() + "   &8●   &eCheckpoint: &f" + cps + "&7/vòng");
         Text.tell(p, "&eQuãng đường: &f" + fmt1(dist) + "&7m");
         Text.tell(p, "&eTốc độ TB: &f" + fmt2(avgBps) + "&7 bps &8(≈ &f" + fmt2(avgKmh) + "&7 km/h)");
         Text.tell(p, "&eTB mỗi vòng: &f" + fmtMs(avgLapMs));
         Text.tell(p, "&7Gợi ý: &f/boatracing profile &7để chỉnh màu/số/biểu tượng.");
-        Text.tell(p, "&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+        Text.tell(p, "&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
     }
 
     private void setAllInvolvedSpectator() {

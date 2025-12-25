@@ -44,7 +44,7 @@ public class PlayerProfileManager {
         if (id == null) return fallbackRacerMini(name);
         Profile p = get(id);
         String n = (name == null || name.isBlank()) ? shortId(id) : name;
-        String icon = (p.icon == null || p.icon.isBlank()) ? "•" : p.icon;
+        String icon = (p.icon == null || p.icon.isBlank()) ? "●" : p.icon;
         String number = (p.number > 0) ? String.valueOf(p.number) : "-";
         return miniColorTag(p.color) + icon + " " + number + " " + n;
     }
@@ -57,19 +57,19 @@ public class PlayerProfileManager {
         if (id == null) return fallbackRacerLegacy(name);
         Profile p = get(id);
         String n = (name == null || name.isBlank()) ? shortId(id) : name;
-        String icon = (p.icon == null || p.icon.isBlank()) ? "•" : p.icon;
+        String icon = (p.icon == null || p.icon.isBlank()) ? "●" : p.icon;
         String number = (p.number > 0) ? String.valueOf(p.number) : "-";
         return legacyColorCode(p.color) + icon + " " + number + " " + n;
     }
 
     private static String fallbackRacerMini(String name) {
         String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
-        return "<white>• - " + n;
+        return "<white>● - " + n;
     }
 
     private static String fallbackRacerLegacy(String name) {
         String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
-        return "&f• - " + n;
+        return "&f● - " + n;
     }
 
     private static String shortId(UUID id) {
