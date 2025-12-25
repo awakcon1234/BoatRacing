@@ -64,6 +64,18 @@ public class RaceManager {
     private BukkitRunnable countdownTask;
     private BukkitRunnable countdownFreezeTask;
     private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
+    private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
+    // NOTE: We intentionally do not use Boat physics setters (maxSpeed/deceleration/workOnLand)
+    // because they are deprecated in modern Paper. Countdown freezing is enforced via snapping.
+
+    private static final class PreferredBoatData {
+        final boolean chest;
+        final String baseType; // Boat.Type name (e.g. OAK, SPRUCE, BAMBOO)
+        PreferredBoatData(boolean chest, String baseType) {
+            this.chest = chest;
+            this.baseType = baseType;
+        }
+    }
 
     // Debug helpers
     private boolean debugTeleport() {
@@ -74,6 +86,61 @@ public class RaceManager {
         try { return plugin != null && plugin.getConfig().getBoolean("racing.debug.checkpoints", false); }
         catch (Throwable ignored) { return false; }
     }
+
+    private boolean debugCountdownFreeze() {
+        try { return plugin != null && plugin.getConfig().getBoolean("racing.debug.countdown-freeze", false); }
+        catch (Throwable ignored) { return false; }
+    }
+
+    private PreferredBoatData resolvePreferredBoat(UUID id) {
+        if (id == null) return new PreferredBoatData(false, null);
+        if (!(plugin instanceof es.jaie55.boatracing.BoatRacingPlugin br) || br.getProfileManager() == null) {
+            return new PreferredBoatData(false, null);
+        }
+        String bt;
+        try { bt = br.getProfileManager().getBoatType(id); }
+        catch (Throwable ignored) { bt = null; }
+
+        if (bt == null || bt.isBlank()) return new PreferredBoatData(false, null);
+
+        Material pref = null;
+        try {
+            String norm = bt.trim().toUpperCase(java.util.Locale.ROOT);
+            try { pref = Material.valueOf(norm); } catch (IllegalArgumentException ignored) { pref = null; }
+            if (pref == null) pref = Material.matchMaterial(bt);
+        } catch (Throwable ignored) { pref = null; }
+
+        boolean chest = false;
+        String base = null;
+
+        if (pref != null) {
+            chest = pref.name().endsWith("_CHEST_BOAT") || pref.name().endsWith("_CHEST_RAFT");
+            base = pref.name()
+                    .replace("_CHEST_BOAT", "").replace("_BOAT", "")
+                    .replace("_CHEST_RAFT", "").replace("_RAFT", "");
+        } else {
+            // Back-compat: accept older stored values like "OAK" or "SPRUCE".
+            String norm = bt.trim().toUpperCase(java.util.Locale.ROOT);
+            chest = norm.endsWith("_CHEST_BOAT") || norm.endsWith("_CHEST_RAFT") || norm.contains("CHEST_BOAT") || norm.contains("CHEST_RAFT");
+            try { base = org.bukkit.entity.Boat.Type.valueOf(norm).name(); }
+            catch (IllegalArgumentException ignored) { base = null; }
+        }
+
+        return new PreferredBoatData(chest, base);
+    }
+
+    private static float absAngleDelta(float a, float b) {
+        float d = (a - b) % 360.0f;
+        if (d > 180.0f) d -= 360.0f;
+        if (d < -180.0f) d += 360.0f;
+        return Math.abs(d);
+    }
+
+    private void restoreCountdownBoatPhysics() {
+        // Kept for compatibility with existing call sites; no-op (see note above).
+    }
+
+    // (NMS force snap moved to util.EntityForceTeleport)
     private void dbg(String msg) {
         try { if (plugin != null) plugin.getLogger().info(msg); } catch (Throwable ignored) {}
     }
@@ -204,20 +271,9 @@ public class RaceManager {
         try {
             Location target = p.getLocation().clone();
 
-            Material pref = null;
-            try {
-                if (plugin instanceof es.jaie55.boatracing.BoatRacingPlugin br && br.getProfileManager() != null) {
-                    String bt = br.getProfileManager().getBoatType(id);
-                    if (bt != null && !bt.isBlank()) {
-                        try { pref = Material.valueOf(bt); } catch (IllegalArgumentException ignored) {
-                            pref = Material.matchMaterial(bt);
-                        }
-                    }
-                }
-            } catch (Throwable ignored) { pref = null; }
 
-            boolean chest = pref != null && (pref.name().endsWith("_CHEST_BOAT") || pref.name().endsWith("_CHEST_RAFT"));
-            EntityType spawnType = chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
+            PreferredBoatData pref = resolvePreferredBoat(id);
+            EntityType spawnType = pref.chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
             var ent = (target.getWorld() != null ? target.getWorld() : p.getWorld()).spawnEntity(target, spawnType);
 
             try {
@@ -225,12 +281,8 @@ public class RaceManager {
                 spawnedBoatByPlayer.put(id, ent.getUniqueId());
             } catch (Throwable ignored) {}
 
-            String base = null;
-            if (pref != null) {
-                base = pref.name();
-                base = base.replace("_CHEST_BOAT", "").replace("_BOAT", "")
-                           .replace("_CHEST_RAFT", "").replace("_RAFT", "");
-            }
+
+            String base = pref.baseType;
             if (ent instanceof Boat b) {
                 if (base != null) {
                     try { b.setBoatType(Boat.Type.valueOf(base)); } catch (Throwable ignored) {}
@@ -567,12 +619,12 @@ public class RaceManager {
 
     private void notifyCheckpointPassed(Player p, int passed, int total) {
         try {
-            var sub = net.kyori.adventure.text.Component.text("Checkpoint " + passed + "/" + total)
+            var sub = net.kyori.adventure.text.Component.text("Điểm kiểm tra " + passed + "/" + total)
                     .color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
             p.showTitle(net.kyori.adventure.title.Title.title(
                     net.kyori.adventure.text.Component.empty(),
                     sub,
-                    net.kyori.adventure.title.Title.Times.of(
+                net.kyori.adventure.title.Title.Times.times(
                             java.time.Duration.ofMillis(100),
                             java.time.Duration.ofMillis(700),
                             java.time.Duration.ofMillis(200)
@@ -588,7 +640,7 @@ public class RaceManager {
             p.showTitle(net.kyori.adventure.title.Title.title(
                     net.kyori.adventure.text.Component.empty(),
                     sub,
-                    net.kyori.adventure.title.Title.Times.of(
+                net.kyori.adventure.title.Title.Times.times(
                             java.time.Duration.ofMillis(100),
                             java.time.Duration.ofMillis(900),
                             java.time.Duration.ofMillis(250)
@@ -792,7 +844,8 @@ public class RaceManager {
         int slot = 0;
         for (Player p : participants) {
             if (slot >= starts.size()) break; // no more slots
-            Location target = starts.get(slot).clone();
+            Location boatSpawn = starts.get(slot).clone();
+            Location target = boatSpawn.clone();
             try {
                 // Always dismount the player first.
                 // If they are in one of our spawned boats (e.g. restart), remove it; otherwise, just eject.
@@ -807,26 +860,14 @@ public class RaceManager {
                     }
                 } catch (Throwable ignored) {}
 
-                // teleport player slightly above block
+                // teleport player slightly above the boat spawn to avoid clipping
                 target.setY(target.getY() + 1.0);
                 p.teleport(target);
 
-                // Spawn a boat matching player's preference (ProfileGUI). Default is OAK.
-                Material pref = null;
-                try {
-                    if (plugin instanceof es.jaie55.boatracing.BoatRacingPlugin br && br.getProfileManager() != null) {
-                        String bt = br.getProfileManager().getBoatType(p.getUniqueId());
-                        if (bt != null && !bt.isBlank()) {
-                            try { pref = Material.valueOf(bt); } catch (IllegalArgumentException ignored) {
-                                pref = Material.matchMaterial(bt);
-                            }
-                        }
-                    }
-                } catch (Throwable ignored) { pref = null; }
-
-                boolean chest = pref != null && (pref.name().endsWith("_CHEST_BOAT") || pref.name().endsWith("_CHEST_RAFT"));
-                EntityType spawnType = chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
-                var ent = (target.getWorld() != null ? target.getWorld() : p.getWorld()).spawnEntity(target, spawnType);
+                PreferredBoatData pref = resolvePreferredBoat(p.getUniqueId());
+                EntityType spawnType = pref.chest ? EntityType.CHEST_BOAT : EntityType.BOAT;
+                var spawnWorld = (boatSpawn.getWorld() != null ? boatSpawn.getWorld() : p.getWorld());
+                var ent = spawnWorld.spawnEntity(boatSpawn, spawnType);
 
                 try {
                     markSpawnedBoat(ent);
@@ -834,12 +875,7 @@ public class RaceManager {
                 } catch (Throwable ignored) {}
 
                 // Apply variant when possible.
-                String base = null;
-                if (pref != null) {
-                    base = pref.name();
-                    base = base.replace("_CHEST_BOAT", "").replace("_BOAT", "")
-                               .replace("_CHEST_RAFT", "").replace("_RAFT", "");
-                }
+                String base = pref.baseType;
                 if (ent instanceof Boat b) {
                     if (base != null) {
                         try { b.setBoatType(Boat.Type.valueOf(base)); } catch (Throwable ignored) {}
@@ -884,14 +920,38 @@ public class RaceManager {
 
         countdownPlayers.clear();
         countdownLockLocation.clear();
+        countdownDebugLastLog.clear();
+        restoreCountdownBoatPhysics();
         for (Player p : placed) {
             if (p != null) {
                 countdownPlayers.add(p.getUniqueId());
                 try {
                     org.bukkit.Location lock;
                     org.bukkit.entity.Entity veh = p.getVehicle();
-                    if (veh != null) lock = veh.getLocation().clone();
-                    else lock = p.getLocation().clone();
+                    if (veh != null) {
+                        lock = veh.getLocation().clone();
+                    } else {
+                        // Prefer the plugin-spawned boat entity (covers cases where seating isn't finished yet)
+                        lock = null;
+                        try {
+                            UUID boatId = spawnedBoatByPlayer.get(p.getUniqueId());
+                            if (boatId != null) {
+                                org.bukkit.entity.Entity e = Bukkit.getEntity(boatId);
+                                if (e != null) {
+                                    lock = e.getLocation().clone();
+                                }
+                            }
+                        } catch (Throwable ignored) {}
+                        if (lock == null) lock = p.getLocation().clone();
+                    }
+
+                    // Always lock yaw/pitch to the player's facing direction at countdown start.
+                    try {
+                        org.bukkit.Location facing = p.getLocation();
+                        lock.setYaw(facing.getYaw());
+                        lock.setPitch(facing.getPitch());
+                    } catch (Throwable ignored) {}
+
                     countdownLockLocation.put(p.getUniqueId(), lock);
                 } catch (Throwable ignored) {}
             }
@@ -924,6 +984,8 @@ public class RaceManager {
                     }
                     countdownPlayers.clear();
                     countdownLockLocation.clear();
+                    countdownDebugLastLog.clear();
+                    restoreCountdownBoatPhysics();
 
                     participants.clear();
                     participantPlayers.clear();
@@ -945,10 +1007,10 @@ public class RaceManager {
 
                     for (Player p : placed) {
                         try {
-                            var title = net.kyori.adventure.text.Component.text("GO!").color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
+                            var title = net.kyori.adventure.text.Component.text("BẮT ĐẦU!").color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
                             var sub = net.kyori.adventure.text.Component.text("● ● ●").color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
                             p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
-                                    net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
+                                    net.kyori.adventure.title.Title.Times.times(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
                             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
                         } catch (Throwable ignored) {}
                     }
@@ -988,7 +1050,7 @@ public class RaceManager {
                                     .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.GREEN));
                         }
                         p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
-                                net.kyori.adventure.title.Title.Times.of(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
+                                net.kyori.adventure.title.Title.Times.times(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
                         if (sec == 3) {
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 0.90f);
                         } else if (sec == 2) {
@@ -1019,6 +1081,9 @@ public class RaceManager {
                 if (running) { cancel(); return; }
                 if (countdownTask == null || countdownPlayers.isEmpty()) { cancel(); return; }
 
+                boolean dbg = debugCountdownFreeze();
+                long now = dbg ? System.currentTimeMillis() : 0L;
+
                 for (UUID id : new java.util.ArrayList<>(countdownPlayers)) {
                     Player p = Bukkit.getPlayer(id);
                     if (p == null || !p.isOnline()) continue;
@@ -1028,12 +1093,66 @@ public class RaceManager {
                     try {
                         org.bukkit.entity.Entity v = p.getVehicle();
                         if (v instanceof org.bukkit.entity.Boat boat) {
+                            org.bukkit.Location before = dbg ? boat.getLocation() : null;
+
+                            // Ensure lock has a world (teleport returns false if lock world is null).
+                            if (lock.getWorld() == null) {
+                                try { lock.setWorld(boat.getWorld()); } catch (Throwable ignored) {}
+                            }
+
+                            // Stop velocity (prevents drift/false-start movement).
                             boat.setVelocity(new Vector(0, 0, 0));
+
                             // Always snap back to the fixed lock location (prevents TPS-lag inching).
-                            boat.teleport(lock);
+                            boolean tpOk;
+                            try {
+                                // Paper teleport flags: retaining passengers is default since 1.21.10, but explicit is fine.
+                                tpOk = boat.teleport(lock, io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
+                            } catch (Throwable t) {
+                                try { tpOk = boat.teleport(lock); } catch (Throwable ignored) { tpOk = false; }
+                            }
+                            boolean nmsOk = false;
+                            if (!tpOk) {
+                                try { nmsOk = es.jaie55.boatracing.util.EntityForceTeleport.nms(boat, lock); } catch (Throwable ignored) { nmsOk = false; }
+                            }
+                            // Re-zero in case teleport preserved any motion
+                            boat.setVelocity(new Vector(0, 0, 0));
+                            try { boat.setRotation(lock.getYaw(), lock.getPitch()); } catch (Throwable ignored) {}
+
+                            if (dbg) {
+                                Long prev = countdownDebugLastLog.get(id);
+                                if (prev == null || (now - prev) >= 1000L) {
+                                    countdownDebugLastLog.put(id, now);
+                                    org.bukkit.Location cur = (before != null ? before : boat.getLocation());
+                                    double dx = cur.getX() - lock.getX();
+                                    double dy = cur.getY() - lock.getY();
+                                    double dz = cur.getZ() - lock.getZ();
+                                    float dyaw = absAngleDelta(cur.getYaw(), lock.getYaw());
+                                    float dpitch = Math.abs(cur.getPitch() - lock.getPitch());
+                                    try {
+                                        String bw = (boat.getWorld() == null ? "?" : boat.getWorld().getName());
+                                        String lw = (lock.getWorld() == null ? "null" : lock.getWorld().getName());
+                                        boolean chunkLoaded = false;
+                                        try { chunkLoaded = lock.getWorld() != null && lock.getWorld().isChunkLoaded(lock.getBlockX() >> 4, lock.getBlockZ() >> 4); } catch (Throwable ignored2) {}
+                                        plugin.getLogger().info("[COUNTDOWN] track=" + (trackConfig == null ? "?" : trackConfig.getCurrentName())
+                                                + " player=" + p.getName()
+                                                + " tp=" + tpOk
+                                            + " nms=" + nmsOk
+                                                + " boatWorld=" + bw
+                                                + " lockWorld=" + lw
+                                                + " chunkLoaded=" + chunkLoaded
+                                                + " passengers=" + (boat.getPassengers() == null ? 0 : boat.getPassengers().size())
+                                                + " dPos=" + String.format(java.util.Locale.ROOT, "(%.4f,%.4f,%.4f)", dx, dy, dz)
+                                                + " dYaw=" + String.format(java.util.Locale.ROOT, "%.2f", dyaw)
+                                                + " dPitch=" + String.format(java.util.Locale.ROOT, "%.2f", dpitch)
+                                        );
+                                    } catch (Throwable ignored) {}
+                                }
+                            }
                         } else {
                             // Fallback: keep the player on the lock spot.
                             p.teleport(lock);
+                            try { p.setRotation(lock.getYaw(), lock.getPitch()); } catch (Throwable ignored) {}
                         }
                     } catch (Throwable ignored) {}
                 }
@@ -1107,6 +1226,9 @@ public class RaceManager {
         boolean wasRegistering = registering;
         boolean wasCountdown = countdownTask != null && !countdownPlayers.isEmpty();
         boolean hadAny = wasRunning || wasRegistering || wasCountdown || !registered.isEmpty() || !participants.isEmpty() || !countdownPlayers.isEmpty();
+
+        // If we were freezing boats during countdown, restore physics regardless of how we stop.
+        try { restoreCountdownBoatPhysics(); } catch (Throwable ignored) {}
 
         // Snapshot players to clean up before wiping state.
         java.util.Set<UUID> toCleanup = new java.util.HashSet<>();
@@ -1460,6 +1582,9 @@ public class RaceManager {
         ids.sort((a,b) -> {
             ParticipantState sa = participants.get(a);
             ParticipantState sb = participants.get(b);
+            if (sa == null && sb == null) return a.compareTo(b);
+            if (sa == null) return 1;
+            if (sb == null) return -1;
             boolean fa = sa != null && sa.finished;
             boolean fb = sb != null && sb.finished;
             if (fa && fb) {

@@ -11,9 +11,7 @@ import org.bukkit.plugin.Plugin;
  * Wand listener that responds to interactions with the selector stick.
  */
 public class WandListener implements Listener {
-    private final Plugin plugin;
     public WandListener(Plugin plugin) {
-        this.plugin = plugin;
     }
 
     @EventHandler(ignoreCancelled = true)

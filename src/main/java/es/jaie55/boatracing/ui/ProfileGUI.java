@@ -25,7 +25,6 @@ import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 public class ProfileGUI implements Listener {
@@ -307,25 +306,6 @@ public class ProfileGUI implements Listener {
                     return List.of(AnvilGUI.ResponseAction.close());
                 }
                 plugin.getProfileManager().setNumber(p.getUniqueId(), n);
-                Bukkit.getScheduler().runTask(plugin, () -> open(p));
-                return List.of(AnvilGUI.ResponseAction.close());
-            })
-            .open(p);
-    }
-
-    private void promptIcon(Player p) {
-        new AnvilGUI.Builder()
-            .plugin(plugin)
-            .title(Text.plain(Text.title("Nhập biểu tượng (Unicode)")))
-            .text("★")
-            .itemLeft(new ItemStack(Material.FLOWER_BANNER_PATTERN))
-            .onClick((slot, state) -> {
-                if (slot != AnvilGUI.Slot.OUTPUT) return List.of();
-                String input = state.getText() == null ? "" : state.getText().trim();
-                if (input.isEmpty()) input = "";
-                // limit to short icon (1-3 chars)
-                if (input.length() > 3) input = input.substring(0, 3);
-                plugin.getProfileManager().setIcon(p.getUniqueId(), input);
                 Bukkit.getScheduler().runTask(plugin, () -> open(p));
                 return List.of(AnvilGUI.ResponseAction.close());
             })

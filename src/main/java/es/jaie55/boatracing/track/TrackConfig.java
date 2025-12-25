@@ -80,7 +80,7 @@ public class TrackConfig {
             for (Object o : s) {
                 if (o instanceof org.bukkit.configuration.ConfigurationSection) continue;
                 if (o instanceof java.util.Map) {
-                    java.util.Map m = (java.util.Map)o;
+                    java.util.Map<?,?> m = (java.util.Map<?,?>) o;
                     try {
                         String w = (String)m.get("world");
                         if (w == null) w = this.worldName;
@@ -110,7 +110,7 @@ public class TrackConfig {
         if (ls != null) {
             for (Object o : ls) {
                 if (o instanceof java.util.Map) {
-                    java.util.Map m = (java.util.Map)o;
+                    java.util.Map<?,?> m = (java.util.Map<?,?>) o;
                     try {
                         String w = (String)m.get("world");
                         if (w == null) w = this.worldName;
@@ -172,7 +172,7 @@ public class TrackConfig {
         if (cl != null) {
             for (Object o : cl) {
                 if (o instanceof java.util.Map) {
-                    java.util.Map m = (java.util.Map) o;
+                    java.util.Map<?,?> m = (java.util.Map<?,?>) o;
                     try {
                         String w = (String) m.get("world");
                         if (w == null) w = this.worldName;
@@ -401,14 +401,13 @@ public class TrackConfig {
         return m;
     }
 
-    @SuppressWarnings({"rawtypes","unchecked"})
     private Region regionFromObject(Object obj) {
         if (obj == null) return null;
-        java.util.Map m = null;
+        java.util.Map<?,?> m = null;
         if (obj instanceof org.bukkit.configuration.ConfigurationSection cs) {
             m = cs.getValues(false);
         } else if (obj instanceof java.util.Map) {
-            m = (java.util.Map) obj;
+            m = (java.util.Map<?,?>) obj;
         }
         if (m == null) return null;
         try {

@@ -11,6 +11,8 @@ racing:
   debug:
     teleport: false
     checkpoints: false
+    # Logs per-second drift/rotation deltas during the 10s start countdown freeze.
+    countdown-freeze: false
   # Time penalty applied if a racer moves forward before the countdown ends (in seconds)
   false-start-penalty-seconds: 3.0
   # Enable/disable false start penalty during the light countdown

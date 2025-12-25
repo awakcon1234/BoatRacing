@@ -1,13 +1,13 @@
 # Copilot instructions (BoatRacing)
 
 ## Project context
-- This is a **PaperMC-only** plugin for boat racing. It targets **Java 21 only**. Entry point: [src/main/java/es/jaie55/boatracing/BoatRacingPlugin.java](src/main/java/es/jaie55/boatracing/BoatRacingPlugin.java).
+- This is a **PaperMC-only** plugin for boat racing. It targets **Java 21 only**. Entry point: [src/main/java/es/jaie55/boatracing/BoatRacingPlugin.java](../src/main/java/es/jaie55/boatracing/BoatRacingPlugin.java).
 - Tracks are persisted as YAML under the plugin data folder: `plugins/BoatRacing/tracks/<name>.yml` (see README for schema details).
 
 ## Big-picture architecture (how it actually works)
 - **Runtime racing is per-track**: multiple races can run concurrently, keyed by track name.
-  - Orchestrator: [src/main/java/es/jaie55/boatracing/race/RaceService.java](src/main/java/es/jaie55/boatracing/race/RaceService.java) maps `trackName -> RaceManager` and `playerId -> trackName`.
-  - Single race instance: [src/main/java/es/jaie55/boatracing/race/RaceManager.java](src/main/java/es/jaie55/boatracing/race/RaceManager.java) owns the entire lifecycle for one track (registration, countdowns, running, finish/standings, cleanup).
+  - Orchestrator: [src/main/java/es/jaie55/boatracing/race/RaceService.java](../src/main/java/es/jaie55/boatracing/race/RaceService.java) maps `trackName -> RaceManager` and `playerId -> trackName`.
+  - Single race instance: [src/main/java/es/jaie55/boatracing/race/RaceManager.java](../src/main/java/es/jaie55/boatracing/race/RaceManager.java) owns the entire lifecycle for one track (registration, countdowns, running, finish/standings, cleanup).
 - **Track editing is separate from racing**:
   - Admin “current track” editing uses the plugin’s `TrackLibrary` + `TrackConfig` (selected track in GUI/commands).
   - A running race uses a `TrackConfig` loaded from disk when the `RaceManager` is created by `RaceService`. Don’t assume `plugin.getTrackConfig()` represents the race’s track.
@@ -23,7 +23,7 @@
   - If you add new gameplay listeners, avoid global singleton race state; always resolve the player’s race.
 
 ## UI/HUD patterns
-- Scoreboard + ActionBar is implemented in [src/main/java/es/jaie55/boatracing/ui/ScoreboardService.java](src/main/java/es/jaie55/boatracing/ui/ScoreboardService.java).
+- Scoreboard + ActionBar is implemented in [src/main/java/es/jaie55/boatracing/ui/ScoreboardService.java](../src/main/java/es/jaie55/boatracing/ui/ScoreboardService.java).
   - It is **per-player/per-race**: each online player is mapped to a `RaceManager` via `RaceService`; players not in a race have no sidebar/actionbar.
   - Track-dependent counts (starts/checkpoints) must use `rm.getTrackConfig()` rather than `plugin.getTrackConfig()`.
   - ScoreboardLibrary is optional; the plugin logs and continues if it is missing.
@@ -37,9 +37,9 @@
 - Build: `.\gradlew.bat clean build`
 - Run tests: `.\gradlew.bat test`
 - Useful files:
-  - Plugin config: [src/main/resources/config.yml](src/main/resources/config.yml)
-  - Plugin metadata: [src/main/resources/plugin.yml](src/main/resources/plugin.yml)
-  - Tests: [src/test/java/es/jaie55/boatracing](src/test/java/es/jaie55/boatracing)
+  - Plugin config: [src/main/resources/config.yml](../src/main/resources/config.yml)
+  - Plugin metadata: [src/main/resources/plugin.yml](../src/main/resources/plugin.yml)
+  - Tests: [src/test/java/es/jaie55/boatracing](../src/test/java/es/jaie55/boatracing)
 
 ## Making changes safely (project-specific)
 - When touching race logic, ensure you preserve:

@@ -140,7 +140,6 @@ public class AdminTracksGUI implements Listener {
         boolean hasFinish = cfg.getFinish() != null;
         boolean hasBounds = cfg.getBounds() != null;
         boolean hasWaitSpawn = cfg.getWaitingSpawn() != null;
-        boolean hasPit = cfg.getPitlane() != null; // mechanic disabled, still displayed for info
         int pathNodes = cfg.getCenterline().size();
         ItemStack it = new ItemStack(Material.PAPER);
         ItemMeta im = it.getItemMeta();

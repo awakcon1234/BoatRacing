@@ -1,7 +1,6 @@
 package es.jaie55.boatracing.track;
 
 import org.bukkit.*;
-import org.bukkit.block.Block;
 import org.bukkit.util.BoundingBox;
 
 import java.util.*;

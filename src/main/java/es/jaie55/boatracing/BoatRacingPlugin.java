@@ -6,7 +6,6 @@ import org.bukkit.command.CommandSender;
 // No TabExecutor needed: JavaPlugin already handles CommandExecutor and TabCompleter when overriding methods
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.io.InputStream;
@@ -36,8 +35,6 @@ public class BoatRacingPlugin extends JavaPlugin {
     private es.jaie55.boatracing.race.RaceService raceService;
     private SetupWizard setupWizard;
     private es.jaie55.boatracing.ui.AdminTracksGUI tracksGUI;
-    // Last latest-version announced in console due to 5-minute silent checks (to avoid duplicate prints)
-    private volatile String lastConsoleAnnouncedVersion = null;
     // Plugin metadata (avoid deprecated getDescription())
     private String pluginVersion = "unknown";
     private java.util.List<String> pluginAuthors = java.util.Collections.emptyList();
@@ -160,15 +157,29 @@ public class BoatRacingPlugin extends JavaPlugin {
                 }
                 if (!hasCountdownRacer) return;
 
-                if (from.getWorld() != null && to.getWorld() != null && from.getWorld().equals(to.getWorld())) {
-                    double dx = to.getX() - from.getX();
-                    double dz = to.getZ() - from.getZ();
-                    if ((dx * dx + dz * dz) < 0.0001) return;
-                }
-
                 try {
-                    boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
-                    boat.teleport(lock != null ? lock : from);
+                    org.bukkit.Location target = (lock != null ? lock : from);
+                    if (target != null) {
+                        // Ensure lock has a world; Bukkit teleport returns false if world is null.
+                        try {
+                            if (target.getWorld() == null) target.setWorld(boat.getWorld());
+                        } catch (Throwable ignored) {}
+
+                        boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+
+                        boolean tpOk;
+                        try {
+                            tpOk = boat.teleport(target, io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
+                        } catch (Throwable t) {
+                            try { tpOk = boat.teleport(target); } catch (Throwable ignored) { tpOk = false; }
+                        }
+                        if (!tpOk) {
+                            try { es.jaie55.boatracing.util.EntityForceTeleport.nms(boat, target); } catch (Throwable ignored) {}
+                        }
+
+                        boat.setVelocity(new org.bukkit.util.Vector(0, 0, 0));
+                        try { boat.setRotation(target.getYaw(), target.getPitch()); } catch (Throwable ignored) {}
+                    }
                 } catch (Throwable ignored) {}
             }
         }, this);
@@ -552,7 +563,6 @@ public class BoatRacingPlugin extends JavaPlugin {
                         int lights = tc.getLights().size();
                         int cps = tc.getCheckpoints().size();
                         boolean hasFinish = tc.getFinish() != null;
-                        boolean hasPit = tc.getPitlane() != null; // pit mechanic removed
                         boolean ready = tc.isReady();
                         java.util.List<String> missing = ready ? java.util.Collections.emptyList() : tc.missingRequirements();
 
@@ -789,8 +799,6 @@ public class BoatRacingPlugin extends JavaPlugin {
                         int lights = trackConfig.getLights().size();
                         int cps = trackConfig.getCheckpoints().size();
                         boolean hasFinish = trackConfig.getFinish() != null;
-                        boolean hasPit = trackConfig.getPitlane() != null; // pit mechanic removed
-                        int teamPitCount = trackConfig.getTeamPits().size();
                         int customStarts = trackConfig.getCustomStartSlots().size();
                         Text.msg(p, "&eCấu hình đường đua:");
                         String tname = (getTrackLibrary() != null && getTrackLibrary().getCurrent() != null) ? getTrackLibrary().getCurrent() : "(unsaved)";
@@ -910,7 +918,7 @@ public class BoatRacingPlugin extends JavaPlugin {
             }
             if (args.length >= 2 && args[0].equalsIgnoreCase("setup")) {
                 if (!sender.hasPermission("boatracing.setup")) return Collections.emptyList();
-                if (args.length == 2) return Arrays.asList("help","addstart","clearstarts","pos1","pos2","setbounds","setwaitspawn","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
+                if (args.length == 2) return List.of("help","addstart","clearstarts","pos1","pos2","setbounds","setwaitspawn","setfinish","addcheckpoint","clearcheckpoints","addlight","clearlights","setpos","clearpos","show","selinfo","wand","wizard");
                 if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
                     // Suggest player names (online + known offline)
                     String prefName = args[2] == null ? "" : args[2].toLowerCase();

@@ -18,7 +18,6 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
 /**
@@ -125,19 +124,6 @@ public class AdminGUI implements Listener {
         if (im != null) {
             im.displayName(Component.text(" "));
             im.addItemFlags(ItemFlag.values());
-            it.setItemMeta(im);
-        }
-        return it;
-    }
-
-    private ItemStack button(Material mat, Component name, Action action) {
-        ItemStack it = new ItemStack(mat);
-        ItemMeta im = it.getItemMeta();
-        if (im != null) {
-            im.displayName(name);
-            im.addItemFlags(ItemFlag.values());
-            PersistentDataContainer pdc = im.getPersistentDataContainer();
-            pdc.set(KEY_ACTION, PersistentDataType.STRING, action.name());
             it.setItemMeta(im);
         }
         return it;

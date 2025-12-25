@@ -95,7 +95,8 @@ public class ScoreboardService {
             try {
                 RaceManager rm = raceService.findRaceFor(p.getUniqueId());
                 if (rm == null) {
-                    closeSidebar(p);
+                    setState(p, "LOBBY");
+                    applyLobbyBoard(p);
                     clearActionBar(p);
                     continue;
                 }
@@ -506,16 +507,6 @@ public class ScoreboardService {
         log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed(bps)=" + fmt2(bps) + " unit=" + unit);
     }
 
-    private void closeSidebar(Player p) {
-        if (p == null) return;
-        Sidebar s = sidebars.remove(p.getUniqueId());
-        if (s != null) {
-            try { s.close(); } catch (Throwable ignored) {}
-        }
-        lastCounts.remove(p.getUniqueId());
-        lastState.remove(p.getUniqueId());
-    }
-
     private static String fmt2(double v) {
         if (!Double.isFinite(v)) return "0.00";
         return String.format(Locale.US, "%.2f", v);
@@ -599,15 +590,7 @@ public class ScoreboardService {
     }
 
     private void sendActionBar(Player p, Component c) {
-        try {
-            // Preferred: Adventure-friendly API if available
-            p.sendActionBar(c);
-        } catch (Throwable t) {
-            try {
-                // Fallback to legacy spigot action bar
-                p.spigot().sendMessage(net.md_5.bungee.api.ChatMessageType.ACTION_BAR, net.md_5.bungee.api.chat.TextComponent.fromLegacyText(Text.plain(c)));
-            } catch (Throwable ignored) {}
-        }
+        try { p.sendActionBar(c); } catch (Throwable ignored) {}
     }
 
     private static String formatCountdownSeconds(int sec) {
