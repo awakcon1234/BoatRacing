@@ -55,7 +55,7 @@ racing:
     #
     # Common player placeholders (most contexts):
     #   %racer_name% %racer_display% %racer_color% %icon% %number%
-    # Lobby-only: %completed% %wins%
+    # Lobby-only: %completed% %wins% %time_raced%
     #
     # Waiting: %track% %laps% %joined% %max% %countdown%
     # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %progress% %progress_int% %checkpoint_passed% %checkpoint_total%
@@ -73,6 +73,7 @@ racing:
           - "<yellow>Thành tích"
           - "<gray>Hoàn thành: <white>%completed%"
           - "<gray>Chiến thắng: <white>%wins%"
+          - "<gray>Thời gian đã đua: <white>%time_raced%"
       waiting:
         title: "<gold>Đang chờ"
         lines:

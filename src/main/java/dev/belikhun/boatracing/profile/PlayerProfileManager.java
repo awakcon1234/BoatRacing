@@ -31,6 +31,8 @@ public class PlayerProfileManager {
         public String icon = ""; // unicode icon (optional)
         public int completed = 0;
         public int wins = 0;
+        /** Total time raced across all finished races (milliseconds). */
+        public long timeRacedMillis = 0L;
         public String boatType = ""; // Material name of the chosen boat/raft item
         public String speedUnit = ""; // "kmh" | "bps"; empty = inherit global
     }
@@ -125,6 +127,24 @@ public class PlayerProfileManager {
     public void incCompleted(UUID id) { get(id).completed++; save(); }
     public void incWins(UUID id) { get(id).wins++; save(); }
 
+    public long getTimeRacedMillis(UUID id) { return Math.max(0L, get(id).timeRacedMillis); }
+
+    /** Adds to the racer total time raced. Accepts milliseconds; negative values are ignored. */
+    public void addTimeRacedMillis(UUID id, long millis) {
+        if (millis <= 0L) return;
+        Profile p = get(id);
+        long cur = Math.max(0L, p.timeRacedMillis);
+        // Saturating-ish add (avoid overflow turning negative)
+        long next;
+        try {
+            next = Math.addExact(cur, millis);
+        } catch (ArithmeticException ignored) {
+            next = Long.MAX_VALUE;
+        }
+        p.timeRacedMillis = next;
+        save();
+    }
+
     public String getBoatType(UUID id) { return get(id).boatType; }
     public void setBoatType(UUID id, String type) { get(id).boatType = type == null ? "" : type; save(); }
 
@@ -158,6 +178,7 @@ public class PlayerProfileManager {
                 p.icon = sec.getString(key + ".icon", "");
                 p.completed = sec.getInt(key + ".completed", 0);
                 p.wins = sec.getInt(key + ".wins", 0);
+                p.timeRacedMillis = Math.max(0L, sec.getLong(key + ".timeRacedMillis", 0L));
                 p.boatType = sec.getString(key + ".boatType", "");
                 p.speedUnit = sec.getString(key + ".speedUnit", "");
 
@@ -179,6 +200,7 @@ public class PlayerProfileManager {
             cfg.set(base + ".icon", p.icon);
             cfg.set(base + ".completed", p.completed);
             cfg.set(base + ".wins", p.wins);
+            if (p.timeRacedMillis > 0L) cfg.set(base + ".timeRacedMillis", p.timeRacedMillis);
             cfg.set(base + ".boatType", p.boatType);
             if (p.speedUnit != null && !p.speedUnit.isEmpty()) cfg.set(base + ".speedUnit", p.speedUnit);
         }

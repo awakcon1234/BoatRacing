@@ -1721,6 +1721,17 @@ public class RaceManager {
         // compute position as number of already finished + 1
         int pos = (int) participants.values().stream().filter(x -> x.finished && x.finishTimeMillis > 0).count();
         s.finishPosition = Math.max(1, pos);
+
+        // Profile metric: total time raced (only count finished races).
+        try {
+            if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br && br.getProfileManager() != null) {
+                long rawMs = Math.max(0L, s.finishTimeMillis - getRaceStartMillis());
+                long penaltyMs = Math.max(0L, s.penaltySeconds) * 1000L;
+                long totalMs = rawMs + penaltyMs;
+                br.getProfileManager().addTimeRacedMillis(uuid, totalMs);
+            }
+        } catch (Throwable ignored) {}
+
         Player p = participantPlayers.get(uuid);
         if (p != null) {
             // Rich finish board (10 lines) in vanilla chat height.
