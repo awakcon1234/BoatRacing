@@ -7,6 +7,17 @@ racing:
   laps: 3
   registration-seconds: 30
 
+  dashboard:
+    # How often to update the in-boat dashboard TextDisplay (in server ticks).
+    # Lower = tighter rotation lock, higher = less CPU.
+    # Recommended: 1
+    update-ticks: 1
+
+    # Number of segments in the dashboard speed bar.
+    # Higher = finer resolution, but slightly wider HUD.
+    # Recommended: 30
+    bar-cells: 30
+
   # Debug toggles (logs to console). Keep these off unless troubleshooting.
   debug:
     teleport: false

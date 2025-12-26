@@ -453,8 +453,15 @@ public class RaceManager {
         if (plugin == null) return;
         if (dashboardTask != null) return;
 
-        // Update a few times per second; use teleport interpolation for smooth client-side motion.
-        final int periodTicks = 5;
+        // Configurable update rate. Lower = tighter rotation lock, higher = less CPU.
+        // Note: slower updates can make the dashboard look like it "falls behind" when turning.
+        int periodTicks = 1;
+        try {
+            periodTicks = plugin.getConfig().getInt("racing.dashboard.update-ticks", 1);
+        } catch (Throwable ignored) { periodTicks = 1; }
+        periodTicks = Math.max(1, periodTicks);
+
+        final int finalPeriodTicks = periodTicks;
         dashboardTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             // Only show dashboards while countdown/race is active.
             if (!running && (countdownTask == null || countdownPlayers.isEmpty())) {
@@ -485,9 +492,9 @@ public class RaceManager {
                     removeDashboard(id);
                     continue;
                 }
-                updateDashboard(p, periodTicks);
+                updateDashboard(p, finalPeriodTicks);
             }
-        }, 1L, periodTicks);
+        }, 1L, finalPeriodTicks);
     }
 
     private void stopDashboardTask() {
@@ -557,6 +564,57 @@ public class RaceManager {
         } catch (Throwable ignored) {}
     }
 
+    private String dashboardSpeedColorLegacy(double kmh) {
+        // Color tiering for the dashboard bar.
+        // Uses the same config keys as the scoreboard speed coloring.
+        double v = Double.isFinite(kmh) ? Math.max(0.0, kmh) : 0.0;
+
+        int yellow = 5;
+        int green = 20;
+        try { yellow = plugin != null ? plugin.getConfig().getInt("scoreboard.speed.yellow_kmh", 5) : 5; } catch (Throwable ignored) {}
+        try { green = plugin != null ? plugin.getConfig().getInt("scoreboard.speed.green_kmh", 20) : 20; } catch (Throwable ignored) {}
+
+        // Ensure ordering even if misconfigured.
+        if (green < yellow) {
+            int t = green;
+            green = yellow;
+            yellow = t;
+        }
+
+        if (v < (double) yellow) return "&c"; // red
+        if (v < (double) green) return "&e";  // yellow
+        return "&a";                          // green
+    }
+
+    private String buildDashboardBar(double kmh, int cells) {
+        // User preference: use ONLY the "▎" glyph for both filled and empty portions,
+        // and increase bar width for higher resolution.
+
+        int n = Math.max(1, cells);
+
+        // Scale: keep roughly the same max range as before (≈ 0..80 km/h), but
+        // distribute across more cells for finer granularity.
+        // Example: 20 cells => 4 km/h per cell.
+        double kmhPerCell = 80.0 / (double) n;
+        if (!Double.isFinite(kmhPerCell) || kmhPerCell <= 0.0) kmhPerCell = 4.0;
+
+        double v = Double.isFinite(kmh) ? Math.max(0.0, kmh) : 0.0;
+        int filled = (int) Math.round(v / kmhPerCell);
+        filled = Math.max(0, Math.min(n, filled));
+
+        String fillColor = dashboardSpeedColorLegacy(kmh);
+
+        StringBuilder sb = new StringBuilder(n + 16);
+        if (filled > 0) {
+            sb.append(fillColor).append("▎".repeat(filled));
+        }
+        int remaining = n - filled;
+        if (remaining > 0) {
+            sb.append("&8").append("▎".repeat(remaining));
+        }
+        return sb.toString();
+    }
+
     private void updateDashboard(Player p, int periodTicks) {
         if (plugin == null || p == null || !p.isOnline()) return;
         UUID id = p.getUniqueId();
@@ -612,16 +670,18 @@ public class RaceManager {
         } catch (Throwable ignored) {}
         double kmh = bps * 3.6;
 
-        // Futuristic 2-line dashboard with a simple bar speedometer.
-        int bars = (int) Math.round(Math.max(0.0, Math.min(10.0, kmh / 8.0))); // 0..10 roughly up to 80 km/h
-        bars = Math.max(0, Math.min(10, bars));
-        // Use square/rectangle block drawing unicode symbols for the bar.
-        // (Filled + empty) - clean and readable in the Minecraft font.
-        String bar = "■".repeat(bars) + "□".repeat(10 - bars);
+        // Futuristic 2-line dashboard with a thin + more accurate bar speedometer.
+        // Bar width is configurable; default is wider for better resolution.
+        int barCells = 30;
+        try {
+            barCells = plugin != null ? plugin.getConfig().getInt("racing.dashboard.bar-cells", 30) : 30;
+        } catch (Throwable ignored) { barCells = 30; }
+        barCells = Math.max(1, Math.min(80, barCells));
+        String bar = buildDashboardBar(kmh, barCells);
 
         // User request: only 2 lines (speed number + bar)
         final String pad = "  ";
-        String text = pad + "&b" + fmt1(kmh) + "&7 km/h" + pad + "\n" + pad + "&a" + bar + pad;
+        String text = pad + "&b" + fmt1(kmh) + "&7 km/h" + pad + "\n" + pad + bar + pad;
 
         // IMPORTANT: No teleport-follow fallback.
         // If we can't mount to the rider, we remove the dashboard entirely.
