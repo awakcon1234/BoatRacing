@@ -160,6 +160,7 @@ public class TrackSelectGUI implements Listener {
 		if (rm == null) {
 			mat = Material.BARRIER;
 			lore.add("&cKhông thể tải đường đua này.");
+			lore.add("");
 			lore.add("&7Vui lòng thử lại hoặc kiểm tra file cấu hình.");
 		} else if (!ready) {
 			mat = Material.RED_CONCRETE;
@@ -207,6 +208,7 @@ public class TrackSelectGUI implements Listener {
 		// Always show racer count in lore when we can.
 		if (rm != null) {
 			lore.add(0, "&7👥 Tay đua: &f" + racers);
+			lore.add(1, "");
 		}
 
 		ItemStack it = new ItemStack(mat, (rm == null ? 1 : stackAmountForCount(racers)));

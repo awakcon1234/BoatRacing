@@ -28,6 +28,13 @@
   - Track-dependent counts (starts/checkpoints) must use `rm.getTrackConfig()` rather than `plugin.getTrackConfig()`.
   - ScoreboardLibrary is optional; the plugin logs and continues if it is missing.
 
+## GUI UX rules (must-follow)
+- **UI text should be scannable**:
+  - When building GUI item lore (Track Select, admin GUIs, profile items, etc.), add **blank spacer lines between logical sections** (header/counts → status/info → action hints) so players can visually separate blocks at a glance.
+- **Track Select GUI lore must be scannable**:
+  - In the track item lore, insert **one blank spacer line** between the status/info block (state, timers, missing requirements) and the action hints (e.g. “Chuột trái/Chuột phải”).
+  - Keep requirement/missing lines (e.g. “Thiếu: …”) grouped with status above the spacer.
+
 ## Language / localization (project rule)
 - All **player-facing text must be Vietnamese** (chat messages, GUI titles, item names/lore, ActionBar/Title, scoreboard templates).
   - Player-facing messages should look **professional** and consistent.
