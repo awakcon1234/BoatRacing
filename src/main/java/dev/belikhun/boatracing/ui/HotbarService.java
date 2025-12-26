@@ -267,8 +267,38 @@ public class HotbarService {
                 setSlot(p, 1, null);
                 setSlot(p, 4, null);
                 setSlot(p, 7, null);
-                setSlot(p, 8, item(Material.ENDER_PEARL, "&b&l⟲ Về checkpoint", Action.RESPAWN_CHECKPOINT,
-                    "&7Dịch chuyển về &fcheckpoint gần nhất&7."));
+                String targetLine = null;
+                try {
+                    RaceManager rm = raceService.findRaceFor(p.getUniqueId());
+                    if (rm != null) {
+                        boolean inCountdown = rm.isCountdownActiveFor(p.getUniqueId());
+                        int totalCp = 0;
+                        try { totalCp = rm.getTrackConfig() != null && rm.getTrackConfig().getCheckpoints() != null ? rm.getTrackConfig().getCheckpoints().size() : 0; }
+                        catch (Throwable ignored) { totalCp = 0; }
+
+                        if (inCountdown || totalCp <= 0) {
+                            targetLine = "&7Sẽ về: &fXuất phát&7.";
+                        } else {
+                            RaceManager.ParticipantState st2 = rm.getParticipantState(p.getUniqueId());
+                            if (st2 != null) {
+                                int lastCp = st2.nextCheckpointIndex - 1;
+                                if (lastCp < 0) targetLine = "&7Sẽ về: &fXuất phát&7.";
+                                else targetLine = "&7Sẽ về: &fCheckpoint #" + (lastCp + 1) + "&7.";
+                            } else {
+                                targetLine = "&7Sẽ về: &fcheckpoint gần nhất&7.";
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+
+                if (targetLine != null) {
+                    setSlot(p, 8, item(Material.ENDER_PEARL, "&b&l⟲ Về checkpoint", Action.RESPAWN_CHECKPOINT,
+                        "&7Dịch chuyển về &fcheckpoint gần nhất&7.",
+                        targetLine));
+                } else {
+                    setSlot(p, 8, item(Material.ENDER_PEARL, "&b&l⟲ Về checkpoint", Action.RESPAWN_CHECKPOINT,
+                        "&7Dịch chuyển về &fcheckpoint gần nhất&7."));
+                }
             }
             case COMPLETED -> {
                 setSlot(p, 0, null);
@@ -299,7 +329,11 @@ public class HotbarService {
         Action curAct = getAction(cur);
         Action wantAct = getAction(desired);
         if (curAct != null && wantAct != null && curAct == wantAct) {
-            return;
+            try {
+                if (cur != null && cur.isSimilar(desired)) return;
+            } catch (Throwable ignored) {
+                return;
+            }
         }
 
         // Overwrite slot.

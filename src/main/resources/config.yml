@@ -11,6 +11,8 @@ racing:
   debug:
     teleport: false
     checkpoints: false
+    # Logs dashboard follow/rotation diagnostics (rate-limited, once per second per racer).
+    dashboard: false
     # Logs per-second drift/rotation deltas during the 10s start countdown freeze.
     countdown-freeze: false
     # Logs chosen boat type and spawned entity type.

@@ -123,7 +123,15 @@ public class BoatRacingPlugin extends JavaPlugin {
             public void onVehicleMove(org.bukkit.event.vehicle.VehicleMoveEvent e) {
                 if (raceService == null) return;
                 org.bukkit.entity.Entity vehicle = e.getVehicle();
-                if (!(vehicle instanceof org.bukkit.entity.Boat) && !(vehicle instanceof org.bukkit.entity.ChestBoat)) return;
+                boolean boatLike = (vehicle instanceof org.bukkit.entity.Boat) || (vehicle instanceof org.bukkit.entity.ChestBoat);
+                if (!boatLike) {
+                    try {
+                        String t = vehicle.getType() != null ? vehicle.getType().name() : null;
+                        boatLike = t != null && (t.endsWith("_BOAT") || t.endsWith("_CHEST_BOAT") || t.endsWith("_RAFT") || t.endsWith("_CHEST_RAFT")
+                                || t.equals("BOAT") || t.equals("CHEST_BOAT"));
+                    } catch (Throwable ignored) { boatLike = false; }
+                }
+                if (!boatLike) return;
                 org.bukkit.Location to = e.getTo();
                 org.bukkit.Location from = e.getFrom();
                 if (to == null || from == null) return;

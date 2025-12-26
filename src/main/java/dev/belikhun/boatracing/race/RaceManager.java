@@ -69,6 +69,10 @@ public class RaceManager {
     private BukkitTask startLightsBlinkTask;
     private BukkitTask postFinishCleanupTask;
     private BukkitTask allFinishedFireworksTask;
+    private BukkitTask dashboardTask;
+    private final java.util.Map<UUID, org.bukkit.entity.TextDisplay> dashboardByPlayer = new java.util.HashMap<>();
+    private final java.util.Map<UUID, org.bukkit.Location> dashboardLastBoatLoc = new java.util.HashMap<>();
+    private final java.util.Map<UUID, Long> dashboardLastBoatLocTime = new java.util.HashMap<>();
     private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
     private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
     private final java.util.Map<Block, BlockData> countdownBarrierRestore = new java.util.HashMap<>();
@@ -113,6 +117,12 @@ public class RaceManager {
         try { return plugin != null && plugin.getConfig().getBoolean("racing.debug.boat-selection", false); }
         catch (Throwable ignored) { return false; }
     }
+    private boolean debugDashboard() {
+        try { return plugin != null && plugin.getConfig().getBoolean("racing.debug.dashboard", false); }
+        catch (Throwable ignored) { return false; }
+    }
+    private final java.util.Map<UUID, Long> dashboardDebugLastLog = new java.util.HashMap<>();
+    private final java.util.Set<UUID> dashboardDisabledPlayers = new java.util.HashSet<>();
 
     private boolean countdownBarriersEnabled() {
         try { return plugin != null && plugin.getConfig().getBoolean("racing.countdown.barrier.enabled", true); }
@@ -198,6 +208,19 @@ public class RaceManager {
         // Last resort: OAK variants exist virtually everywhere.
         try { return EntityType.valueOf(chest ? "OAK_CHEST_BOAT" : "OAK_BOAT"); }
         catch (Throwable ignored) { return EntityType.BOAT; }
+    }
+
+    private static boolean isBoatLike(Entity e) {
+        if (e == null) return false;
+        if (e instanceof org.bukkit.entity.Boat || e instanceof org.bukkit.entity.ChestBoat) return true;
+        try {
+            String t = e.getType() != null ? e.getType().name() : null;
+            if (t == null) return false;
+            return t.endsWith("_BOAT") || t.endsWith("_CHEST_BOAT") || t.endsWith("_RAFT") || t.endsWith("_CHEST_RAFT")
+                    || t.equals("BOAT") || t.equals("CHEST_BOAT");
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static BlockFace yawToFace(float yaw) {
@@ -423,6 +446,326 @@ public class RaceManager {
     private void ensureCheckpointHolos() {
         // Kept method name to avoid touching other call sites; implementation now uses Display entities.
         ensureCheckpointDisplays();
+    }
+
+    // ===================== Boat dashboard (speedometer) =====================
+    private void ensureDashboardTask() {
+        if (plugin == null) return;
+        if (dashboardTask != null) return;
+
+        // Update a few times per second; use teleport interpolation for smooth client-side motion.
+        final int periodTicks = 5;
+        dashboardTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            // Only show dashboards while countdown/race is active.
+            if (!running && (countdownTask == null || countdownPlayers.isEmpty())) {
+                clearAllDashboards();
+                stopDashboardTask();
+                return;
+            }
+
+            java.util.Set<UUID> active = new java.util.LinkedHashSet<>();
+            active.addAll(countdownPlayers);
+            // Only show for racers that are still racing (not finished).
+            for (var en : participants.entrySet()) {
+                UUID id = en.getKey();
+                ParticipantState st = en.getValue();
+                if (id == null || st == null || st.finished) continue;
+                active.add(id);
+            }
+
+            // Remove dashboards for players who are no longer active.
+            for (UUID id : new java.util.HashSet<>(dashboardByPlayer.keySet())) {
+                if (!active.contains(id)) removeDashboard(id);
+            }
+
+            // Update/create dashboards.
+            for (UUID id : active) {
+                Player p = Bukkit.getPlayer(id);
+                if (p == null || !p.isOnline()) {
+                    removeDashboard(id);
+                    continue;
+                }
+                updateDashboard(p, periodTicks);
+            }
+        }, 1L, periodTicks);
+    }
+
+    private void stopDashboardTask() {
+        if (dashboardTask != null) {
+            try { dashboardTask.cancel(); } catch (Throwable ignored) {}
+            dashboardTask = null;
+        }
+    }
+
+    private void clearAllDashboards() {
+        for (UUID id : new java.util.HashSet<>(dashboardByPlayer.keySet())) {
+            removeDashboard(id);
+        }
+    }
+
+    private void removeDashboard(UUID playerId) {
+        if (playerId == null) return;
+        org.bukkit.entity.TextDisplay d = dashboardByPlayer.remove(playerId);
+        if (d != null) {
+            try { if (d.isValid()) d.remove(); } catch (Throwable ignored) {}
+        }
+        try { dashboardLastBoatLoc.remove(playerId); } catch (Throwable ignored) {}
+        try { dashboardLastBoatLocTime.remove(playerId); } catch (Throwable ignored) {}
+        try { dashboardDebugLastLog.remove(playerId); } catch (Throwable ignored) {}
+    }
+
+    private static org.bukkit.util.Vector forwardFromYaw(float yaw) {
+        // Minecraft yaw: 0=south(+Z), 90=west(-X), 180=north(-Z), 270=east(+X)
+        double rad = Math.toRadians(yaw);
+        return new org.bukkit.util.Vector(-Math.sin(rad), 0.0, Math.cos(rad));
+    }
+
+    private static void trySetTeleportDuration(org.bukkit.entity.Display d, int ticks) {
+        if (d == null) return;
+        int t = Math.max(0, ticks);
+        try {
+            // Paper: Display has setTeleportDuration(int). Use reflection to avoid API mismatch.
+            java.lang.reflect.Method m = d.getClass().getMethod("setTeleportDuration", int.class);
+            m.invoke(d, t);
+        } catch (Throwable ignored) {}
+    }
+
+    private static void trySetTextDisplayBackgroundArgb(org.bukkit.entity.TextDisplay d, int argb) {
+        if (d == null) return;
+
+        // Preferred (Paper/Bukkit): setBackgroundColor(int argb)
+        try {
+            java.lang.reflect.Method m = d.getClass().getMethod("setBackgroundColor", int.class);
+            m.invoke(d, argb);
+            return;
+        } catch (Throwable ignored) {}
+
+        // Fallback (some APIs): setBackgroundOpacity(byte) + setBackgroundColor(Color rgb)
+        try {
+            int a = (argb >>> 24) & 0xFF;
+            java.lang.reflect.Method m = d.getClass().getMethod("setBackgroundOpacity", byte.class);
+            m.invoke(d, (byte) a);
+        } catch (Throwable ignored) {}
+
+        try {
+            int r = (argb >>> 16) & 0xFF;
+            int g = (argb >>> 8) & 0xFF;
+            int b = (argb) & 0xFF;
+            org.bukkit.Color c = org.bukkit.Color.fromRGB(r, g, b);
+            java.lang.reflect.Method m = d.getClass().getMethod("setBackgroundColor", org.bukkit.Color.class);
+            m.invoke(d, c);
+        } catch (Throwable ignored) {}
+    }
+
+    private void updateDashboard(Player p, int periodTicks) {
+        if (plugin == null || p == null || !p.isOnline()) return;
+        UUID id = p.getUniqueId();
+
+        // If this server/vehicle combo can't keep the dashboard mounted, do not recreate it.
+        if (dashboardDisabledPlayers.contains(id)) return;
+
+        Entity boat = null;
+        try {
+            Entity veh = p.getVehicle();
+            if (isBoatLike(veh)) boat = veh;
+        } catch (Throwable ignored) {}
+        if (boat == null) {
+            try {
+                UUID boatId = spawnedBoatByPlayer.get(id);
+                if (boatId != null) {
+                    Entity e = Bukkit.getEntity(boatId);
+                    if (isBoatLike(e)) boat = e;
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (boat == null || !boat.isValid()) {
+            removeDashboard(id);
+            return;
+        }
+
+        org.bukkit.Location bl = boat.getLocation();
+        if (bl == null || bl.getWorld() == null) return;
+
+        // Compute speed from movement delta so it updates reliably even when entity velocity is flaky.
+        // (Also filters out large teleport-like jumps.)
+        long nowMs = System.currentTimeMillis();
+        double bps = 0.0;
+        try {
+            org.bukkit.Location prev = dashboardLastBoatLoc.get(id);
+            Long prevT = dashboardLastBoatLocTime.get(id);
+            if (prev != null && prevT != null
+                    && prev.getWorld() != null && bl.getWorld() != null
+                    && prev.getWorld().equals(bl.getWorld())) {
+                long dtMs = Math.max(0L, nowMs - prevT);
+                if (dtMs > 0L) {
+                    double dist = bl.distance(prev); // blocks
+                    // Ignore big jumps (teleports / chunk re-sync).
+                    if (Double.isFinite(dist) && dist >= 0.0 && dist <= 50.0) {
+                        bps = Math.max(0.0, dist / (dtMs / 1000.0));
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        try {
+            dashboardLastBoatLoc.put(id, bl.clone());
+            dashboardLastBoatLocTime.put(id, nowMs);
+        } catch (Throwable ignored) {}
+        double kmh = bps * 3.6;
+
+        // Futuristic 2-line dashboard with a simple bar speedometer.
+        int bars = (int) Math.round(Math.max(0.0, Math.min(10.0, kmh / 8.0))); // 0..10 roughly up to 80 km/h
+        bars = Math.max(0, Math.min(10, bars));
+        // Use square/rectangle block drawing unicode symbols for the bar.
+        // (Filled + empty) - clean and readable in the Minecraft font.
+        String bar = "■".repeat(bars) + "□".repeat(10 - bars);
+
+        // User request: only 2 lines (speed number + bar)
+        final String pad = "  ";
+        String text = pad + "&b" + fmt1(kmh) + "&7 km/h" + pad + "\n" + pad + "&a" + bar + pad;
+
+        // IMPORTANT: No teleport-follow fallback.
+        // If we can't mount to the rider, we remove the dashboard entirely.
+        final float boatYaw = bl.getYaw();
+
+        // Keep transformation consistent even if the display was created before tweaks.
+        final org.joml.Vector3f dashTranslation = new org.joml.Vector3f(0.0f, -1.35f, 0.80f);
+        final org.joml.Vector3f dashScale = new org.joml.Vector3f(0.55f, 0.55f, 0.55f);
+        final org.joml.Quaternionf dashRotation = new org.joml.Quaternionf()
+                .rotateY((float) Math.toRadians(180.0))
+                .rotateX((float) Math.toRadians(-28.0));
+
+        org.bukkit.entity.TextDisplay display = dashboardByPlayer.get(id);
+        if (display == null || !display.isValid()) {
+            try {
+                display = bl.getWorld().spawn(bl, org.bukkit.entity.TextDisplay.class, d -> {
+                    try { d.text(Text.c(text)); } catch (Throwable ignored2) {}
+                    try { d.setBillboard(org.bukkit.entity.Display.Billboard.FIXED); } catch (Throwable ignored2) {}
+                    try { d.setSeeThrough(true); } catch (Throwable ignored2) {}
+                    try { d.setDefaultBackground(true); } catch (Throwable ignored2) {}
+                    try { trySetTextDisplayBackgroundArgb(d, 0x33000000); } catch (Throwable ignored2) {}
+                    try { d.setLineWidth(200); } catch (Throwable ignored2) {}
+                    try { d.setViewRange(32.0f); } catch (Throwable ignored2) {}
+                    try { d.setShadowed(true); } catch (Throwable ignored2) {}
+                    try { d.setAlignment(org.bukkit.entity.TextDisplay.TextAlignment.CENTER); } catch (Throwable ignored2) {}
+
+                    // Smooth client-side interpolation for any transform updates.
+                    try {
+                        d.setInterpolationDelay(0);
+                        d.setInterpolationDuration(Math.max(1, periodTicks));
+                    } catch (Throwable ignored2) {}
+                    trySetTeleportDuration(d, Math.max(1, periodTicks));
+
+                    // Render offset relative to the passenger mount point.
+                    // Since this display is mounted to the player, its entity position is near the rider's head.
+                    // Use a negative Y translation to bring it down into a "dashboard" position, and add a
+                    // slight pitch so it looks like an angled instrument panel.
+                    try {
+                        org.bukkit.util.Transformation cur = d.getTransformation();
+                        org.bukkit.util.Transformation next = new org.bukkit.util.Transformation(
+                                // Forward (+Z in entity space) and DOWN from head mount.
+                                // Lowered further so it stays out of the crosshair.
+                            // Requested tweak: down 0.5 block and closer 0.25 block.
+                                dashTranslation,
+                                // Face the driver (180° yaw) and tilt slightly toward the camera.
+                                dashRotation,
+                            // Scale down so it doesn't obstruct the view.
+                                dashScale,
+                                cur.getRightRotation()
+                        );
+                        d.setTransformation(next);
+                    } catch (Throwable ignored2) {}
+                });
+            } catch (Throwable ignored) { display = null; }
+            if (display == null) return;
+            dashboardByPlayer.put(id, display);
+        } else {
+            try { display.text(Text.c(text)); } catch (Throwable ignored) {}
+
+            // Re-apply background settings in case the display was spawned before tweaks.
+            try { display.setDefaultBackground(true); } catch (Throwable ignored) {}
+            try { trySetTextDisplayBackgroundArgb(display, 0x33000000); } catch (Throwable ignored) {}
+
+            // Apply transform updates even for existing displays so tweaks take effect immediately.
+            try {
+                org.bukkit.util.Transformation cur = display.getTransformation();
+                org.bukkit.util.Transformation next = new org.bukkit.util.Transformation(
+                        dashTranslation,
+                        dashRotation,
+                        dashScale,
+                        cur.getRightRotation()
+                );
+                display.setTransformation(next);
+            } catch (Throwable ignored) {}
+        }
+
+        // Keep the dashboard mounted on the PLAYER (more reliable than mounting on rafts/boats).
+        boolean mounted = false;
+        try {
+            org.bukkit.entity.Entity riding = display.getVehicle();
+            if (riding != null && riding.equals(p)) {
+                mounted = true;
+            } else {
+                if (riding != null) {
+                    try { display.leaveVehicle(); } catch (Throwable ignored2) {}
+                }
+                try { p.addPassenger(display); } catch (Throwable ignored2) {}
+                riding = display.getVehicle();
+                mounted = (riding != null && riding.equals(p));
+            }
+        } catch (Throwable ignored) { mounted = false; }
+
+        if (!mounted) {
+            // No laggy teleport fallback: remove entirely if mounting is not supported.
+            removeDashboard(id);
+            dashboardDisabledPlayers.add(id);
+            try {
+                dbg("[DASHDBG] Disabled dashboard for player=" + p.getName()
+                        + " (failed to mount to player; vehicle=" + (boat.getType() == null ? "?" : boat.getType().name()) + ")");
+            } catch (Throwable ignored) {}
+            return;
+        }
+
+        // Follow boat rotation.
+        try { display.setRotation(boatYaw, 0.0f); } catch (Throwable ignored) {}
+
+        // Debug logs (rate-limited): helps diagnose why dashboard seems detached or mis-rotated.
+        if (debugDashboard()) {
+            long now = System.currentTimeMillis();
+            Long prev = dashboardDebugLastLog.get(id);
+            if (prev == null || (now - prev) >= 1000L) {
+                dashboardDebugLastLog.put(id, now);
+                try {
+                    org.bukkit.Location dl = display.getLocation();
+                    String boatType = (boat.getType() == null ? "?" : boat.getType().name());
+                    String boatWorld = (bl.getWorld() == null ? "?" : bl.getWorld().getName());
+                    String dispWorld = (dl.getWorld() == null ? "?" : dl.getWorld().getName());
+                    double dist = (dl.getWorld() != null && bl.getWorld() != null && dl.getWorld().equals(bl.getWorld()))
+                            ? dl.distance(bl)
+                            : -1.0;
+                        boolean passengerBoat = false;
+                        try { passengerBoat = boat.getPassengers() != null && boat.getPassengers().contains(display); } catch (Throwable ignored2) {}
+                        boolean passengerPlayer = false;
+                        try { passengerPlayer = p.getPassengers() != null && p.getPassengers().contains(display); } catch (Throwable ignored2) {}
+                    boolean riding = false;
+                    try { riding = display.getVehicle() != null; } catch (Throwable ignored2) {}
+                    dbg("[DASHDBG] track=" + (trackConfig == null ? "?" : trackConfig.getCurrentName())
+                            + " player=" + p.getName()
+                            + " boat=" + boatType
+                            + " boatWorld=" + boatWorld
+                            + " dispWorld=" + dispWorld
+                            + " passengerBoat=" + passengerBoat
+                            + " passengerPlayer=" + passengerPlayer
+                            + " riding=" + riding
+                            + " dist=" + (dist < 0 ? "?" : String.format(java.util.Locale.ROOT, "%.2f", dist))
+                            + " boatYaw=" + String.format(java.util.Locale.ROOT, "%.1f", bl.getYaw())
+                            + " playerYaw=" + String.format(java.util.Locale.ROOT, "%.1f", p.getLocation().getYaw())
+                            + " dispYaw=" + String.format(java.util.Locale.ROOT, "%.1f", dl.getYaw())
+                            + " dispPos=" + dev.belikhun.boatracing.util.Text.fmtPos(dl)
+                    );
+                } catch (Throwable ignored) {}
+            }
+        }
+
     }
 
     private void ensureCheckpointDisplays() {
@@ -690,6 +1033,57 @@ public class RaceManager {
      * - During countdown: snap back to the locked start position.
      * - During race: teleport to last checkpoint (or start if none).
      */
+
+    private void applyFacingFromCenterline(org.bukkit.Location loc) {
+        if (loc == null || loc.getWorld() == null || trackConfig == null) return;
+        java.util.List<org.bukkit.Location> cl;
+        try { cl = trackConfig.getCenterline(); }
+        catch (Throwable ignored) { cl = java.util.Collections.emptyList(); }
+        if (cl == null || cl.size() < 2) return;
+
+        int best = -1;
+        double bestD = Double.POSITIVE_INFINITY;
+        org.bukkit.World w = loc.getWorld();
+        for (int i = 0; i < cl.size(); i++) {
+            org.bukkit.Location n = cl.get(i);
+            if (n == null || n.getWorld() == null || !n.getWorld().equals(w)) continue;
+            double d = n.distanceSquared(loc);
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        if (best < 0) return;
+        int next = Math.min(cl.size() - 1, best + 1);
+        org.bukkit.Location a = cl.get(best);
+        org.bukkit.Location b = cl.get(next);
+        if (a == null || b == null) return;
+
+        org.bukkit.util.Vector dir = b.toVector().subtract(a.toVector());
+        if (dir.lengthSquared() < 1.0e-6) return;
+        float yaw = (float) Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
+        loc.setYaw(yaw);
+        loc.setPitch(0.0f);
+    }
+
+    private boolean teleportVehicleRetainPassengers(org.bukkit.entity.Entity vehicle, org.bukkit.Location target) {
+        if (vehicle == null || target == null || target.getWorld() == null) return false;
+        try { vehicle.setVelocity(new Vector(0, 0, 0)); } catch (Throwable ignored) {}
+
+        boolean tpOk;
+        try {
+            tpOk = vehicle.teleport(target, io.papermc.paper.entity.TeleportFlag.EntityState.RETAIN_PASSENGERS);
+        } catch (Throwable t) {
+            try { tpOk = vehicle.teleport(target); } catch (Throwable ignored) { tpOk = false; }
+        }
+
+        if (!tpOk) {
+            try { tpOk = dev.belikhun.boatracing.util.EntityForceTeleport.nms(vehicle, target); }
+            catch (Throwable ignored) { tpOk = false; }
+        }
+
+        try { vehicle.setVelocity(new Vector(0, 0, 0)); } catch (Throwable ignored) {}
+        try { vehicle.setRotation(target.getYaw(), target.getPitch()); } catch (Throwable ignored) {}
+        return tpOk;
+    }
+
     public boolean manualRespawnAtCheckpoint(Player p) {
         if (p == null || !p.isOnline()) return false;
         UUID id = p.getUniqueId();
@@ -702,7 +1096,15 @@ public class RaceManager {
                     if (lock.getWorld() == null && p.getWorld() != null) lock.setWorld(p.getWorld());
                 } catch (Throwable ignored) {}
                 try {
-                    if (lock.getWorld() != null) p.teleport(lock);
+                    if (lock.getWorld() != null) {
+                        org.bukkit.entity.Entity veh = null;
+                        try { veh = p.getVehicle(); } catch (Throwable ignored2) { veh = null; }
+                        if (isBoatLike(veh)) {
+                            teleportVehicleRetainPassengers(veh, lock);
+                        } else {
+                            p.teleport(lock);
+                        }
+                    }
                     p.setFallDistance(0f);
                 } catch (Throwable ignored) {}
                 try { ensureRacerHasBoat(p); } catch (Throwable ignored) {}
@@ -723,8 +1125,17 @@ public class RaceManager {
         } catch (Throwable ignored) {}
         if (target.getWorld() == null) return false;
 
+        // Face along the track direction if possible.
+        try { applyFacingFromCenterline(target); } catch (Throwable ignored) {}
+
         try {
-            p.teleport(target);
+            org.bukkit.entity.Entity veh = null;
+            try { veh = p.getVehicle(); } catch (Throwable ignored2) { veh = null; }
+            if (isBoatLike(veh)) {
+                teleportVehicleRetainPassengers(veh, target);
+            } else {
+                p.teleport(target);
+            }
             p.setFallDistance(0f);
         } catch (Throwable ignored) {}
         try { ensureRacerHasBoat(p); } catch (Throwable ignored) {}
@@ -745,7 +1156,7 @@ public class RaceManager {
 
         try {
             Entity curVeh = p.getVehicle();
-            if (curVeh instanceof org.bukkit.entity.Boat || curVeh instanceof org.bukkit.entity.ChestBoat) {
+            if (isBoatLike(curVeh)) {
                 return;
             }
         } catch (Throwable ignored) {}
@@ -1662,6 +2073,9 @@ public class RaceManager {
         // Stop the "all finished" firework show if it was running.
         stopAllFinishedFireworks();
 
+        // Start/update the per-boat dashboard while countdown/race is active.
+        ensureDashboardTask();
+
         // Stop any prior countdown before starting a new one.
         if (countdownTask != null) {
             try { countdownTask.cancel(); } catch (Throwable ignored) {}
@@ -1769,6 +2183,9 @@ public class RaceManager {
                     initPathForLivePositions();
                     startRaceTicker();
 
+                    // Ensure dashboard stays active during the running race.
+                    ensureDashboardTask();
+
 					if (debugCheckpoints()) {
 						try {
 							dbg("[CPDBG] Race started. track=" + trackConfig.getCurrentName()
@@ -1779,11 +2196,10 @@ public class RaceManager {
 
                     for (Player p : placed) {
                         try {
-                            var title = net.kyori.adventure.text.Component.text("🟢 BẮT ĐẦU!")
+                            // Keep fade in/out for the start title, but show only the start text in the subtitle.
+                            var sub = net.kyori.adventure.text.Component.text("🟢 BẮT ĐẦU!")
                                 .color(net.kyori.adventure.text.format.TextColor.color(0x00FF00));
-                            var sub = net.kyori.adventure.text.Component.text("⚡ Chạy thôi!")
-                                .color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
-                            p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
+                            p.showTitle(net.kyori.adventure.title.Title.title(net.kyori.adventure.text.Component.empty(), sub,
                                     net.kyori.adventure.title.Title.Times.times(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
                             p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
                         } catch (Throwable ignored) {}
@@ -1824,8 +2240,9 @@ public class RaceManager {
                                     .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.GREEN));
                         }
+                        // Countdown: no fade in/out, keep 1s display.
                         p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
-                                net.kyori.adventure.title.Title.Times.times(java.time.Duration.ofMillis(200), java.time.Duration.ofMillis(1000), java.time.Duration.ofMillis(200))));
+                            net.kyori.adventure.title.Title.Times.times(java.time.Duration.ZERO, java.time.Duration.ofMillis(1000), java.time.Duration.ZERO)));
                         if (sec == 3) {
                             p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 0.90f);
                         } else if (sec == 2) {
@@ -1867,7 +2284,7 @@ public class RaceManager {
 
                     try {
                         org.bukkit.entity.Entity v = p.getVehicle();
-                        if (v != null && ((v instanceof org.bukkit.entity.Boat) || (v instanceof org.bukkit.entity.ChestBoat))) {
+                        if (isBoatLike(v)) {
                             org.bukkit.Location before = dbg ? v.getLocation() : null;
 
                             // Ensure lock has a world (teleport returns false if lock world is null).
@@ -2044,6 +2461,8 @@ public class RaceManager {
         try { restorePreviousGameModes(); } catch (Throwable ignored) {}
         try { stopAllFinishedFireworks(); } catch (Throwable ignored) {}
         try { clearCheckpointHolos(); } catch (Throwable ignored) {}
+        try { clearAllDashboards(); } catch (Throwable ignored) {}
+        try { stopDashboardTask(); } catch (Throwable ignored) {}
 
         if (postFinishCleanupTask != null) {
             try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
@@ -2238,6 +2657,9 @@ public class RaceManager {
             changed = true;
         }
 
+        // Remove their dashboard.
+        try { removeDashboard(id); } catch (Throwable ignored) {}
+
         return changed;
     }
 
@@ -2259,7 +2681,7 @@ public class RaceManager {
 
     private boolean isSpawnedBoat(Entity e) {
         if (e == null) return false;
-        if (!(e instanceof Boat) && !(e instanceof ChestBoat)) return false;
+        if (!isBoatLike(e)) return false;
         NamespacedKey key = spawnedBoatKey();
         if (key == null) return false;
         try { return e.getPersistentDataContainer().has(key, PersistentDataType.BYTE); }
