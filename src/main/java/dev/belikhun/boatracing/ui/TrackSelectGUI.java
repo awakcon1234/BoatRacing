@@ -179,7 +179,7 @@ public class TrackSelectGUI implements Listener {
 			lore.add("&7Trạng thái: &bĐang diễn ra");
 			if (running) {
 				try {
-					lore.add("&7⏱ Đã chạy: &f" + fmtElapsed(rm.getRaceElapsedMillis()));
+					lore.add("&7⌚ Đã chạy: &f" + fmtElapsed(rm.getRaceElapsedMillis()));
 				} catch (Throwable ignored) {
 				}
 			} else {

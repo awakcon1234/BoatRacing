@@ -49,6 +49,7 @@
   - Success check: `✔` (do not use `✅`, `✓`)
   - Error/deny cross: `❌` (do not use `✖`, `✗`, `✘`)
   - Info: `ℹ`
+  - Elapsed/time: `⌚` (do not use `⏱`)
   - Waiting/countdown: `⌛ ⏳`
   - Arrows (Minecraft-safe): `🡠 🡢 🡡 🡣 🡤 🡥 🡦 🡧 ⮎ ⮌ ⮏ ⮍`
   - Refresh/retry (Minecraft-safe): `🔁 🔂 🔃 🔄 🗘`
