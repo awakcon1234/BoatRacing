@@ -4,6 +4,7 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.profile.PlayerProfileManager;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
+import dev.belikhun.boatracing.util.DyeColorFormats;
 import dev.belikhun.boatracing.util.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
@@ -291,7 +292,7 @@ public class ScoreboardService {
         Component title = parse(p, cfgString("scoreboard.templates.lobby.title", "<gold>BoatRacing"), java.util.Map.of());
         PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
         java.util.Map<String,String> ph = new java.util.HashMap<>();
-        ph.put("racer_name", p.getName()); ph.put("racer_color", colorTagFor(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
+        ph.put("racer_name", p.getName()); ph.put("racer_color", DyeColorFormats.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("completed", String.valueOf(prof.completed)); ph.put("wins", String.valueOf(prof.wins));
         java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.lobby.lines", java.util.List.of(
@@ -315,7 +316,7 @@ public class ScoreboardService {
         int laps = rm.getTotalLaps();
         PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
         java.util.Map<String,String> ph = new java.util.HashMap<>();
-        ph.put("racer_name", p.getName()); ph.put("racer_color", colorTagFor(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
+        ph.put("racer_name", p.getName()); ph.put("racer_color", DyeColorFormats.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
         ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
@@ -744,30 +745,6 @@ public class ScoreboardService {
         return null;
     }
 
-    private static String colorTagFor(org.bukkit.DyeColor dc) {
-        // MiniMessage supports a specific set of color names (e.g. gold, red, light_purple, dark_aqua, etc.)
-        // Map Bukkit DyeColor to the closest MiniMessage-supported name (fallback to white).
-        if (dc == null) return "<white>";
-        switch (dc) {
-            case WHITE: return "<white>";
-            case ORANGE: return "<gold>"; // orange -> gold
-            case MAGENTA: return "<light_purple>";
-            case LIGHT_BLUE: return "<blue>";
-            case YELLOW: return "<yellow>";
-            case LIME: return "<green>";
-            case PINK: return "<light_purple>";
-            case GRAY: return "<gray>";
-            case LIGHT_GRAY: return "<gray>";
-            case CYAN: return "<aqua>";
-            case PURPLE: return "<dark_purple>";
-            case BLUE: return "<blue>";
-            case BROWN: return "<gold>";
-            case GREEN: return "<green>";
-            case RED: return "<red>";
-            case BLACK: return "<black>";
-            default: return "<white>";
-        }
-    }
     private static boolean empty(String s) { return s == null || s.isEmpty(); }
 
     private static String fmt(long ms) {

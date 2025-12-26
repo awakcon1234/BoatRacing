@@ -2,6 +2,7 @@ package dev.belikhun.boatracing.profile;
 
 import org.bukkit.DyeColor;
 import org.bukkit.configuration.file.YamlConfiguration;
+import dev.belikhun.boatracing.util.DyeColorFormats;
 
 import java.io.File;
 import java.io.IOException;
@@ -46,7 +47,7 @@ public class PlayerProfileManager {
         String n = (name == null || name.isBlank()) ? shortId(id) : name;
         String icon = (p.icon == null || p.icon.isBlank()) ? "●" : p.icon;
         String number = (p.number > 0) ? String.valueOf(p.number) : "-";
-        return miniColorTag(p.color) + icon + " " + number + " " + n;
+        return DyeColorFormats.miniColorTag(p.color) + "[" + icon + " <u>" + number + "</u>] " + n;
     }
 
     /**
@@ -59,7 +60,8 @@ public class PlayerProfileManager {
         String n = (name == null || name.isBlank()) ? shortId(id) : name;
         String icon = (p.icon == null || p.icon.isBlank()) ? "●" : p.icon;
         String number = (p.number > 0) ? String.valueOf(p.number) : "-";
-        return legacyColorCode(p.color) + icon + " " + number + " " + n;
+        String c = DyeColorFormats.legacyColorCode(p.color);
+        return c + "[" + icon + " " + c + "&n" + number + "&r" + c + "] " + n;
     }
 
     private static String fallbackRacerMini(String name) {
@@ -76,51 +78,6 @@ public class PlayerProfileManager {
         if (id == null) return "(không rõ)";
         String s = id.toString();
         return s.length() >= 8 ? s.substring(0, 8) : s;
-    }
-
-    private static String miniColorTag(DyeColor dc) {
-        if (dc == null) return "<white>";
-        return switch (dc) {
-            case WHITE -> "<white>";
-            case ORANGE -> "<gold>";
-            case MAGENTA -> "<light_purple>";
-            case LIGHT_BLUE -> "<blue>";
-            case YELLOW -> "<yellow>";
-            case LIME -> "<green>";
-            case PINK -> "<light_purple>";
-            case GRAY, LIGHT_GRAY -> "<gray>";
-            case CYAN -> "<aqua>";
-            case PURPLE -> "<dark_purple>";
-            case BLUE -> "<blue>";
-            case BROWN -> "<gold>";
-            case GREEN -> "<green>";
-            case RED -> "<red>";
-            case BLACK -> "<black>";
-            default -> "<white>";
-        };
-    }
-
-    private static String legacyColorCode(DyeColor dc) {
-        if (dc == null) return "&f";
-        return switch (dc) {
-            case WHITE -> "&f";
-            case ORANGE -> "&6";
-            case MAGENTA -> "&d";
-            case LIGHT_BLUE -> "&9";
-            case YELLOW -> "&e";
-            case LIME -> "&a";
-            case PINK -> "&d";
-            case GRAY -> "&8";
-            case LIGHT_GRAY -> "&7";
-            case CYAN -> "&b";
-            case PURPLE -> "&5";
-            case BLUE -> "&1";
-            case BROWN -> "&6";
-            case GREEN -> "&2";
-            case RED -> "&c";
-            case BLACK -> "&0";
-            default -> "&f";
-        };
     }
 
     public PlayerProfileManager(File dataFolder) {
