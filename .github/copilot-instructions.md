@@ -42,7 +42,9 @@
   - Success check: `✔` (do not use `✅`, `✓`)
   - Error/deny cross: `❌` (do not use `✖`, `✗`, `✘`)
   - Info: `ℹ`
-  - Waiting/countdown: `⌛` (do not use `⏳`)
+  - Waiting/countdown: `⌛ ⏳`
+  - Arrows (Minecraft-safe): `🡠 🡢 🡡 🡣 🡤 🡥 🡦 🡧 ⮎ ⮌ ⮏ ⮍`
+  - Refresh/retry (Minecraft-safe): `🔁 🔂 🔃 🔄 🗘`
 - **Racer display format is standardized** everywhere a player sees it:
   - Format: `<color><icon> <number> <name>`
   - Prefer using the centralized helpers in `PlayerProfileManager`:

@@ -493,11 +493,27 @@ public class ScoreboardService {
     private void applySidebarComponents(Player p, Sidebar sidebar, Component title, java.util.List<Component> lines) {
         if (sidebar == null) return;
         sidebar.title(title);
-        for (int idx = 0; idx < lines.size(); idx++) sidebar.line(idx, lines.get(idx));
+
         int last = lastCounts.getOrDefault(p.getUniqueId(), 0);
-        for (int idx = lines.size(); idx < last; idx++) sidebar.line(idx, Component.empty());
-        lastCounts.put(p.getUniqueId(), lines.size());
-        log("Applied sidebar to " + p.getName() + " title='" + Text.plain(title) + "' lines=" + lines.size());
+        int newSize = (lines == null) ? 0 : lines.size();
+
+        // IMPORTANT: Setting removed lines to Component.empty() still leaves blank rows visible.
+        // To shrink cleanly AND minimize packets, only clear the indices that were previously set.
+        int maxLines = 15;
+        try { maxLines = sidebar.maxLines(); } catch (Throwable ignored) { maxLines = 15; }
+        int limitNew = Math.min(newSize, maxLines);
+
+        if (lines != null) {
+            for (int idx = 0; idx < limitNew; idx++) sidebar.line(idx, lines.get(idx));
+        }
+
+        if (last > limitNew) {
+            int limitOld = Math.min(last, maxLines);
+            for (int idx = limitNew; idx < limitOld; idx++) sidebar.line(idx, (Component) null);
+        }
+
+        lastCounts.put(p.getUniqueId(), newSize);
+        log("Applied sidebar to " + p.getName() + " title='" + Text.plain(title) + "' lines=" + newSize);
     }
 
     // --- ActionBar support ---
