@@ -6,6 +6,7 @@ import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
 import dev.belikhun.boatracing.util.DyeColorFormats;
 import dev.belikhun.boatracing.util.Text;
+import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
@@ -278,7 +279,7 @@ public class ScoreboardService {
         ph.put("racer_name", p.getName());
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("finish_pos", String.valueOf(pos));
-        ph.put("finish_time", fmt(t));
+        ph.put("finish_time", Time.formatStopwatchMillis(t));
         ph.put("avg_speed", speedVal);
         ph.put("speed_unit", speedUnit);
         ph.put("speed_color", speedColor);
@@ -295,7 +296,7 @@ public class ScoreboardService {
         ph.put("racer_name", p.getName()); ph.put("racer_color", DyeColorFormats.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("completed", String.valueOf(prof.completed)); ph.put("wins", String.valueOf(prof.wins));
-        ph.put("time_raced", fmtDuration(prof.timeRacedMillis));
+        ph.put("time_raced", Time.formatDurationShort(prof.timeRacedMillis));
         java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.lobby.lines", java.util.List.of(
             "<yellow>Hồ sơ của bạn",
             "<gray>Tên: %racer_color%%racer_name%",
@@ -307,16 +308,6 @@ public class ScoreboardService {
             "<gray>Chiến thắng: <white>%wins%",
             "<gray>Thời gian đã đua: <white>%time_raced%")), ph);
         applySidebarComponents(p, sb, title, lines);
-    }
-
-    private static String fmtDuration(long ms) {
-        long t = Math.max(0L, ms);
-        long totalSec = t / 1000L;
-        long h = totalSec / 3600L;
-        long m = (totalSec % 3600L) / 60L;
-        long s = totalSec % 60L;
-        if (h > 0L) return String.format(Locale.ROOT, "%d:%02d:%02d", h, m, s);
-        return String.format(Locale.ROOT, "%02d:%02d", m, s);
     }
 
     private void applyWaitingBoard(Player p, RaceManager rm, String trackName) {
@@ -332,7 +323,7 @@ public class ScoreboardService {
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
         ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
-        ph.put("countdown", formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
+        ph.put("countdown", Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
         java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.waiting.lines", java.util.List.of()), ph);
         if (lines.isEmpty()) {
             lines = parseLines(p, java.util.List.of(
@@ -357,7 +348,7 @@ public class ScoreboardService {
         int laps = rm.getTotalLaps();
         long ms = rm.getRaceElapsedMillis();
         java.util.Map<String,String> ph = new java.util.HashMap<>();
-        ph.put("track", track); ph.put("timer", fmt(ms));
+        ph.put("track", track); ph.put("timer", Time.formatStopwatchMillis(ms));
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         var st = rm.getParticipantState(p.getUniqueId());
         java.util.List<Component> lines;
@@ -425,8 +416,8 @@ public class ScoreboardService {
                 ph.put("racer_name", name);
                 ph.put("racer_display", racerDisplay(s.id, name));
                 ph.put("finish_pos", String.valueOf(s.finishPosition));
-                ph.put("finish_time", fmt(t));
-                ph.put("delta_time", fmt(delta));
+                ph.put("finish_time", Time.formatStopwatchMillis(t));
+                ph.put("delta_time", Time.formatStopwatchMillis(delta));
                 String key = (s.finishPosition == 1 || delta == 0L)
                         ? "scoreboard.templates.ended.winner_line"
                         : "scoreboard.templates.ended.delta_line";
@@ -454,7 +445,7 @@ public class ScoreboardService {
             ph.put("racer_name", name);
             ph.put("racer_display", racerDisplay(s.id, name));
             ph.put("finish_pos", String.valueOf(s.finishPosition));
-            ph.put("finish_time", fmt(t));
+            ph.put("finish_time", Time.formatStopwatchMillis(t));
             lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_line", "<white>%finish_pos%)</white> %racer_display%"), ph));
             lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_time_line", "<gray>  thời gian: <white>%finish_time%"), ph));
             shown += 2;
@@ -537,7 +528,7 @@ public class ScoreboardService {
         int joined = rm.getRegistered().size();
         int max = rm.getTrackConfig().getStarts().size();
         java.util.Map<String,String> ph = new java.util.HashMap<>();
-        ph.put("countdown", formatCountdownSeconds(countdown)); ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
+        ph.put("countdown", Time.formatCountdownSeconds(countdown)); ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
         Component c = parse(p, tpl, ph);
         sendActionBar(p, c);
         log("Applied waiting actionbar to " + p.getName() + " tpl='" + tpl + "'");
@@ -688,14 +679,6 @@ public class ScoreboardService {
         try { p.sendActionBar(c); } catch (Throwable ignored) {}
     }
 
-    private static String formatCountdownSeconds(int sec) {
-        if (sec <= 0) return "0s";
-        if (sec >= 60) {
-            int m = sec / 60; int s = sec % 60; return String.format("%d:%02d", m, s);
-        }
-        return sec + "s";
-    }
-
     private java.util.List<Component> parseLines(Player p, java.util.List<String> lines, java.util.Map<String,String> placeholders) {
         java.util.List<Component> out = new java.util.ArrayList<>(lines.size());
         for (String s : lines) out.add(parse(p, s, placeholders));
@@ -758,14 +741,6 @@ public class ScoreboardService {
     }
 
     private static boolean empty(String s) { return s == null || s.isEmpty(); }
-
-    private static String fmt(long ms) {
-        long totalSec = ms / 1000L;
-        long m = totalSec / 60L;
-        long s = totalSec % 60L;
-        long msPart = ms % 1000L;
-        return String.format("%02d:%02d.%03d", m, s, msPart);
-    }
 
     private static String nameOf(UUID id) {
         OfflinePlayer op = Bukkit.getOfflinePlayer(id);

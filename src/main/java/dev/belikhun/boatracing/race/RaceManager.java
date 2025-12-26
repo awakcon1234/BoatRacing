@@ -3,6 +3,7 @@ package dev.belikhun.boatracing.race;
 import dev.belikhun.boatracing.track.TrackConfig;
 import dev.belikhun.boatracing.track.Region;
 import dev.belikhun.boatracing.util.Text;
+import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -1779,15 +1780,6 @@ public class RaceManager {
         } catch (Throwable ignored) {}
     }
 
-    private static String fmtMs(long ms) {
-        long t = Math.max(0L, ms);
-        long totalSec = t / 1000L;
-        long m = totalSec / 60L;
-        long s = totalSec % 60L;
-        long msPart = t % 1000L;
-        return String.format(Locale.ROOT, "%02d:%02d.%03d", m, s, msPart);
-    }
-
     private static String fmt1(double v) {
         if (!Double.isFinite(v)) return "0.0";
         return String.format(Locale.ROOT, "%.1f", v);
@@ -1824,13 +1816,13 @@ public class RaceManager {
 
         // 10 lines total (Minecraft default chat height).
         Text.tell(p, "&6&l┏━━━━━━━━━━━━━━━━━━━━━━ &eKẾT QUẢ &6&l━━━━━━━━━━━━━━━━━━━━━━┓");
-        Text.tell(p, "&eHạng: &f#" + place + "&7/&f" + racersTotal + "   &8●   &eThời gian: &f" + fmtMs(finalMs));
-        Text.tell(p, "&eThời gian thực: &f" + fmtMs(rawMs) + "   &8●   &ePhạt: &c+" + fmtMs(penaltyMs));
+        Text.tell(p, "&eHạng: &f#" + place + "&7/&f" + racersTotal + "   &8●   &eThời gian: &f" + Time.formatStopwatchMillis(finalMs));
+        Text.tell(p, "&eThời gian thực: &f" + Time.formatStopwatchMillis(rawMs) + "   &8●   &ePhạt: &c+" + Time.formatStopwatchMillis(penaltyMs));
         Text.tell(p, "&eĐường đua: &f" + track);
         Text.tell(p, "&eVòng: &f" + getTotalLaps() + "/" + getTotalLaps() + "   &8●   &eCheckpoint: &f" + cps + "&7/vòng");
         Text.tell(p, "&eQuãng đường: &f" + fmt1(dist) + "&7m");
         Text.tell(p, "&eTốc độ TB: &f" + fmt2(avgBps) + "&7 bps &8(≈ &f" + fmt2(avgKmh) + "&7 km/h)");
-        Text.tell(p, "&eTB mỗi vòng: &f" + fmtMs(avgLapMs));
+        Text.tell(p, "&eTB mỗi vòng: &f" + Time.formatStopwatchMillis(avgLapMs));
         Text.tell(p, "&7Gợi ý: &f/boatracing profile &7để chỉnh màu/số/biểu tượng.");
         Text.tell(p, "&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
     }

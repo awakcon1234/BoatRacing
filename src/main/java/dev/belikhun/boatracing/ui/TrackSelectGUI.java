@@ -3,6 +3,7 @@ package dev.belikhun.boatracing.ui;
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.util.Text;
+import dev.belikhun.boatracing.util.Time;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
@@ -71,27 +72,6 @@ public class TrackSelectGUI implements Listener {
 			p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
 		} catch (Throwable ignored) {
 		}
-	}
-
-	private static String fmtElapsed(long ms) {
-		long t = Math.max(0L, ms);
-		long totalSec = t / 1000L;
-		long h = totalSec / 3600L;
-		long m = (totalSec % 3600L) / 60L;
-		long s = totalSec % 60L;
-		if (h > 0L)
-			return String.format(java.util.Locale.ROOT, "%d:%02d:%02d", h, m, s);
-		return String.format(java.util.Locale.ROOT, "%02d:%02d", m, s);
-	}
-
-	private static String fmtCountdownSeconds(int sec) {
-		int s = Math.max(0, sec);
-		if (s >= 60) {
-			int m = s / 60;
-			int r = s % 60;
-			return String.format(java.util.Locale.ROOT, "%d:%02d", m, r);
-		}
-		return s + "s";
 	}
 
 	private static int stackAmountForCount(int racers) {
@@ -179,12 +159,12 @@ public class TrackSelectGUI implements Listener {
 			lore.add("&7Trạng thái: &bĐang diễn ra");
 			if (running) {
 				try {
-					lore.add("&7⌚ Đã chạy: &f" + fmtElapsed(rm.getRaceElapsedMillis()));
+					lore.add("&7⌚ Đã chạy: &f" + Time.formatDurationShort(rm.getRaceElapsedMillis()));
 				} catch (Throwable ignored) {
 				}
 			} else {
 				try {
-					lore.add("&7⌛ Bắt đầu trong: &f" + fmtCountdownSeconds(rm.getCountdownRemainingSeconds()));
+					lore.add("&7⌛ Bắt đầu trong: &f" + Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
 				} catch (Throwable ignored) {
 				}
 			}
@@ -196,7 +176,7 @@ public class TrackSelectGUI implements Listener {
 			lore.add("&7Trạng thái: &aĐang mở (chờ tay đua)");
 			if (registering) {
 				try {
-					lore.add("&7⌛ Bắt đầu trong: &f" + fmtCountdownSeconds(rm.getCountdownRemainingSeconds()));
+					lore.add("&7⌛ Bắt đầu trong: &f" + Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
 				} catch (Throwable ignored) {
 				}
 			}
