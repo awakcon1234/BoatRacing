@@ -2046,7 +2046,72 @@ public class RaceManager {
         return Math.max(1, totalLaps);
     }
 
+    private String safeTrackName() {
+        try {
+            String n = trackConfig != null ? trackConfig.getCurrentName() : null;
+            if (n != null && !n.isBlank()) return n;
+        } catch (Throwable ignored) {}
+        return "(không rõ)";
+    }
+
+    private void announceRegistrationOpened(int laps) {
+        if (plugin == null) return;
+
+        String track = safeTrackName();
+        String cmd = "/boatracing race join " + track;
+
+        String tpl;
+        try {
+            tpl = plugin.getConfig().getString(
+                    "scoreboard.registration-announce",
+                    "&eCuộc đua mới tại &f{track}&e (&f{laps}&e vòng). &7Tham gia bằng &f{cmd}"
+            );
+        } catch (Throwable ignored) {
+            tpl = "&eCuộc đua mới tại &f{track}&e (&f{laps}&e vòng). &7Tham gia bằng &f{cmd}";
+        }
+
+        String msg = tpl
+                .replace("{track}", track)
+                .replace("{laps}", String.valueOf(Math.max(1, laps)))
+                .replace("{cmd}", cmd);
+
+        try {
+            for (Player p : Bukkit.getOnlinePlayers()) {
+                try { Text.msg(p, msg); } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void broadcastRegistrationJoin(Player joined) {
+        if (joined == null) return;
+
+        String track = safeTrackName();
+        int joinedCount = 0;
+        int max = 0;
+        try { joinedCount = registered.size(); } catch (Throwable ignored) { joinedCount = 0; }
+        try { max = trackConfig != null ? trackConfig.getStarts().size() : 0; } catch (Throwable ignored) { max = 0; }
+
+        String racerDisplay = "&f" + joined.getName();
+        try {
+            if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br && br.getProfileManager() != null) {
+                racerDisplay = br.getProfileManager().formatRacerLegacy(joined.getUniqueId(), joined.getName());
+            }
+        } catch (Throwable ignored) {}
+
+        // Only announce to racers currently waiting/registered for THIS track.
+        String msg = "&a● " + racerDisplay + " &ađã tham gia đăng ký &e" + track + "&a. &7(" + joinedCount + "/" + max + ")";
+        for (UUID id : new java.util.LinkedHashSet<>(registered)) {
+            try {
+                Player p = Bukkit.getPlayer(id);
+                if (p == null || !p.isOnline()) continue;
+                Text.msg(p, msg);
+            } catch (Throwable ignored) {}
+        }
+    }
+
     public boolean openRegistration(int laps, Object unused) {
+        boolean wasRegistering = this.registering;
+
         // If there is an existing scheduled registration transition, cancel it.
         if (registrationStartTask != null) {
             try { registrationStartTask.cancel(); } catch (Throwable ignored) {}
@@ -2056,6 +2121,11 @@ public class RaceManager {
         this.totalLaps = laps;
         // Waiting countdown should only start once at least 1 racer is waiting.
         this.waitingEndMillis = 0L;
+
+        // Announce once when the track is opened for registration (waiting for racers).
+        if (!wasRegistering) {
+            try { announceRegistrationOpened(laps); } catch (Throwable ignored) {}
+        }
 
         // Show checkpoint markers while the track is active.
         try { ensureCheckpointHolos(); } catch (Throwable ignored) {}
@@ -2139,6 +2209,9 @@ public class RaceManager {
 
             // Join sound
             try { p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.6f); } catch (Throwable ignored) {}
+
+            // Notify everyone currently waiting on this track.
+            try { broadcastRegistrationJoin(p); } catch (Throwable ignored) {}
         }
         return added;
     }
