@@ -64,8 +64,48 @@ public class TrackSelectGUI implements Listener {
         try { p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f); } catch (Throwable ignored) {}
     }
 
+    private static String fmtElapsed(long ms) {
+        long t = Math.max(0L, ms);
+        long totalSec = t / 1000L;
+        long h = totalSec / 3600L;
+        long m = (totalSec % 3600L) / 60L;
+        long s = totalSec % 60L;
+        if (h > 0L) return String.format(java.util.Locale.ROOT, "%d:%02d:%02d", h, m, s);
+        return String.format(java.util.Locale.ROOT, "%02d:%02d", m, s);
+    }
+
+    private static String fmtCountdownSeconds(int sec) {
+        int s = Math.max(0, sec);
+        if (s >= 60) {
+            int m = s / 60;
+            int r = s % 60;
+            return String.format(java.util.Locale.ROOT, "%d:%02d", m, r);
+        }
+        return s + "s";
+    }
+
+    private static int stackAmountForCount(int racers) {
+        if (racers <= 0) return 1;
+        return Math.min(64, racers);
+    }
+
+    private static void trySetGlint(ItemMeta meta, boolean glint) {
+        if (meta == null) return;
+        // Paper API: ItemMeta#setEnchantmentGlintOverride(Boolean)
+        // Use reflection so the plugin still compiles/runs on any compatible API surface.
+        try {
+            java.lang.reflect.Method m = meta.getClass().getMethod("setEnchantmentGlintOverride", java.lang.Boolean.class);
+            m.invoke(meta, Boolean.valueOf(glint));
+            return;
+        } catch (Throwable ignored) {}
+        try {
+            java.lang.reflect.Method m = meta.getClass().getMethod("setEnchantmentGlintOverride", boolean.class);
+            m.invoke(meta, glint);
+        } catch (Throwable ignored) {}
+    }
+
     private ItemStack trackItem(String trackName) {
-        Material mat = Material.FILLED_MAP;
+        Material mat;
         List<String> lore = new ArrayList<>();
 
         RaceManager rm = null;
@@ -76,29 +116,68 @@ public class TrackSelectGUI implements Listener {
             try { ready = rm.getTrackConfig().isReady(); } catch (Throwable ignored) { ready = false; }
         }
 
+        boolean running = rm != null && rm.isRunning();
+        boolean countdown = rm != null && rm.isAnyCountdownActive();
+        boolean registering = rm != null && rm.isRegistering();
+
+        int racers = 0;
+        if (rm != null) {
+            try { racers = rm.getInvolved().size(); } catch (Throwable ignored) { racers = 0; }
+        }
+
+        // State colors:
+        // - Blue (enchanted) = currently playing / cannot join
+        // - Red = maintenance/editing (not ready)
+        // - Green = open/waiting for players
         if (rm == null) {
             mat = Material.BARRIER;
             lore.add("&cKhông thể tải đường đua này.");
             lore.add("&7Vui lòng thử lại hoặc kiểm tra file cấu hình.");
         } else if (!ready) {
             mat = Material.RED_CONCRETE;
-            lore.add("&cĐường đua chưa sẵn sàng.");
+            lore.add("&7Trạng thái: &cĐang bảo trì / chỉnh sửa");
+            lore.add("&7● &fChuột phải&7: &eXem thông tin");
+            lore.add("&7● &fChuột trái&7: &cKhông thể tham gia");
             try {
                 List<String> miss = rm.getTrackConfig().missingRequirements();
                 if (miss != null && !miss.isEmpty()) lore.add("&7Thiếu: &f" + String.join(", ", miss));
             } catch (Throwable ignored) {}
+        } else if (running || countdown) {
+            mat = Material.BLUE_CONCRETE;
+            lore.add("&7Trạng thái: &bĐang diễn ra");
+            if (running) {
+                try { lore.add("&7⏱ Đã chạy: &f" + fmtElapsed(rm.getRaceElapsedMillis())); } catch (Throwable ignored) {}
+            } else {
+                try { lore.add("&7⌛ Bắt đầu trong: &f" + fmtCountdownSeconds(rm.getCountdownRemainingSeconds())); } catch (Throwable ignored) {}
+            }
+            lore.add("&7● &fChuột phải&7: &eXem thông tin");
+            lore.add("&7● &fChuột trái&7: &cKhông thể tham gia");
         } else {
-            mat = Material.FILLED_MAP;
-            lore.add("&aSẵn sàng để thi đấu");
-            lore.add("&7● &fNhấp trái&7: &aTham gia đăng ký");
-            lore.add("&7● &fNhấp phải&7: &eXem trạng thái");
+            mat = Material.GREEN_CONCRETE;
+            lore.add("&7Trạng thái: &aĐang mở (chờ tay đua)");
+            if (registering) {
+                try { lore.add("&7⌛ Bắt đầu trong: &f" + fmtCountdownSeconds(rm.getCountdownRemainingSeconds())); } catch (Throwable ignored) {}
+            }
+            lore.add("&7● &fChuột trái&7: &aTham gia đăng ký");
+            lore.add("&7● &fChuột phải&7: &eXem thông tin");
         }
 
-        ItemStack it = new ItemStack(mat);
+        // Always show racer count in lore when we can.
+        if (rm != null) {
+            lore.add(0, "&7👥 Tay đua: &f" + racers);
+        }
+
+        ItemStack it = new ItemStack(mat, (rm == null ? 1 : stackAmountForCount(racers)));
         ItemMeta im = it.getItemMeta();
         if (im != null) {
             im.displayName(Text.item("&e" + trackName));
             im.lore(Text.lore(lore));
+
+            // Enchanted glow for "currently playing" tracks.
+            if (rm != null && ready && (running || countdown)) {
+                trySetGlint(im, true);
+            }
+
             im.addItemFlags(ItemFlag.values());
             im.getPersistentDataContainer().set(KEY_TRACK, PersistentDataType.STRING, trackName);
             it.setItemMeta(im);
@@ -146,7 +225,24 @@ public class TrackSelectGUI implements Listener {
             return;
         }
 
-        // left click = join
+        // left click = join (only when open)
+        RaceManager rm = null;
+        try { rm = plugin.getRaceService().getOrCreate(track); } catch (Throwable ignored) { rm = null; }
+        if (rm == null || rm.getTrackConfig() == null) {
+            Text.msg(p, "&c❌ Không thể tải đường đua này.");
+            return;
+        }
+        boolean ready = false;
+        try { ready = rm.getTrackConfig().isReady(); } catch (Throwable ignored) { ready = false; }
+        if (!ready) {
+            Text.msg(p, "&c❌ Đường đua đang bảo trì / chỉnh sửa.");
+            return;
+        }
+        if (rm.isRunning() || rm.isAnyCountdownActive()) {
+            Text.msg(p, "&c❌ Đường đua đang diễn ra, không thể tham gia lúc này.");
+            return;
+        }
+
         try { p.closeInventory(); } catch (Throwable ignored) {}
         boolean ok = false;
         try {

@@ -864,6 +864,7 @@ public class RaceManager {
                     try {
                         d.setItemStack(new org.bukkit.inventory.ItemStack(markerMat));
                     } catch (Throwable ignored2) {}
+                    try { markCheckpointDisplay(d); } catch (Throwable ignored2) {}
                     try {
                         d.setBillboard(org.bukkit.entity.Display.Billboard.FIXED);
                     } catch (Throwable ignored2) {}
@@ -899,6 +900,7 @@ public class RaceManager {
                     try {
                         d.text(Text.c("&a✔ &fĐiểm kiểm tra &a#" + idx));
                     } catch (Throwable ignored2) {}
+                    try { markCheckpointDisplay(d); } catch (Throwable ignored2) {}
                     try {
                         d.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
                     } catch (Throwable ignored2) {}
@@ -996,12 +998,104 @@ public class RaceManager {
             checkpointDisplayTask = null;
         }
 
+        // 1) Remove tracked display entity references.
         for (org.bukkit.entity.Display d : new java.util.ArrayList<>(checkpointDisplays)) {
             try {
-                if (d != null && d.isValid()) d.remove();
+                if (d != null) d.remove();
             } catch (Throwable ignored) {}
         }
         checkpointDisplays.clear();
+
+        // 2) Fallback sweep: if entity references were lost (chunk unload / reload), remove any
+        // checkpoint displays near each checkpoint center by marker key.
+        try { sweepCheckpointDisplays(); } catch (Throwable ignored) {}
+    }
+
+    private NamespacedKey checkpointDisplayKey() {
+        try {
+            if (plugin == null) return null;
+            return new NamespacedKey(plugin, "boatracing_checkpoint_display");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private NamespacedKey checkpointDisplayTrackKey() {
+        try {
+            if (plugin == null) return null;
+            return new NamespacedKey(plugin, "boatracing_checkpoint_display_track");
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private String checkpointDisplayTrackId() {
+        try {
+            String n = (trackConfig != null ? trackConfig.getCurrentName() : null);
+            return (n == null ? "" : n);
+        } catch (Throwable ignored) {
+            return "";
+        }
+    }
+
+    private void markCheckpointDisplay(org.bukkit.entity.Display d) {
+        if (d == null) return;
+        NamespacedKey key = checkpointDisplayKey();
+        if (key == null) return;
+        try { d.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1); } catch (Throwable ignored) {}
+
+        // Tag with track id so multi-track cleanup can't delete other track markers.
+        NamespacedKey trackKey = checkpointDisplayTrackKey();
+        if (trackKey == null) return;
+        try { d.getPersistentDataContainer().set(trackKey, PersistentDataType.STRING, checkpointDisplayTrackId()); }
+        catch (Throwable ignored) {}
+    }
+
+    private boolean isCheckpointDisplay(org.bukkit.entity.Entity e) {
+        if (e == null) return false;
+        if (!(e instanceof org.bukkit.entity.Display)) return false;
+        NamespacedKey key = checkpointDisplayKey();
+        if (key == null) return false;
+        try {
+            if (!e.getPersistentDataContainer().has(key, PersistentDataType.BYTE)) return false;
+
+            // If a track tag exists, require it to match this RaceManager's track.
+            NamespacedKey trackKey = checkpointDisplayTrackKey();
+            if (trackKey != null && e.getPersistentDataContainer().has(trackKey, PersistentDataType.STRING)) {
+                String tagged = e.getPersistentDataContainer().get(trackKey, PersistentDataType.STRING);
+                return checkpointDisplayTrackId().equals(tagged == null ? "" : tagged);
+            }
+
+            // Legacy displays (no track tag) are considered removable.
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
+
+    private void sweepCheckpointDisplays() {
+        if (plugin == null || trackConfig == null) return;
+        java.util.List<Region> cps;
+        try { cps = trackConfig.getCheckpoints(); } catch (Throwable ignored) { cps = java.util.Collections.emptyList(); }
+        if (cps == null || cps.isEmpty()) return;
+
+        final double r = 8.0;
+        for (Region cp : cps) {
+            if (cp == null) continue;
+            org.bukkit.Location c;
+            try { c = centerOf(cp); } catch (Throwable ignored) { c = null; }
+            if (c == null || c.getWorld() == null) continue;
+
+            java.util.Collection<org.bukkit.entity.Entity> near;
+            try {
+                near = c.getWorld().getNearbyEntities(c, r, r, r, this::isCheckpointDisplay);
+            } catch (Throwable ignored) {
+                near = java.util.Collections.emptyList();
+            }
+            for (org.bukkit.entity.Entity e : near) {
+                try { if (e != null) e.remove(); } catch (Throwable ignored) {}
+            }
+        }
     }
 
     public TrackConfig getTrackConfig() { return trackConfig; }
@@ -1644,6 +1738,9 @@ public class RaceManager {
                 running = false;
                 try { stopRaceTicker(); } catch (Throwable ignored) {}
                 try { setStartLightsProgress(0.0); } catch (Throwable ignored) {}
+
+                // Track completed: remove checkpoint markers immediately (user expects them gone on completion).
+                try { clearCheckpointHolos(); } catch (Throwable ignored) {}
 
                 // Celebration: fireworks + switch everyone in this race to spectator.
                 try { spawnAllFinishedFireworks(); } catch (Throwable ignored) {}
