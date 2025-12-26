@@ -235,7 +235,7 @@ public class HotbarService {
 
                 setSlot(p, 4, null);
 
-                setSlot(p, 7, playerHeadItem(p, "&b&l👤 Hồ sơ tay đua", Action.PROFILE,
+                setSlot(p, 7, playerHeadItem(p, "&b&l👤 Hồ sơ", Action.PROFILE,
                     "&7Tùy chỉnh màu, số đua, biểu tượng và thuyền."));
 
                 if (p.hasPermission("boatracing.admin")) {
@@ -246,8 +246,8 @@ public class HotbarService {
                 }
             }
             case WAITING -> {
-                setSlot(p, 0, playerHeadItem(p, "&b&l👤 Hồ sơ tay đua", Action.PROFILE,
-                    "&7Tùy chỉnh hồ sơ tay đua."));
+                setSlot(p, 0, playerHeadItem(p, "&b&l👤 Hồ sơ", Action.PROFILE,
+                    "&7Tùy chỉnh hồ sơ."));
                 setSlot(p, 1, null);
 
                 if (p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup")) {

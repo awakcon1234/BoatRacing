@@ -72,6 +72,12 @@ public class RaceManager {
     private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
     private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
     private final java.util.Map<Block, BlockData> countdownBarrierRestore = new java.util.HashMap<>();
+
+    // Checkpoint markers: rotating ItemDisplay + TextDisplay label at each checkpoint
+    private final java.util.List<org.bukkit.entity.Display> checkpointDisplays = new java.util.ArrayList<>();
+    private BukkitTask checkpointDisplayTask;
+    private long checkpointDisplayTick = 0L;
+    private final org.joml.Quaternionf checkpointSpin = new org.joml.Quaternionf();
     // NOTE: We intentionally do not use Boat physics setters (maxSpeed/deceleration/workOnLand)
     // because they are deprecated in modern Paper. Countdown freezing is enforced via snapping.
 
@@ -371,6 +377,22 @@ public class RaceManager {
         return Material.OAK_STAIRS;
     }
 
+    private static org.bukkit.Material checkpointMarkerMaterialForIndex(int zeroBasedIndex) {
+        // Deterministic alternating palette so each checkpoint is visually distinct.
+        // Keep colors bright and readable in most biomes.
+        final org.bukkit.Material[] palette = new org.bukkit.Material[] {
+                org.bukkit.Material.LIME_CONCRETE,
+                org.bukkit.Material.YELLOW_CONCRETE,
+                org.bukkit.Material.CYAN_CONCRETE,
+                org.bukkit.Material.ORANGE_CONCRETE,
+                org.bukkit.Material.PINK_CONCRETE,
+                org.bukkit.Material.LIGHT_BLUE_CONCRETE
+        };
+        int idx = zeroBasedIndex;
+        if (idx < 0) idx = 0;
+        return palette[idx % palette.length];
+    }
+
     private static float absAngleDelta(float a, float b) {
         float d = (a - b) % 360.0f;
         if (d > 180.0f) d -= 360.0f;
@@ -396,6 +418,187 @@ public class RaceManager {
     public RaceManager(TrackConfig trackConfig) {
         this.plugin = null;
         this.trackConfig = trackConfig;
+    }
+
+    private void ensureCheckpointHolos() {
+        // Kept method name to avoid touching other call sites; implementation now uses Display entities.
+        ensureCheckpointDisplays();
+    }
+
+    private void ensureCheckpointDisplays() {
+        if (plugin == null) return;
+        if (trackConfig == null) return;
+        if (!checkpointDisplays.isEmpty()) return;
+
+        java.util.List<Region> checkpoints;
+        try { checkpoints = trackConfig.getCheckpoints(); }
+        catch (Throwable ignored) { checkpoints = java.util.Collections.emptyList(); }
+        if (checkpoints == null || checkpoints.isEmpty()) return;
+
+        for (int i = 0; i < checkpoints.size(); i++) {
+            Region r = checkpoints.get(i);
+            if (r == null) continue;
+
+            org.bukkit.Location base;
+            try { base = centerOf(r); }
+            catch (Throwable ignored) { base = null; }
+            if (base == null || base.getWorld() == null) continue;
+
+            // Slightly above the water/track so it's readable.
+            org.bukkit.Location itemLoc = base.clone();
+            org.bukkit.Location textLoc = base.clone();
+            try {
+                itemLoc.setY(itemLoc.getY() + 1.35);
+                textLoc.setY(textLoc.getY() + 2.00);
+            } catch (Throwable ignored) {}
+
+            final int idx = i + 1;
+            final org.bukkit.Material markerMat = checkpointMarkerMaterialForIndex(i);
+
+            // 1) Rotating item display
+            try {
+                org.bukkit.entity.ItemDisplay item = itemLoc.getWorld().spawn(itemLoc, org.bukkit.entity.ItemDisplay.class, d -> {
+                    try {
+                        d.setItemStack(new org.bukkit.inventory.ItemStack(markerMat));
+                    } catch (Throwable ignored2) {}
+                    try {
+                        d.setBillboard(org.bukkit.entity.Display.Billboard.FIXED);
+                    } catch (Throwable ignored2) {}
+                    try {
+                        // Keep it crisp and visible at range.
+                        d.setViewRange(64.0f);
+                    } catch (Throwable ignored2) {}
+
+                    // Let the client interpolate transformation updates for smooth animation.
+                    try {
+                        d.setInterpolationDelay(0);
+                        d.setInterpolationDuration(10);
+                    } catch (Throwable ignored2) {}
+
+                    // Make the item smaller (closer to a dropped item feel)
+                    try {
+                        org.bukkit.util.Transformation cur = d.getTransformation();
+                        org.bukkit.util.Transformation next = new org.bukkit.util.Transformation(
+                                cur.getTranslation(),
+                                cur.getLeftRotation(),
+                                new org.joml.Vector3f(0.45f, 0.45f, 0.45f),
+                                cur.getRightRotation()
+                        );
+                        d.setTransformation(next);
+                    } catch (Throwable ignored2) {}
+                });
+                checkpointDisplays.add(item);
+            } catch (Throwable ignored) {}
+
+            // 2) Floating text label
+            try {
+                org.bukkit.entity.TextDisplay text = textLoc.getWorld().spawn(textLoc, org.bukkit.entity.TextDisplay.class, d -> {
+                    try {
+                        d.text(Text.c("&a✔ &fĐiểm kiểm tra &a#" + idx));
+                    } catch (Throwable ignored2) {}
+                    try {
+                        d.setBillboard(org.bukkit.entity.Display.Billboard.CENTER);
+                    } catch (Throwable ignored2) {}
+                    try {
+                        d.setSeeThrough(true);
+                    } catch (Throwable ignored2) {}
+                    try {
+                        d.setDefaultBackground(false);
+                    } catch (Throwable ignored2) {}
+                    try {
+                        d.setViewRange(64.0f);
+                    } catch (Throwable ignored2) {}
+
+                    // Text itself doesn't animate, but interpolation avoids any snapping if we ever adjust it.
+                    try {
+                        d.setInterpolationDelay(0);
+                        d.setInterpolationDuration(10);
+                    } catch (Throwable ignored2) {}
+                });
+                checkpointDisplays.add(text);
+            } catch (Throwable ignored) {}
+        }
+
+        if (checkpointDisplays.isEmpty()) return;
+
+        if (checkpointDisplayTask != null) {
+            try { checkpointDisplayTask.cancel(); } catch (Throwable ignored) {}
+            checkpointDisplayTask = null;
+        }
+
+        checkpointDisplayTick = 0L;
+        checkpointSpin.identity();
+
+        // Drive the animation with keyframes and let the client interpolate between them.
+        // This is smoother and lower-cost than updating every tick.
+        final int interpTicks = 10;
+        checkpointDisplayTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            checkpointDisplayTick += interpTicks;
+
+            // Bobbing motion similar to dropped items (client interpolates between keyframes).
+            float bob = (float) (Math.sin((double) checkpointDisplayTick * 0.18) * 0.12);
+
+            // Accumulate spin in quaternion space to avoid 360° wrap causing reverse interpolation.
+            final float deltaYawRad = (float) Math.toRadians(5.0f * interpTicks); // match old 5 deg/tick
+            checkpointSpin.mul(new org.joml.Quaternionf().rotateY(deltaYawRad));
+
+            java.util.Iterator<org.bukkit.entity.Display> it = checkpointDisplays.iterator();
+            while (it.hasNext()) {
+                org.bukkit.entity.Display d = it.next();
+                if (d == null || d.isDead() || !d.isValid()) {
+                    it.remove();
+                    continue;
+                }
+                if (!(d instanceof org.bukkit.entity.ItemDisplay item)) continue;
+
+                try {
+                    // Spin + slight tilt + bob like a dropped item entity.
+                    org.joml.Quaternionf rot = new org.joml.Quaternionf()
+                            .rotateX((float) Math.toRadians(20.0))
+                            .mul(new org.joml.Quaternionf(checkpointSpin));
+                    org.bukkit.util.Transformation cur = item.getTransformation();
+                    org.bukkit.util.Transformation next = new org.bukkit.util.Transformation(
+                            new org.joml.Vector3f(cur.getTranslation().x(), bob, cur.getTranslation().z()),
+                            rot,
+                            cur.getScale(),
+                            cur.getRightRotation()
+                    );
+                    item.setTransformation(next);
+
+                    // Ensure interpolation settings are applied for each keyframe.
+                    try {
+                        item.setInterpolationDelay(0);
+                        item.setInterpolationDuration(interpTicks);
+                    } catch (Throwable ignored2) {}
+                } catch (Throwable ignored) {}
+            }
+
+            if (checkpointDisplays.isEmpty()) {
+                if (checkpointDisplayTask != null) {
+                    try { checkpointDisplayTask.cancel(); } catch (Throwable ignored) {}
+                    checkpointDisplayTask = null;
+                }
+            }
+        }, 1L, interpTicks);
+    }
+
+    private void clearCheckpointHolos() {
+        // Kept method name to avoid touching other call sites; implementation now uses Display entities.
+        clearCheckpointDisplays();
+    }
+
+    private void clearCheckpointDisplays() {
+        if (checkpointDisplayTask != null) {
+            try { checkpointDisplayTask.cancel(); } catch (Throwable ignored) {}
+            checkpointDisplayTask = null;
+        }
+
+        for (org.bukkit.entity.Display d : new java.util.ArrayList<>(checkpointDisplays)) {
+            try {
+                if (d != null && d.isValid()) d.remove();
+            } catch (Throwable ignored) {}
+        }
+        checkpointDisplays.clear();
     }
 
     public TrackConfig getTrackConfig() { return trackConfig; }
@@ -1245,6 +1448,9 @@ public class RaceManager {
         this.totalLaps = laps;
         // Waiting countdown should only start once at least 1 racer is waiting.
         this.waitingEndMillis = 0L;
+
+        // Show checkpoint markers while the track is active.
+        try { ensureCheckpointHolos(); } catch (Throwable ignored) {}
         return true;
     }
 
@@ -1444,6 +1650,9 @@ public class RaceManager {
         if (placed.isEmpty()) return;
         this.registering = false;
 
+        // Ensure checkpoint holos exist for this race instance.
+        try { ensureCheckpointHolos(); } catch (Throwable ignored) {}
+
         // Cancel any scheduled post-finish cleanup when starting a new countdown.
         if (postFinishCleanupTask != null) {
             try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
@@ -1593,24 +1802,24 @@ public class RaceManager {
                 countdownEndMillis = System.currentTimeMillis() + (sec * 1000L);
                 for (Player p : placed) {
                     try {
-                        var title = net.kyori.adventure.text.Component.text(String.valueOf(sec)).color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
+                        var sub = net.kyori.adventure.text.Component.text(String.valueOf(sec)).color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
                         net.kyori.adventure.text.Component dot = net.kyori.adventure.text.Component.text("●");
                         var dark = net.kyori.adventure.text.format.NamedTextColor.DARK_GRAY;
-                        net.kyori.adventure.text.Component sub;
+                        net.kyori.adventure.text.Component title;
                         if (sec > 3) {
-                            sub = net.kyori.adventure.text.Component.text("● ● ●").color(dark);
+                            title = net.kyori.adventure.text.Component.text("● ● ●").color(dark);
                         } else if (sec == 3) {
-                            sub = net.kyori.adventure.text.Component.empty()
+                            title = net.kyori.adventure.text.Component.empty()
                                     .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.RED)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(dark));
                         } else if (sec == 2) {
-                            sub = net.kyori.adventure.text.Component.empty()
+                            title = net.kyori.adventure.text.Component.empty()
                                     .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.RED)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.YELLOW)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(dark));
                         } else { // sec == 1
-                            sub = net.kyori.adventure.text.Component.empty()
+                            title = net.kyori.adventure.text.Component.empty()
                                     .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
                                     .append(dot.color(net.kyori.adventure.text.format.NamedTextColor.GREEN));
@@ -1808,6 +2017,8 @@ public class RaceManager {
             try { registrationStartTask.cancel(); } catch (Throwable ignored) {}
             registrationStartTask = null;
         }
+
+        try { clearCheckpointHolos(); } catch (Throwable ignored) {}
         return had;
     }
 
@@ -1832,6 +2043,7 @@ public class RaceManager {
         try { clearCountdownBarriers(); } catch (Throwable ignored) {}
         try { restorePreviousGameModes(); } catch (Throwable ignored) {}
         try { stopAllFinishedFireworks(); } catch (Throwable ignored) {}
+        try { clearCheckpointHolos(); } catch (Throwable ignored) {}
 
         if (postFinishCleanupTask != null) {
             try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
@@ -2171,7 +2383,18 @@ public class RaceManager {
     private static org.bukkit.Location centerOf(Region r) {
         org.bukkit.util.BoundingBox b = r.getBox();
         org.bukkit.World w = org.bukkit.Bukkit.getWorld(r.getWorldName());
-        return new org.bukkit.Location(w, b.getCenterX(), b.getCenterY(), b.getCenterZ());
+        if (b == null) return new org.bukkit.Location(w, 0.0, 0.0, 0.0);
+
+        // Match Region.containsXZ() block-selection semantics: upper bounds are half-open with +1.
+        double minX = Math.min(b.getMinX(), b.getMaxX());
+        double maxX = Math.max(b.getMinX(), b.getMaxX()) + 1.0;
+        double minZ = Math.min(b.getMinZ(), b.getMaxZ());
+        double maxZ = Math.max(b.getMinZ(), b.getMaxZ()) + 1.0;
+
+        double x = (minX + maxX) * 0.5;
+        double z = (minZ + maxZ) * 0.5;
+        double y = (b.getMinY() + b.getMaxY()) * 0.5;
+        return new org.bukkit.Location(w, x, y, z);
     }
 
     private int nearestPathIndex(org.bukkit.Location pos, int seed, int window) {

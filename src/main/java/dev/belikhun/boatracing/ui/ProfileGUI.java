@@ -28,7 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ProfileGUI implements Listener {
-    private static final Component TITLE = Text.title("Hồ sơ tay đua");
+    private static final Component TITLE = Text.title("Hồ sơ");
     private static final Component TITLE_COLOR = Text.title("Chọn màu");
     private static final Component TITLE_ICON = Text.title("Chọn biểu tượng");
     private final BoatRacingPlugin plugin;
