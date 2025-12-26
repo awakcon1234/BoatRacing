@@ -37,6 +37,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     private dev.belikhun.boatracing.race.RaceService raceService;
     private SetupWizard setupWizard;
     private dev.belikhun.boatracing.ui.AdminTracksGUI tracksGUI;
+    private dev.belikhun.boatracing.track.TrackRecordManager trackRecordManager;
     // Plugin metadata (avoid deprecated getDescription())
     private String pluginVersion = "unknown";
     private java.util.List<String> pluginAuthors = java.util.Collections.emptyList();
@@ -55,6 +56,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     public TrackConfig getTrackConfig() { return trackConfig; }
     public TrackLibrary getTrackLibrary() { return trackLibrary; }
     public dev.belikhun.boatracing.ui.AdminTracksGUI getTracksGUI() { return tracksGUI; }
+    public dev.belikhun.boatracing.track.TrackRecordManager getTrackRecordManager() { return trackRecordManager; }
     
 
     @Override
@@ -74,6 +76,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.adminGUI = new dev.belikhun.boatracing.ui.AdminGUI(this);
     this.adminRaceGUI = new dev.belikhun.boatracing.ui.AdminRaceGUI(this);
     this.profileManager = new dev.belikhun.boatracing.profile.PlayerProfileManager(getDataFolder());
+	this.trackRecordManager = new dev.belikhun.boatracing.track.TrackRecordManager(getDataFolder());
     this.profileGUI = new dev.belikhun.boatracing.ui.ProfileGUI(this);
     this.trackSelectGUI = new dev.belikhun.boatracing.ui.TrackSelectGUI(this);
     this.trackConfig = new TrackConfig(this, getDataFolder());

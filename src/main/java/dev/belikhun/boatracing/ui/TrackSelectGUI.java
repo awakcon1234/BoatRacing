@@ -62,7 +62,7 @@ public class TrackSelectGUI implements Listener {
 			if (idx >= size)
 				break;
 
-			ItemStack it = trackItem(name);
+			ItemStack it = trackItem(p, name);
 			inv.setItem(idx, it);
 			idx++;
 		}
@@ -100,9 +100,48 @@ public class TrackSelectGUI implements Listener {
 		}
 	}
 
-	private ItemStack trackItem(String trackName) {
+	private void appendRecordLines(java.util.UUID viewerId, String trackName, List<String> lore) {
+		if (trackName == null || trackName.isBlank() || lore == null) return;
+
+		// Global track record
+		String trLine = null;
+		try {
+			var m = plugin.getTrackRecordManager();
+			var pm = plugin.getProfileManager();
+			var r = (m != null ? m.get(trackName) : null);
+			if (r != null && r.bestTimeMillis > 0L) {
+				String t = Time.formatStopwatchMillis(r.bestTimeMillis);
+				String holderName = (r.holderName == null || r.holderName.isBlank()) ? "(không rõ)" : r.holderName;
+				String holder;
+				if (pm != null) holder = pm.formatRacerLegacy(r.holderId, holderName);
+				else holder = "&f" + holderName;
+				trLine = "&7⌚ Kỷ lục: &f" + t + " &7bởi " + holder;
+			}
+		} catch (Throwable ignored) {
+			trLine = null;
+		}
+		if (trLine == null) trLine = "&7⌚ Kỷ lục: &f-";
+		lore.add(trLine);
+
+		// Per-player personal best
+		String pbLine = null;
+		try {
+			var pm = plugin.getProfileManager();
+			if (pm != null && viewerId != null) {
+				long ms = pm.getPersonalBestMillis(viewerId, trackName);
+				if (ms > 0L) pbLine = "&7⌚ Kỷ lục cá nhân: &f" + Time.formatStopwatchMillis(ms);
+			}
+		} catch (Throwable ignored) {
+			pbLine = null;
+		}
+		if (pbLine == null) pbLine = "&7⌚ Kỷ lục cá nhân: &f-";
+		lore.add(pbLine);
+	}
+
+	private ItemStack trackItem(Player viewer, String trackName) {
 		Material mat;
 		List<String> lore = new ArrayList<>();
+		java.util.UUID viewerId = (viewer == null ? null : viewer.getUniqueId());
 
 		RaceManager rm = null;
 		try {
@@ -140,6 +179,7 @@ public class TrackSelectGUI implements Listener {
 		if (rm == null) {
 			mat = Material.BARRIER;
 			lore.add("&cKhông thể tải đường đua này.");
+			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7Vui lòng thử lại hoặc kiểm tra file cấu hình.");
 		} else if (!ready) {
@@ -151,6 +191,7 @@ public class TrackSelectGUI implements Listener {
 					lore.add("&7Thiếu: &f" + String.join(", ", miss));
 			} catch (Throwable ignored) {
 			}
+			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột phải&7: &eXem thông tin");
 			lore.add("&7● &fChuột trái&7: &cKhông thể tham gia");
@@ -168,6 +209,7 @@ public class TrackSelectGUI implements Listener {
 				} catch (Throwable ignored) {
 				}
 			}
+			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột phải&7: &eXem thông tin");
 			lore.add("&7● &fChuột trái&7: &cKhông thể tham gia");
@@ -180,6 +222,7 @@ public class TrackSelectGUI implements Listener {
 				} catch (Throwable ignored) {
 				}
 			}
+			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột trái&7: &aTham gia đăng ký");
 			lore.add("&7● &fChuột phải&7: &eXem thông tin");

@@ -33,6 +33,12 @@ public class PlayerProfileManager {
         public int wins = 0;
         /** Total time raced across all finished races (milliseconds). */
         public long timeRacedMillis = 0L;
+        /**
+         * Per-track personal best time (milliseconds), keyed by track name.
+         *
+         * Persisted in profiles.yml under: profiles.<uuid>.personalBests.<track>
+         */
+        public Map<String, Long> personalBests = new HashMap<>();
         public String boatType = ""; // Material name of the chosen boat/raft item
         public String speedUnit = ""; // "kmh" | "bps"; empty = inherit global
     }
@@ -127,6 +133,31 @@ public class PlayerProfileManager {
     public void incCompleted(UUID id) { get(id).completed++; save(); }
     public void incWins(UUID id) { get(id).wins++; save(); }
 
+    public long getPersonalBestMillis(UUID id, String trackName) {
+        if (id == null || trackName == null || trackName.isBlank()) return 0L;
+        Profile p = get(id);
+        if (p.personalBests == null) p.personalBests = new HashMap<>();
+        Long v = p.personalBests.get(trackName);
+        return v == null ? 0L : Math.max(0L, v);
+    }
+
+    /**
+     * Updates the personal best for a track if the new time is better (lower).
+     * Returns true if an update happened.
+     */
+    public boolean updatePersonalBestIfBetter(UUID id, String trackName, long timeMillis) {
+        if (id == null) return false;
+        if (trackName == null || trackName.isBlank()) return false;
+        if (timeMillis <= 0L) return false;
+        Profile p = get(id);
+        if (p.personalBests == null) p.personalBests = new HashMap<>();
+        Long cur = p.personalBests.get(trackName);
+        if (cur != null && cur > 0L && timeMillis >= cur) return false;
+        p.personalBests.put(trackName, timeMillis);
+        save();
+        return true;
+    }
+
     public long getTimeRacedMillis(UUID id) { return Math.max(0L, get(id).timeRacedMillis); }
 
     /** Adds to the racer total time raced. Accepts milliseconds; negative values are ignored. */
@@ -179,6 +210,16 @@ public class PlayerProfileManager {
                 p.completed = sec.getInt(key + ".completed", 0);
                 p.wins = sec.getInt(key + ".wins", 0);
                 p.timeRacedMillis = Math.max(0L, sec.getLong(key + ".timeRacedMillis", 0L));
+                // Per-track personal bests
+                p.personalBests = new HashMap<>();
+                var pb = sec.getConfigurationSection(key + ".personalBests");
+                if (pb != null) {
+                    for (String tn : pb.getKeys(false)) {
+                        if (tn == null || tn.isBlank()) continue;
+                        long ms = Math.max(0L, pb.getLong(tn, 0L));
+                        if (ms > 0L) p.personalBests.put(tn, ms);
+                    }
+                }
                 p.boatType = sec.getString(key + ".boatType", "");
                 p.speedUnit = sec.getString(key + ".speedUnit", "");
 
@@ -201,6 +242,15 @@ public class PlayerProfileManager {
             cfg.set(base + ".completed", p.completed);
             cfg.set(base + ".wins", p.wins);
             if (p.timeRacedMillis > 0L) cfg.set(base + ".timeRacedMillis", p.timeRacedMillis);
+            if (p.personalBests != null && !p.personalBests.isEmpty()) {
+                String pbBase = base + ".personalBests";
+                for (var en : p.personalBests.entrySet()) {
+                    String tn = en.getKey();
+                    Long ms = en.getValue();
+                    if (tn == null || tn.isBlank() || ms == null || ms <= 0L) continue;
+                    cfg.set(pbBase + "." + tn, ms);
+                }
+            }
             cfg.set(base + ".boatType", p.boatType);
             if (p.speedUnit != null && !p.speedUnit.isEmpty()) cfg.set(base + ".speedUnit", p.speedUnit);
         }

@@ -290,13 +290,15 @@ public class ScoreboardService {
 
     private void applyLobbyBoard(Player p) {
         Sidebar sb = ensureSidebar(p);
-        Component title = parse(p, cfgString("scoreboard.templates.lobby.title", "<gold>BoatRacing"), java.util.Map.of());
         PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         ph.put("racer_name", p.getName()); ph.put("racer_color", DyeColorFormats.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("completed", String.valueOf(prof.completed)); ph.put("wins", String.valueOf(prof.wins));
         ph.put("time_raced", Time.formatDurationShort(prof.timeRacedMillis));
+
+        // Allow internal placeholders in the scoreboard title too.
+        Component title = parse(p, cfgString("scoreboard.templates.lobby.title", "<gold>BoatRacing"), ph);
         java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.lobby.lines", java.util.List.of(
             "<yellow>Hồ sơ của bạn",
             "<gray>Tên: %racer_color%%racer_name%",
@@ -312,18 +314,47 @@ public class ScoreboardService {
 
     private void applyWaitingBoard(Player p, RaceManager rm, String trackName) {
         Sidebar sb = ensureSidebar(p);
-        Component title = parse(p, cfgString("scoreboard.templates.waiting.title", "<gold>Đang chờ"), java.util.Map.of());
         String track = (trackName != null && !trackName.isBlank()) ? trackName : "(unknown)";
         int joined = rm.getRegistered().size();
         int max = rm.getTrackConfig().getStarts().size();
         int laps = rm.getTotalLaps();
+        int cps = 0;
+        try { cps = rm.getTrackConfig().getCheckpoints().size(); } catch (Throwable ignored) { cps = 0; }
         PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
         java.util.Map<String,String> ph = new java.util.HashMap<>();
         ph.put("racer_name", p.getName()); ph.put("racer_color", DyeColorFormats.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
         ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
+        ph.put("checkpoint_total", String.valueOf(cps));
         ph.put("countdown", Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
+
+        // Records (track/global + personal)
+        String trTime = "-";
+        String trHolder = "-";
+        try {
+            var m = plugin.getTrackRecordManager();
+            var r = (m != null ? m.get(track) : null);
+            if (r != null && r.bestTimeMillis > 0L) {
+                trTime = Time.formatStopwatchMillis(r.bestTimeMillis);
+                String hn = (r.holderName == null || r.holderName.isBlank()) ? "(không rõ)" : r.holderName;
+                trHolder = racerDisplay(r.holderId, hn);
+            }
+        } catch (Throwable ignored) {}
+        ph.put("track_record_time", trTime);
+        ph.put("track_record_holder", trHolder);
+
+        String pbTime = "-";
+        try {
+            if (pm != null) {
+                long ms = pm.getPersonalBestMillis(p.getUniqueId(), track);
+                if (ms > 0L) pbTime = Time.formatStopwatchMillis(ms);
+            }
+        } catch (Throwable ignored) {}
+        ph.put("personal_record_time", pbTime);
+
+        // Allow internal placeholders in the scoreboard title too.
+        Component title = parse(p, cfgString("scoreboard.templates.waiting.title", "<gold>Đang chờ"), ph);
         java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.waiting.lines", java.util.List.of()), ph);
         if (lines.isEmpty()) {
             lines = parseLines(p, java.util.List.of(
@@ -331,6 +362,9 @@ public class ScoreboardService {
                 "<gray>Đường: <white>%track%",
                 "<gray>Vòng: <white>%laps%",
                 "<gray>Người chơi: <white>%joined%/%max%",
+				"<gray>Điểm kiểm tra: <white>%checkpoint_total%",
+				"<gray>⌚ Kỷ lục: <white>%track_record_time%</white> <gray>bởi</gray> %track_record_holder%",
+				"<gray>⌚ Kỷ lục cá nhân: <white>%personal_record_time%",
                     "<yellow>Tay đua",
                 "<gray>Tên: %racer_color%%racer_name%",
                 "<gray>Màu: <white>%racer_color%",
@@ -343,7 +377,6 @@ public class ScoreboardService {
 
     private void applyRacingBoard(Player p, RaceManager rm, TickContext ctx, String trackName) {
         Sidebar sb = ensureSidebar(p);
-        Component title = parse(p, cfgString("scoreboard.templates.racing.title", "<gold>Đang đua"), java.util.Map.of());
         String track = (trackName != null && !trackName.isBlank()) ? trackName : "(unknown)";
         int laps = rm.getTotalLaps();
         long ms = rm.getRaceElapsedMillis();
@@ -378,6 +411,8 @@ public class ScoreboardService {
         } else {
             lines = parseLines(p, cfgStringList("scoreboard.templates.racing.lines", java.util.List.of("<gray>Đường: <white>%track%", "<gray>Thời gian: <white>%timer%")), ph);
         }
+        // Allow internal placeholders in the scoreboard title too.
+        Component title = parse(p, cfgString("scoreboard.templates.racing.title", "<gold>Đang đua"), ph);
         applySidebarComponents(p, sb, title, lines);
     }
 
@@ -385,11 +420,23 @@ public class ScoreboardService {
         Sidebar sb = ensureSidebar(p);
         if (ctx == null) ctx = new TickContext();
         boolean ended = ctx.allFinished;
+
+        // Allow internal placeholders in the scoreboard title too.
+        java.util.Map<String, String> phTitle = new java.util.HashMap<>();
+        try { phTitle.put("racer_name", p.getName()); } catch (Throwable ignored) {}
+        try { phTitle.put("racer_display", racerDisplay(p.getUniqueId(), p.getName())); } catch (Throwable ignored) {}
+        try {
+            String tn = null;
+            try { tn = (rm != null && rm.getTrackConfig() != null) ? rm.getTrackConfig().getCurrentName() : null; } catch (Throwable ignored) { tn = null; }
+            if (tn == null || tn.isBlank()) tn = "(unknown)";
+            phTitle.put("track", tn);
+        } catch (Throwable ignored) {}
+
         Component title = parse(p,
-                ended
-                        ? cfgString("scoreboard.templates.ended.title", cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"))
-                        : cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"),
-                java.util.Map.of());
+            ended
+                ? cfgString("scoreboard.templates.ended.title", cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"))
+                : cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"),
+            phTitle);
         java.util.List<RaceManager.ParticipantState> standings = ctx.standings;
         java.util.List<Component> lines = new java.util.ArrayList<>();
 

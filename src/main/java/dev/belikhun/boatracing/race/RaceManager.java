@@ -53,6 +53,8 @@ public class RaceManager {
     private final java.util.Map<UUID, org.bukkit.GameMode> previousGameModes = new java.util.HashMap<>();
     private final java.util.Set<UUID> countdownPlayers = new java.util.HashSet<>();
     private long raceStartMillis = 0L;
+    // Total racers that started this race instance (used for win qualification).
+    private int raceStartRacerCount = 0;
     // Countdown end (millis) for the start countdown; 0 if no countdown active
     private volatile long countdownEndMillis = 0L;
     // Waiting end (millis) for registration waiting phase; 0 if none
@@ -1684,7 +1686,7 @@ public class RaceManager {
 
     private void notifyCheckpointPassed(Player p, int passed, int total) {
         try {
-            var sub = net.kyori.adventure.text.Component.text("✔ Điểm kiểm tra " + passed + "/" + total)
+            var sub = net.kyori.adventure.text.Component.text("✔ " + passed + "/" + total)
                     .color(net.kyori.adventure.text.format.NamedTextColor.YELLOW);
             p.showTitle(net.kyori.adventure.title.Title.title(
                     net.kyori.adventure.text.Component.empty(),
@@ -1700,7 +1702,7 @@ public class RaceManager {
 
     private void notifyLapCompleted(Player p, int lap, int total) {
         try {
-            var sub = net.kyori.adventure.text.Component.text("🏁 Hoàn thành vòng " + lap + "/" + total)
+            var sub = net.kyori.adventure.text.Component.text("🗘 " + lap + "/" + total)
                     .color(net.kyori.adventure.text.format.NamedTextColor.GREEN);
             p.showTitle(net.kyori.adventure.title.Title.title(
                     net.kyori.adventure.text.Component.empty(),
@@ -1730,6 +1732,41 @@ public class RaceManager {
                 long penaltyMs = Math.max(0L, s.penaltySeconds) * 1000L;
                 long totalMs = rawMs + penaltyMs;
                 br.getProfileManager().addTimeRacedMillis(uuid, totalMs);
+
+                // Count this race completion.
+                try { br.getProfileManager().incCompleted(uuid); } catch (Throwable ignored) {}
+
+                // Win only counts if at least 2 racers started this track.
+                try {
+                    if (raceStartRacerCount >= 2 && s.finishPosition == 1) br.getProfileManager().incWins(uuid);
+                } catch (Throwable ignored) {}
+
+                // Update track record (global) + personal best (per track).
+                try {
+                    String trackName = null;
+                    try { trackName = (trackConfig != null ? trackConfig.getCurrentName() : null); } catch (Throwable ignored) { trackName = null; }
+                    if (trackName != null && !trackName.isBlank()) {
+                        String holderName = null;
+                        try {
+                            org.bukkit.entity.Player online = participantPlayers.get(uuid);
+                            holderName = (online != null ? online.getName() : null);
+                        } catch (Throwable ignored) { holderName = null; }
+                        if (holderName == null || holderName.isBlank()) {
+                            try {
+                                org.bukkit.OfflinePlayer op = org.bukkit.Bukkit.getOfflinePlayer(uuid);
+                                holderName = (op != null ? op.getName() : null);
+                            } catch (Throwable ignored) { holderName = null; }
+                        }
+                        if (holderName == null) holderName = "";
+
+                        try {
+                            if (br.getTrackRecordManager() != null) {
+                                br.getTrackRecordManager().updateIfBetter(trackName, uuid, holderName, totalMs);
+                            }
+                        } catch (Throwable ignored) {}
+                        try { br.getProfileManager().updatePersonalBestIfBetter(uuid, trackName, totalMs); } catch (Throwable ignored) {}
+                    }
+                } catch (Throwable ignored) {}
             }
         } catch (Throwable ignored) {}
 
@@ -2340,6 +2377,7 @@ public class RaceManager {
                         participants.put(p.getUniqueId(), st);
                         participantPlayers.put(p.getUniqueId(), p);
                     }
+					raceStartRacerCount = participants.size();
                     initPathForLivePositions();
                     startRaceTicker();
 
