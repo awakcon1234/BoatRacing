@@ -38,6 +38,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     private SetupWizard setupWizard;
     private dev.belikhun.boatracing.ui.AdminTracksGUI tracksGUI;
     private dev.belikhun.boatracing.track.TrackRecordManager trackRecordManager;
+    private dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService lobbyBoardService;
     // Plugin metadata (avoid deprecated getDescription())
     private String pluginVersion = "unknown";
     private java.util.List<String> pluginAuthors = java.util.Collections.emptyList();
@@ -57,6 +58,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     public TrackLibrary getTrackLibrary() { return trackLibrary; }
     public dev.belikhun.boatracing.ui.AdminTracksGUI getTracksGUI() { return tracksGUI; }
     public dev.belikhun.boatracing.track.TrackRecordManager getTrackRecordManager() { return trackRecordManager; }
+    public dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService getLobbyBoardService() { return lobbyBoardService; }
     
 
     @Override
@@ -86,6 +88,7 @@ public class BoatRacingPlugin extends JavaPlugin {
     this.hotbarService = new dev.belikhun.boatracing.ui.HotbarService(this);
     this.setupWizard = new SetupWizard(this);
     this.tracksGUI = new dev.belikhun.boatracing.ui.AdminTracksGUI(this, trackLibrary);
+    this.lobbyBoardService = new dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService(this);
     // Team GUI removed
     Bukkit.getPluginManager().registerEvents(adminGUI, this);
     Bukkit.getPluginManager().registerEvents(tracksGUI, this);
@@ -208,6 +211,13 @@ public class BoatRacingPlugin extends JavaPlugin {
                 } catch (Throwable ignored) {}
             }
         }, this);
+
+        // MapEngine lobby board (optional)
+        try {
+            if (lobbyBoardService != null) {
+                lobbyBoardService.reloadFromConfig();
+            }
+        } catch (Throwable ignored) {}
 
         // Prevent racers from leaving their boat during countdown/race
         Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
@@ -359,6 +369,10 @@ public class BoatRacingPlugin extends JavaPlugin {
         try {
             if (raceService != null) raceService.stopAll(false);
         } catch (Throwable ignored) {}
+
+        try {
+            if (lobbyBoardService != null) lobbyBoardService.stop();
+        } catch (Throwable ignored) {}
     }
 
     @Override
@@ -456,11 +470,86 @@ public class BoatRacingPlugin extends JavaPlugin {
                         scoreboardService.setDebug(sbDebug);
                     }
                 } catch (Throwable ignored) {}
+
+                // Reload MapEngine lobby board config
+                try {
+                    if (lobbyBoardService != null) lobbyBoardService.reloadFromConfig();
+                } catch (Throwable ignored) {}
                 // Team features removed; nothing to re-create
                 // ViaVersion integration removed; nothing to re-apply
                 Text.msg(p, "&aĐã tải lại plugin.");
                 p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
                 return true;
+            }
+
+            // /boatracing board (MapEngine lobby board)
+            if (args[0].equalsIgnoreCase("board")) {
+                if (!p.hasPermission("boatracing.admin")) {
+                    Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+                    return true;
+                }
+                if (lobbyBoardService == null) {
+                    Text.msg(p, "&cTính năng bảng đang bị tắt.");
+                    return true;
+                }
+
+                if (args.length == 1 || args[1].equalsIgnoreCase("help")) {
+                    Text.msg(p, "&eBảng thông tin sảnh (MapEngine):");
+                    Text.tell(p, "&7 - &f/" + label + " board set [north|south|east|west] &7(Dùng selection hiện tại; bỏ trống để tự chọn theo hướng nhìn)");
+                    Text.tell(p, "&7 - &f/" + label + " board clear");
+                    Text.tell(p, "&7 - &f/" + label + " board status");
+                    return true;
+                }
+
+                String sub = args[1].toLowerCase();
+                switch (sub) {
+                    case "status" -> {
+                        java.util.List<String> lines;
+                        try { lines = lobbyBoardService.statusLines(); }
+                        catch (Throwable t) {
+                            lines = java.util.List.of("&cKhông thể lấy trạng thái bảng: " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+                        }
+                        for (String line : lines) {
+                            try { Text.msg(p, line); } catch (Throwable ignored) {}
+                        }
+                        return true;
+                    }
+                    case "clear" -> {
+                        lobbyBoardService.clearPlacement();
+                        Text.msg(p, "&aĐã xóa vị trí bảng.");
+                        return true;
+                    }
+                    case "set" -> {
+                        // Facing is optional; if omitted, auto-select based on player view/position.
+                        var sel = dev.belikhun.boatracing.track.SelectionUtils.getSelectionDetailed(p);
+                        if (sel == null) {
+                            Text.msg(p, "&cKhông phát hiện selection. Dùng wand để chọn 2 góc trước.");
+                            return true;
+                        }
+                        org.bukkit.block.BlockFace face = null;
+                        if (args.length >= 3) {
+                            try {
+                                face = org.bukkit.block.BlockFace.valueOf(args[2].toUpperCase(java.util.Locale.ROOT));
+                            } catch (Throwable t) {
+                                Text.msg(p, "&cHướng không hợp lệ. Dùng: north|south|east|west");
+                                return true;
+                            }
+                        }
+
+                        boolean ok = lobbyBoardService.setPlacementFromSelection(p, sel.box, face);
+                        if (!ok) {
+                            Text.msg(p, "&cKhông thể đặt bảng. Hãy chọn vùng phẳng (2D) phù hợp và thử lại.");
+                            return true;
+                        }
+                        Text.msg(p, "&aĐã đặt bảng thông tin sảnh.");
+                        Text.tell(p, lobbyBoardService.placementSummary());
+                        return true;
+                    }
+                    default -> {
+                        Text.msg(p, "&cKhông rõ lệnh. Dùng: /" + label + " board help");
+                        return true;
+                    }
+                }
             }
             // /boatracing race
             if (args[0].equalsIgnoreCase("race")) {
@@ -910,6 +999,7 @@ public class BoatRacingPlugin extends JavaPlugin {
                 root.add("scoreboard");
                 if (sender.hasPermission("boatracing.setup")) root.add("setup");
                 if (sender.hasPermission("boatracing.admin")) root.add("admin");
+                if (sender.hasPermission("boatracing.admin")) root.add("board");
                 if (sender.hasPermission("boatracing.reload")) root.add("reload");
                 if (sender.hasPermission("boatracing.version")) root.add("version");
                 return root;
@@ -923,9 +1013,17 @@ public class BoatRacingPlugin extends JavaPlugin {
                 root.add("scoreboard");
                 if (sender.hasPermission("boatracing.setup")) root.add("setup");
                 if (sender.hasPermission("boatracing.admin")) root.add("admin");
+                if (sender.hasPermission("boatracing.admin")) root.add("board");
                 if (sender.hasPermission("boatracing.reload")) root.add("reload");
                 if (sender.hasPermission("boatracing.version")) root.add("version");
                 return root.stream().filter(s -> s.startsWith(pref)).toList();
+            }
+
+            if (args.length >= 2 && args[0].equalsIgnoreCase("board")) {
+                if (!sender.hasPermission("boatracing.admin")) return java.util.Collections.emptyList();
+                if (args.length == 2) return java.util.Arrays.asList("help", "set", "status", "clear");
+                if (args.length == 3 && args[1].equalsIgnoreCase("set")) return java.util.Arrays.asList("north", "south", "east", "west");
+                return java.util.Collections.emptyList();
             }
             if (args.length >= 2 && (args[0].equalsIgnoreCase("scoreboard") || args[0].equalsIgnoreCase("sb"))) {
                 if (!sender.hasPermission("boatracing.admin")) return java.util.Collections.emptyList();

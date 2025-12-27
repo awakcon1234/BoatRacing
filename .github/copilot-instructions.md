@@ -61,12 +61,13 @@
   - In templates, prefer `%racer_display%` instead of manually concatenating `%racer_name%`, `%icon%`, `%number%`.
 
 ## Developer workflows (Windows)
-- Build: `.\gradlew.bat clean build`
+- Build: `.\gradlew.bat build`
 - Run tests: `.\gradlew.bat test`
 - Useful files:
   - Plugin config: [src/main/resources/config.yml](../src/main/resources/config.yml)
   - Plugin metadata: [src/main/resources/plugin.yml](../src/main/resources/plugin.yml)
   - Tests: [src/test/java/dev/belikhun/boatracing](../src/test/java/dev/belikhun/boatracing)
+- Always run build at the end of your work. You can freely run test if you are unsure of your changes during working.
 
 ## Making changes safely (project-specific)
 - When touching race logic, ensure you preserve:

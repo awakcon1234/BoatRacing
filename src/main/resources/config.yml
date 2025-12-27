@@ -166,3 +166,30 @@ scoreboard:
   # Registration announce message template
   # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command
   registration-announce: "&eCuộc đua mới tại &f{track}&e (&f{laps}&e vòng). &7Tham gia bằng &f{cmd}"
+
+# MapEngine integration (optional). Requires the MapEngine plugin installed.
+mapengine:
+  lobby-board:
+    # Enable the lobby information board.
+    enabled: false
+
+    # Font file for the lobby board renderer (TTF/OTF).
+    # - Mặc định: dùng font hệ thống (monospace).
+    # - Bạn có thể cung cấp font Minecraft dạng .ttf/.otf tại:
+    #   ● plugins/BoatRacing/fonts/minecraft.ttf (hoặc .otf)
+    #   ● hoặc đặt đường dẫn tại đây (tuyệt đối hoặc tương đối theo thư mục plugin).
+    # Lưu ý: Hãy đảm bảo bạn có quyền sử dụng font.
+    font-file: ""
+
+    # Enable debug logs for the lobby board (prints to console, rate-limited).
+    debug: false
+
+    # Show the board only to lobby players within this radius (in chunks).
+    # Default: 12 chunks.
+    visible-radius-chunks: 12
+
+    # How often to redraw the board (in server ticks). Default: 20 (1s)
+    update-ticks: 20
+
+    # Placement is written by the /boatracing board set command.
+    placement: {}

@@ -5,6 +5,7 @@ api-version: '1.21'
 authors: [Jaie55]
 description: Plugin đua thuyền băng phong cách F1 cho Bukkit/Spigot với giao diện đơn giản, giống vanilla. Tương thích Paper/Purpur. Cấu hình đường đua bằng công cụ chọn BoatRacing tích hợp, chạy các cuộc đua tính thời gian với điểm kiểm tra và trình hướng dẫn thiết lập.
 website: https://modrinth.com/plugin/boatracing
+softdepend: [MapEngine]
 commands:
   boatracing:
     description: Lệnh gốc của BoatRacing
