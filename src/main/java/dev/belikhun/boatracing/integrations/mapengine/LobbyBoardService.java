@@ -1093,6 +1093,10 @@ public final class LobbyBoardService {
             g.setStroke(new BasicStroke(border));
             g.drawRect(inset, inset, w - (inset * 2 + 1), h - (inset * 2 + 1));
 
+            // Inner edge of the border stroke (used to keep filled bars from painting under the border,
+            // which can look uneven at the left/right edges due to pixel snapping).
+            int borderInnerPad = Math.max(1, (border + 1) / 2);
+
             // Title bar
             int titleBarX = inset;
             int titleBarY = inset;
@@ -1122,10 +1126,12 @@ public final class LobbyBoardService {
             // Header row (two columns)
             int headerRowH = Math.max(rowH, fmHeader.getHeight() + Math.max(6, border * 2));
             g.setColor(panel2);
-            g.fillRect(titleBarX, top, titleBarW, headerRowH);
+            int headerBarX = titleBarX + borderInnerPad;
+            int headerBarW = Math.max(0, titleBarW - (borderInnerPad * 2));
+            g.fillRect(headerBarX, top, headerBarW, headerRowH);
             g.setColor(accent);
             int headerStripeH = Math.min(headerRowH, Math.max(3, border + 1));
-            g.fillRect(titleBarX, top + headerRowH - headerStripeH, titleBarW, headerStripeH);
+            g.fillRect(headerBarX, top + headerRowH - headerStripeH, headerBarW, headerStripeH);
 
             g.setFont(headerFont);
             g.setColor(accent);
@@ -1297,7 +1303,8 @@ public final class LobbyBoardService {
             g.drawRect(rightPanelX, rightPanelY, rightPanelW - 1, rightPanelH - 1);
 
             // Keep the focused minimap tight to the top of the right panel (screenshot polish).
-            int listTop = rightPanelY + Math.max(6, border + 2);
+            // NOTE: Keep the inset consistent with the left/right inset (6px) to avoid a visible top gap.
+            int listTop = rightPanelY + Math.max(6, border);
             int ry = listTop;
 
             // Minimap of the focused running track (shown above the live ranking list).
@@ -1642,8 +1649,9 @@ public final class LobbyBoardService {
         // Reserve a little room for the racer name so meta doesn't consume the whole row.
         final int reserveNamePx = 40;
         int metaMax = Math.max(0, available - reserveNamePx);
-        String metaTrim = trimToWidthWithFallback(g, meta, metaMax, bodyFont, fallbackFont);
-        int metaW = stringWidthWithFallback(g, metaTrim, bodyFont, fallbackFont);
+        // Meta may contain legacy color codes to color icons (e.g. &e✔, &a🗘).
+        String metaTrim = trimLegacyToWidthWithFallback(g, meta, metaMax, bodyFont, fallbackFont);
+        int metaW = legacyRenderedWidthWithFallback(g, metaTrim, bodyFont, fallbackFont);
 
         int gapW = stringWidthWithFallback(g, "  ", bodyFont, fallbackFont);
         int nameMax = Math.max(0, available - gapW - metaW);
@@ -1654,8 +1662,8 @@ public final class LobbyBoardService {
 
         int rightEdge = nx + available;
         int metaX = Math.max(nx, rightEdge - metaW);
-        g.setColor(textDim);
-        drawStringWithFallback(g, metaTrim, metaX, y, bodyFont, fallbackFont);
+        // Render meta with legacy colors; defaultColor controls the non-colored parts.
+        drawLegacyStringWithFallback(g, metaTrim, metaX, y, bodyFont, textDim);
     }
 
     // ===================== Legacy color rendering (for lobby board ranking) =====================
@@ -2084,9 +2092,12 @@ public final class LobbyBoardService {
                                     : 0;
                         } catch (Throwable ignored2) { totalCp = 0; }
 
+                        // Requested UX: use ✔ for checkpoint (yellow) and 🗘 for lap (green).
+                        // Use &r to reset back to the default meta color (textDim) after each colored segment.
+                        String lapPart = "&a🗘 " + lapCurrent + "/" + lapTotal + "&r";
                         String cpPart = (totalCp > 0)
-                                ? ("CP" + Math.min(passedCp, totalCp) + "/" + totalCp)
-                                : "CP-";
+                            ? ("&e✔ " + Math.min(passedCp, totalCp) + "/" + totalCp + "&r")
+                            : ("&e✔ -&r");
 
                         double lapRatio = 0.0;
                         try { lapRatio = rm.getLapProgressRatio(id); } catch (Throwable ignored2) { lapRatio = 0.0; }
@@ -2097,7 +2108,7 @@ public final class LobbyBoardService {
                         overall = Math.max(0.0, Math.min(1.0, overall));
                         int pct = (int) Math.round(overall * 100.0);
 
-                        meta = "V" + lapCurrent + "/" + lapTotal + "  " + cpPart + "  " + pct + "%";
+                        meta = lapPart + "  " + cpPart + "  " + pct + "%";
                     } catch (Throwable ignored2) { meta = ""; }
 
                     entries.add(new Entry(track, i + 1, id, name, meta));
