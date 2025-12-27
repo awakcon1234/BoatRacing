@@ -9,8 +9,12 @@ import dev.belikhun.boatracing.profile.PlayerProfileManager;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
 import dev.belikhun.boatracing.track.TrackLibrary;
+import dev.belikhun.boatracing.track.TrackRecordManager;
+import dev.belikhun.boatracing.util.DyeColorFormats;
 import dev.belikhun.boatracing.util.Text;
+import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.BlockFace;
 import org.bukkit.configuration.ConfigurationSection;
@@ -46,6 +50,31 @@ import java.util.UUID;
  * - AND are within a configurable chunk radius (default: 12 chunks) of the board
  */
 public final class LobbyBoardService {
+	// Icons used on the lobby board UI (Unicode). These are rendered with font fallback.
+	private static final String ICON_INFO = "ⓘ";
+	private static final String ICON_CLOCK = "⏰";
+
+    // Inner padding for left track rows (moves the leading status dot away from the border)
+    private static final int TRACK_ROW_INNER_PAD = 4;
+
+    private static int trackRowInnerPad(Font bodyFont) {
+        int size = (bodyFont != null ? bodyFont.getSize() : 16);
+        // Scale gently with font size so spacing remains consistent across board resolutions.
+        return Math.max(TRACK_ROW_INNER_PAD, (int) Math.round(size * 0.25));
+    }
+
+    private static float minimapStrokeFromBorder(int border) {
+        // Border already scales with overall UI; derive minimap stroke from it.
+        // Clamp to keep the map readable without becoming chunky.
+        float b = Math.max(1, border);
+        // The minimap centerline can look too thin on large boards when we clamp too low.
+        // Use a slightly higher multiplier and a higher cap so it remains visible.
+        float s = b * 0.90f;
+        if (s < 1.5f) s = 1.5f;
+        if (s > 6.0f) s = 6.0f;
+        return s;
+    }
+
     private final BoatRacingPlugin plugin;
     private final RaceService raceService;
     private final TrackLibrary trackLibrary;
@@ -60,6 +89,10 @@ public final class LobbyBoardService {
     private int visibleRadiusChunks = 12;
     private int updateTicks = 20;
     private boolean debug = false;
+
+    // MapEngine drawing pipeline toggles
+    private boolean mapBuffering = true;
+    private boolean mapBundling = false;
 
     // Optional custom font (Minecraft-style). We do not ship a font file; users can provide one.
     private String fontFile;
@@ -87,6 +120,10 @@ public final class LobbyBoardService {
         visibleRadiusChunks = clamp(plugin.getConfig().getInt("mapengine.lobby-board.visible-radius-chunks", 12), 1, 64);
         updateTicks = clamp(plugin.getConfig().getInt("mapengine.lobby-board.update-ticks", 20), 1, 200);
         debug = plugin.getConfig().getBoolean("mapengine.lobby-board.debug", false);
+
+        // MapEngine pipeline options
+        mapBuffering = plugin.getConfig().getBoolean("mapengine.lobby-board.pipeline.buffering", true);
+        mapBundling = plugin.getConfig().getBoolean("mapengine.lobby-board.pipeline.bundling", false);
 
         String ff = null;
         try { ff = plugin.getConfig().getString("mapengine.lobby-board.font-file", null); } catch (Throwable ignored) { ff = null; }
@@ -446,13 +483,42 @@ public final class LobbyBoardService {
             display = api.displayProvider().createBasic(placement.a, placement.b, placement.facing);
             drawing = api.pipeline().createDrawingSpace(display);
             try {
-                drawing.ctx().converter(Converter.FLOYD_STEINBERG);
-                drawing.ctx().buffering(true);
+                // Best for UI: crisp solids and stable text (avoid dithering artifacts).
+                drawing.ctx().converter(Converter.DIRECT);
+                applyPipelineToggles();
             } catch (Throwable ignored) {}
         } catch (Throwable t) {
             dbg("ensureDisplay(): failed: " + t.getClass().getSimpleName() + ": " + t.getMessage());
             display = null;
             drawing = null;
+        }
+    }
+
+    private void applyPipelineToggles() {
+        if (drawing == null) return;
+        Object ctx;
+        try { ctx = drawing.ctx(); }
+        catch (Throwable ignored) { return; }
+
+        // Buffering: improves visual stability and reduces partial-frame flicker.
+        if (mapBuffering) {
+            try {
+                drawing.ctx().buffering(true);
+            } catch (Throwable ignored) {
+                tryInvoke(ctx, "buffering", true);
+                tryInvoke(ctx, "setBuffering", true);
+            }
+        }
+
+        // Bundling: when disabled, flushes are sent immediately rather than batched.
+        // Method names differ across MapEngine versions; try best-effort reflection.
+        if (!mapBundling) {
+            tryInvoke(ctx, "bundling", false);
+            tryInvoke(ctx, "setBundling", false);
+            tryInvoke(ctx, "bundle", false);
+            tryInvoke(ctx, "setBundle", false);
+            tryInvoke(ctx, "bundled", false);
+            tryInvoke(ctx, "setBundled", false);
         }
     }
 
@@ -516,6 +582,442 @@ public final class LobbyBoardService {
         try { plugin.getLogger().info("[LobbyBoard] " + msg); } catch (Throwable ignored) {}
     }
 
+    private enum TrackStatus {
+        RUNNING,
+        COUNTDOWN,
+        REGISTERING,
+        READY,
+        OFF
+    }
+
+    private record TrackInfo(
+            String trackName,
+            TrackStatus status,
+            int registered,
+            int maxRacers,
+            long recordMillis,
+            String recordHolderName,
+            List<Location> centerline,
+            int countdownSeconds
+    ) {}
+
+    private static TrackStatus statusOf(RaceManager rm) {
+        if (rm == null) return TrackStatus.OFF;
+        if (rm.isRunning()) return TrackStatus.RUNNING;
+        if (rm.isAnyCountdownActive()) return TrackStatus.COUNTDOWN;
+        if (rm.isRegistering()) return TrackStatus.REGISTERING;
+        return TrackStatus.READY;
+    }
+
+    private static Color accentForStatus(TrackStatus status) {
+        if (status == null) status = TrackStatus.OFF;
+        return switch (status) {
+            case RUNNING -> new Color(0x56, 0xF2, 0x7A);
+            case COUNTDOWN -> new Color(0xFF, 0xB8, 0x4D);
+            case REGISTERING -> new Color(0xFF, 0xD7, 0x5E);
+            case READY -> new Color(0x5E, 0xA8, 0xFF);
+            case OFF -> new Color(0x8A, 0x8A, 0x8A);
+        };
+    }
+
+    private static Color mix(Color a, Color b, double t) {
+        if (a == null) return b;
+        if (b == null) return a;
+        double k = Math.max(0.0, Math.min(1.0, t));
+        int r = (int) Math.round(a.getRed() * (1.0 - k) + b.getRed() * k);
+        int g = (int) Math.round(a.getGreen() * (1.0 - k) + b.getGreen() * k);
+        int bl = (int) Math.round(a.getBlue() * (1.0 - k) + b.getBlue() * k);
+        return new Color(clamp(r, 0, 255), clamp(g, 0, 255), clamp(bl, 0, 255));
+    }
+
+    private List<TrackInfo> collectTrackInfos() {
+        if (trackLibrary == null) return java.util.Collections.emptyList();
+
+        List<String> tracks = new ArrayList<>();
+        try { tracks.addAll(trackLibrary.list()); } catch (Throwable ignored) {}
+        tracks.sort(String.CASE_INSENSITIVE_ORDER);
+
+        List<TrackInfo> out = new ArrayList<>();
+        TrackRecordManager trm = null;
+        try { trm = plugin != null ? plugin.getTrackRecordManager() : null; } catch (Throwable ignored) { trm = null; }
+
+        for (String tn : tracks) {
+            if (tn == null || tn.isBlank()) continue;
+
+            RaceManager rm = null;
+            try { rm = raceService != null ? raceService.getOrCreate(tn) : null; } catch (Throwable ignored) { rm = null; }
+
+            TrackStatus status = statusOf(rm);
+            int regs = 0;
+            int involved = 0;
+            int max = 0;
+            int countdownSec = 0;
+            try {
+                if (rm != null) {
+                    regs = rm.getRegistered().size();
+                    involved = rm.getInvolved().size();
+                    max = rm.getTrackConfig() != null ? rm.getTrackConfig().getStarts().size() : 0;
+                    countdownSec = Math.max(0, rm.getCountdownRemainingSeconds());
+                }
+            } catch (Throwable ignored) {}
+
+            // Reuse the 'registered' column for display counts:
+            // - REGISTERING: registered count
+            // - RUNNING/COUNTDOWN: racers involved in the race instance
+            // - READY/OFF: 0
+            int displayCount = switch (status) {
+                case REGISTERING -> regs;
+                case RUNNING, COUNTDOWN -> involved;
+                default -> 0;
+            };
+
+            long bestMs = 0L;
+            String holder = "";
+            try {
+                TrackRecordManager.TrackRecord rec = (trm != null ? trm.get(tn) : null);
+                if (rec != null) {
+                    bestMs = Math.max(0L, rec.bestTimeMillis);
+                    holder = rec.holderName == null ? "" : rec.holderName;
+                }
+            } catch (Throwable ignored) {}
+
+            List<Location> cl = java.util.Collections.emptyList();
+            try {
+                if (rm != null && rm.getTrackConfig() != null) {
+                    List<Location> got = rm.getTrackConfig().getCenterline();
+                    if (got != null) cl = got;
+                }
+            } catch (Throwable ignored) {}
+
+            out.add(new TrackInfo(tn, status, displayCount, max, bestMs, holder, cl, countdownSec));
+        }
+        return out;
+    }
+
+    private static TrackInfo pickFocusedTrack(List<TrackInfo> infos) {
+        if (infos == null || infos.isEmpty()) return null;
+        for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.RUNNING) return i;
+        for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.COUNTDOWN) return i;
+        for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.REGISTERING) return i;
+        for (TrackInfo i : infos) if (i != null) return i;
+        return null;
+    }
+
+    private static String statusLabel(TrackStatus st, int regs, int max, int countdownSeconds) {
+        if (st == null) st = TrackStatus.OFF;
+        return switch (st) {
+            case RUNNING -> "Đang chạy";
+            case COUNTDOWN -> "Đếm ngược " + Time.formatCountdownSeconds(Math.max(0, countdownSeconds));
+            case REGISTERING -> "Đang đăng ký " + regs + "/" + max;
+            case READY -> "Sẵn sàng";
+            case OFF -> "Tắt";
+        };
+    }
+
+    private static String recordLabel(long ms, String holderName) {
+        if (ms <= 0L) return ICON_CLOCK + " Kỷ lục: -";
+        String t = Time.formatStopwatchMillis(ms);
+        String hn = (holderName == null ? "" : holderName.trim());
+        if (hn.isEmpty()) return ICON_CLOCK + " Kỷ lục: " + t;
+        return ICON_CLOCK + " Kỷ lục: " + t + " - " + hn;
+    }
+
+    private int getTrackPageSeconds() {
+        try {
+            if (plugin != null) {
+                int v = plugin.getConfig().getInt("mapengine.lobby-board.page-seconds", 6);
+                return Math.max(2, v);
+            }
+        } catch (Throwable ignored) {}
+        return 6;
+    }
+
+    private static void drawMiniMap(Graphics2D g, List<Location> centerline, int x, int y, int w, int h, Color accent, Color borderC, Color textDim, Font smallFont, float strokePx) {
+        if (g == null) return;
+        if (w <= 2 || h <= 2) return;
+
+        float stroke = Math.max(1.0f, strokePx);
+        int shadowOff = Math.max(1, (int) Math.round(stroke));
+        int margin = Math.max(4, (int) Math.round(stroke * 2.0));
+
+        // Background + border
+        g.setColor(new Color(0x10, 0x11, 0x13));
+        g.fillRect(x, y, w, h);
+        g.setColor(borderC);
+        g.setStroke(new BasicStroke(stroke));
+        g.drawRect(x, y, w - 1, h - 1);
+
+        if (centerline == null || centerline.size() < 2) {
+            g.setFont(smallFont);
+            g.setColor(textDim);
+            drawTrimmed(g, "(Không có bản đồ)", x + 4, y + g.getFontMetrics(smallFont).getAscent() + 2, w - 8);
+            return;
+        }
+
+        // Compute bounds in XZ
+        double minX = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double minZ = Double.POSITIVE_INFINITY;
+        double maxZ = Double.NEGATIVE_INFINITY;
+        for (Location p : centerline) {
+            if (p == null) continue;
+            double px = p.getX();
+            double pz = p.getZ();
+            if (px < minX) minX = px;
+            if (px > maxX) maxX = px;
+            if (pz < minZ) minZ = pz;
+            if (pz > maxZ) maxZ = pz;
+        }
+        if (!Double.isFinite(minX) || !Double.isFinite(maxX) || !Double.isFinite(minZ) || !Double.isFinite(maxZ)) {
+            return;
+        }
+
+        double dx = Math.max(1.0e-6, maxX - minX);
+        double dz = Math.max(1.0e-6, maxZ - minZ);
+
+        int innerW = Math.max(1, w - margin * 2);
+        int innerH = Math.max(1, h - margin * 2);
+        double s = Math.min(innerW / dx, innerH / dz);
+
+        double usedW = dx * s;
+        double usedH = dz * s;
+        double ox = x + margin + (innerW - usedW) * 0.5;
+        double oz = y + margin + (innerH - usedH) * 0.5;
+
+        // Convert points to integer pixel coords (dedupe consecutive duplicates)
+        java.util.ArrayList<java.awt.Point> pts = new java.util.ArrayList<>(centerline.size());
+        int lastPx = Integer.MIN_VALUE;
+        int lastPy = Integer.MIN_VALUE;
+        for (Location p : centerline) {
+            if (p == null) continue;
+            int px = (int) Math.round(ox + (p.getX() - minX) * s);
+            int py = (int) Math.round(oz + (p.getZ() - minZ) * s);
+            if (px == lastPx && py == lastPy) continue;
+            pts.add(new java.awt.Point(px, py));
+            lastPx = px;
+            lastPy = py;
+        }
+        if (pts.size() < 2) return;
+
+        // Draw: shadow then main line (integer aligned)
+        g.setStroke(new BasicStroke(stroke));
+        g.setColor(new Color(0, 0, 0, 140));
+        for (int i = 1; i < pts.size(); i++) {
+            java.awt.Point a = pts.get(i - 1);
+            java.awt.Point b = pts.get(i);
+            g.drawLine(a.x + shadowOff, a.y + shadowOff, b.x + shadowOff, b.y + shadowOff);
+        }
+
+        g.setColor(accent);
+        for (int i = 1; i < pts.size(); i++) {
+            java.awt.Point a = pts.get(i - 1);
+            java.awt.Point b = pts.get(i);
+            g.drawLine(a.x, a.y, b.x, b.y);
+        }
+
+        // Start/end markers (small squares for pixel crispness)
+        java.awt.Point start = pts.get(0);
+        java.awt.Point end = pts.get(pts.size() - 1);
+        int r = Math.max(2, (int) Math.round(stroke * 1.25));
+        g.setColor(new Color(0xEE, 0xEE, 0xEE));
+        g.fillRect(start.x - r, start.y - r, r * 2 + 1, r * 2 + 1);
+        g.setColor(accent);
+        g.fillRect(end.x - r, end.y - r, r * 2 + 1, r * 2 + 1);
+    }
+
+    private record MiniDot(double x, double z, Color color) {}
+
+    private List<MiniDot> collectRacerDots(RaceManager rm) {
+        if (rm == null || !rm.isRunning()) return java.util.Collections.emptyList();
+
+        List<MiniDot> dots = new java.util.ArrayList<>();
+        List<UUID> order;
+        try { order = rm.getLiveOrder(); }
+        catch (Throwable t) { order = java.util.Collections.emptyList(); }
+
+        for (UUID id : order) {
+            if (id == null) continue;
+
+            try {
+                var st = rm.getParticipantState(id);
+                if (st != null && st.finished) continue;
+            } catch (Throwable ignored) {}
+
+            Player p;
+            try { p = Bukkit.getPlayer(id); }
+            catch (Throwable t) { p = null; }
+            if (p == null || !p.isOnline()) continue;
+
+            Location loc = null;
+            try {
+                var v = p.getVehicle();
+                if (v != null) loc = v.getLocation();
+            } catch (Throwable ignored) { loc = null; }
+            if (loc == null) {
+                try { loc = p.getLocation(); } catch (Throwable ignored) { loc = null; }
+            }
+            if (loc == null) continue;
+
+            Color c = new Color(0xEE, 0xEE, 0xEE);
+            try {
+                if (profileManager != null) {
+                    var prof = profileManager.get(id);
+                    if (prof != null && prof.color != null) {
+                        c = DyeColorFormats.awtColor(prof.color);
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            dots.add(new MiniDot(loc.getX(), loc.getZ(), c));
+        }
+
+        return dots;
+    }
+
+    private static void drawMiniMapWithDots(Graphics2D g, List<Location> centerline, List<MiniDot> dots,
+                                           int x, int y, int w, int h,
+                                           Color accent, Color borderC, Color textDim, Font smallFont, float strokePx) {
+        if (g == null) return;
+        if (w <= 2 || h <= 2) return;
+
+        float stroke = Math.max(1.0f, strokePx);
+        int shadowOff = Math.max(1, (int) Math.round(stroke));
+        int margin = Math.max(4, (int) Math.round(stroke * 2.0));
+
+        // Background + border
+        g.setColor(new Color(0x10, 0x11, 0x13));
+        g.fillRect(x, y, w, h);
+        g.setColor(borderC);
+        g.setStroke(new BasicStroke(stroke));
+        g.drawRect(x, y, w - 1, h - 1);
+
+        if (centerline == null || centerline.size() < 2) {
+            g.setFont(smallFont);
+            g.setColor(textDim);
+            drawTrimmed(g, "(Không có bản đồ)", x + 4, y + g.getFontMetrics(smallFont).getAscent() + 2, w - 8);
+            return;
+        }
+
+        // Compute bounds in XZ
+        double minX = Double.POSITIVE_INFINITY;
+        double maxX = Double.NEGATIVE_INFINITY;
+        double minZ = Double.POSITIVE_INFINITY;
+        double maxZ = Double.NEGATIVE_INFINITY;
+        for (Location p : centerline) {
+            if (p == null) continue;
+            double px = p.getX();
+            double pz = p.getZ();
+            if (px < minX) minX = px;
+            if (px > maxX) maxX = px;
+            if (pz < minZ) minZ = pz;
+            if (pz > maxZ) maxZ = pz;
+        }
+        if (!Double.isFinite(minX) || !Double.isFinite(maxX) || !Double.isFinite(minZ) || !Double.isFinite(maxZ)) {
+            return;
+        }
+
+        double dx = Math.max(1.0e-6, maxX - minX);
+        double dz = Math.max(1.0e-6, maxZ - minZ);
+
+        int innerW = Math.max(1, w - margin * 2);
+        int innerH = Math.max(1, h - margin * 2);
+
+        // Maintain aspect ratio
+        double sx = innerW / dx;
+        double sz = innerH / dz;
+        double s = Math.min(sx, sz);
+
+        int drawW = Math.max(1, (int) Math.round(dx * s));
+        int drawH = Math.max(1, (int) Math.round(dz * s));
+        int ox = x + margin + (innerW - drawW) / 2;
+        int oy = y + margin + (innerH - drawH) / 2;
+
+        // Project centerline points into pixel grid
+        java.util.List<java.awt.Point> pts = new java.util.ArrayList<>(centerline.size());
+        int lastPx = Integer.MIN_VALUE;
+        int lastPy = Integer.MIN_VALUE;
+        for (Location p : centerline) {
+            if (p == null) continue;
+            double px = p.getX();
+            double pz = p.getZ();
+            int ix = (int) Math.round((px - minX) * s);
+            int iz = (int) Math.round((pz - minZ) * s);
+            int rx = ox + clamp(ix, 0, drawW);
+            int ry = oy + clamp(iz, 0, drawH);
+            if (rx == lastPx && ry == lastPy) continue;
+            pts.add(new java.awt.Point(rx, ry));
+            lastPx = rx;
+            lastPy = ry;
+        }
+        if (pts.size() >= 2) {
+            // Draw: shadow then main line (integer aligned)
+            g.setStroke(new BasicStroke(stroke));
+            g.setColor(new Color(0, 0, 0, 140));
+            for (int i = 1; i < pts.size(); i++) {
+                java.awt.Point a = pts.get(i - 1);
+                java.awt.Point b = pts.get(i);
+                g.drawLine(a.x + shadowOff, a.y + shadowOff, b.x + shadowOff, b.y + shadowOff);
+            }
+
+            g.setColor(accent);
+            for (int i = 1; i < pts.size(); i++) {
+                java.awt.Point a = pts.get(i - 1);
+                java.awt.Point b = pts.get(i);
+                g.drawLine(a.x, a.y, b.x, b.y);
+            }
+
+            // Start/end markers (small squares for pixel crispness)
+            java.awt.Point start = pts.get(0);
+            java.awt.Point end = pts.get(pts.size() - 1);
+            int r = Math.max(2, (int) Math.round(stroke * 1.25));
+            g.setColor(new Color(0xEE, 0xEE, 0xEE));
+            g.fillRect(start.x - r, start.y - r, r * 2 + 1, r * 2 + 1);
+            g.setColor(accent);
+            g.fillRect(end.x - r, end.y - r, r * 2 + 1, r * 2 + 1);
+        }
+
+        // Overlay racer dots (project actual XZ into the same bounds).
+        if (dots != null && !dots.isEmpty()) {
+            int r = Math.max(2, (int) Math.round(stroke * 1.15));
+            int minPx = x + 1;
+            int minPy = y + 1;
+            int maxPx = x + w - 2;
+            int maxPy = y + h - 2;
+
+            for (MiniDot d : dots) {
+                if (d == null) continue;
+                double px = d.x;
+                double pz = d.z;
+                if (!Double.isFinite(px) || !Double.isFinite(pz)) continue;
+                int ix = (int) Math.round((px - minX) * s);
+                int iz = (int) Math.round((pz - minZ) * s);
+                int rx = ox + clamp(ix, 0, drawW);
+                int ry = oy + clamp(iz, 0, drawH);
+                rx = clamp(rx, minPx, maxPx);
+                ry = clamp(ry, minPy, maxPy);
+
+                // Shadow + dot for visibility
+                g.setColor(new Color(0, 0, 0, 170));
+                g.fillRect(rx - r + shadowOff, ry - r + shadowOff, r * 2 + 1, r * 2 + 1);
+                g.setColor(d.color != null ? d.color : new Color(0xEE, 0xEE, 0xEE));
+                g.fillRect(rx - r, ry - r, r * 2 + 1, r * 2 + 1);
+            }
+        }
+    }
+
+    private static boolean isRankingLine(String s) {
+        if (s == null) return false;
+        int close = s.indexOf(')');
+        if (close <= 0) return false;
+        String head = s.substring(0, close).trim();
+        if (head.isEmpty()) return false;
+        for (int i = 0; i < head.length(); i++) {
+            char c = head.charAt(i);
+            if (c < '0' || c > '9') return false;
+        }
+        return true;
+    }
+
     private BufferedImage renderImage(int widthPx, int heightPx) {
         int w = Math.max(128, widthPx);
         int h = Math.max(128, heightPx);
@@ -543,12 +1045,18 @@ public final class LobbyBoardService {
             int border = Math.max(2, (int) Math.round(bodySize * 0.12));
             int inset = Math.max(6, border * 3);
 
-            // Theme (racing broadcast style): dark panels + strong yellow accent.
-            final Color bg0 = new Color(0x0E, 0x10, 0x12);
-            final Color panel = new Color(0x14, 0x16, 0x1A);
-            final Color panel2 = new Color(0x12, 0x14, 0x17);
+            // Data (used for theming + minimap)
+            List<TrackInfo> tracks = collectTrackInfos();
+            TrackInfo focused = pickFocusedTrack(tracks);
+            TrackStatus focusedStatus = focused != null ? focused.status : TrackStatus.OFF;
+            Color statusAccent = accentForStatus(focusedStatus);
+
+            // Theme (racing broadcast style): dark panels + status-based accent.
+            final Color bg0 = mix(new Color(0x0E, 0x10, 0x12), statusAccent, 0.10);
+            final Color panel = mix(new Color(0x14, 0x16, 0x1A), statusAccent, 0.07);
+            final Color panel2 = mix(new Color(0x12, 0x14, 0x17), statusAccent, 0.08);
             final Color borderC = new Color(0x3A, 0x3A, 0x3A);
-            final Color accent = new Color(0xFF, 0xD7, 0x5E);
+            final Color accent = statusAccent;
             final Color text = new Color(0xEE, 0xEE, 0xEE);
             final Color textDim = new Color(0xA6, 0xA6, 0xA6);
 
@@ -563,11 +1071,21 @@ public final class LobbyBoardService {
             java.awt.FontMetrics fmSmall = g.getFontMetrics(smallFont);
 
             int rowH = fmBody.getHeight() + Math.max(2, (int) Math.round(bodySize * 0.12));
-            int titleBarH = Math.max(44, fmTitle.getHeight() + (int) Math.round(bodySize * 0.8));
+
+            int trackInnerPad = trackRowInnerPad(bodyFont);
 
             // Background
             g.setColor(bg0);
             g.fillRect(0, 0, w, h);
+
+            // Common layout elements
+            int titleBarH = Math.max(fmTitle.getHeight() + Math.max(8, border * 3), (int) Math.round(bodySize * 2.2));
+
+            // Reserve a footer box inside the inner border so footer text never overlaps the border.
+            int footerPadV = Math.max(6, (int) Math.round(bodySize * 0.35));
+            int footerBoxH = fmSmall.getHeight() + footerPadV;
+            int footerTop = h - inset - footerBoxH;
+            int contentBottom = footerTop - Math.max(8, (int) Math.round(bodySize * 0.50));
 
             // Border
             g.setColor(borderC);
@@ -577,25 +1095,21 @@ public final class LobbyBoardService {
             // Title bar
             int titleBarX = inset;
             int titleBarY = inset;
+            int titleBarW = w - (titleBarX * 2);
             g.setColor(panel);
-            g.fillRect(titleBarX, titleBarY, w - (titleBarX * 2), titleBarH);
+            g.fillRect(titleBarX, titleBarY, titleBarW, titleBarH);
             // Accent stripe
             g.setColor(accent);
-            g.fillRect(titleBarX, titleBarY, w - (titleBarX * 2), Math.max(3, border + 1));
+            g.fillRect(titleBarX, titleBarY, titleBarW, Math.max(3, border + 1));
 
+            // Center title precisely within title bar
             g.setFont(titleFont);
             g.setColor(text);
-            int ty = titleBarY + (titleBarH + fmTitle.getAscent() - fmTitle.getDescent()) / 2;
-            g.drawString("BOATRACING", titleBarX + pad, ty);
-
-            // Subtitle (small, broadcast-like)
-            g.setFont(smallFont);
-            g.setColor(textDim);
             String sub = "BẢNG THÔNG TIN SẢNH";
-            int subW = fmSmall.stringWidth(sub);
-            int subX = Math.max(titleBarX + pad, (w - subW) / 2);
-            int subY = titleBarY + titleBarH - Math.max(6, border * 2);
-            g.drawString(sub, subX, subY);
+            int subW = fmTitle.stringWidth(sub);
+            int subX = titleBarX + Math.max(pad, (titleBarW - subW) / 2);
+            int subY = titleBarY + (titleBarH + fmTitle.getAscent() - fmTitle.getDescent()) / 2;
+            drawStringWithFallback(g, sub, subX, subY, titleFont, monoMatch(titleFont));
 
             // Layout
             int top = titleBarY + titleBarH + Math.max(10, (int) Math.round(bodySize * 0.9));
@@ -624,90 +1138,311 @@ public final class LobbyBoardService {
 
             // Panels
             int contentTop = top + headerRowH + Math.max(10, (int) Math.round(bodySize * 0.6));
-
-            // Reserve a footer box inside the inner border so footer text never overlaps the border.
-            int footerPadV = Math.max(6, (int) Math.round(bodySize * 0.35));
-            int footerBoxH = fmSmall.getHeight() + footerPadV;
-            int footerTop = h - inset - footerBoxH;
-            int contentBottom = footerTop - Math.max(8, (int) Math.round(bodySize * 0.50));
             int panelH = Math.max(0, contentBottom - contentTop);
             g.setColor(panel);
             g.fillRect(inset + 1, contentTop - 6, w - (inset * 2 + 2), panelH + 12);
 
             // Content
-            int yLeft = contentTop + fmBody.getAscent();
+            // Left: track list with details
+            int y = contentTop;
+            int blockGap = Math.max(6, rowH / 3);
             g.setFont(bodyFont);
 
-            List<String> leftLines = buildLeftLines();
+            if (tracks == null || tracks.isEmpty()) {
+                g.setColor(text);
+                drawTrimmed(g, "(Chưa có đường đua)", leftX, y + fmBody.getAscent(), colW);
+                g.setFont(smallFont);
+                g.setColor(textDim);
+                drawTrimmed(g, "Dùng /boatracing setup để tạo.", leftX, y + rowH + fmSmall.getAscent(), colW);
+            } else {
+                // Airport-board style paging for long track lists
+                int blockH = rowH + fmSmall.getHeight() * 2 + blockGap;
+                int hintLines = 2;
+                int hintH = hintLines * fmSmall.getHeight() + 10;
+                int availableH = Math.max(0, (contentBottom - contentTop) - hintH);
+                int perPage = Math.max(1, availableH / Math.max(1, blockH));
+                int total = tracks.size();
+                int totalPages = Math.max(1, (int) Math.ceil(total / (double) perPage));
+                long now = System.currentTimeMillis();
+                long pageMs = getTrackPageSeconds() * 1000L;
+                int pageIndex = (totalPages <= 1) ? 0 : (int) ((now / Math.max(1L, pageMs)) % totalPages);
+                int startIndex = pageIndex * perPage;
+                int endIndex = Math.min(total, startIndex + perPage);
 
-            int rowIndex = 0;
-            for (String line : leftLines) {
-                if (yLeft > contentBottom) break;
-                if (line == null) line = "";
+                int idx = 0;
+                for (int i = startIndex; i < endIndex; i++) {
+                    TrackInfo ti = tracks.get(i);
+                    if (ti == null) continue;
 
-                if (line.isEmpty()) {
-                    yLeft += Math.max(6, rowH / 2);
-                    continue;
+                    int blockTop = y;
+                    if (blockTop + blockH > contentBottom) break;
+
+                    // Stronger status-tinted block background (visible on map palette)
+                    Color rowAccent = accentForStatus(ti.status);
+                    Color rowTint = mix(new Color(0x10, 0x11, 0x13), rowAccent, 0.22);
+                    if ((idx % 2) == 1) rowTint = mix(rowTint, new Color(0x00, 0x00, 0x00), 0.16);
+                    g.setColor(rowTint);
+                    g.fillRect(leftX - 6, blockTop, colW + 12, blockH - 2);
+
+                    // Bold accent stripe to ensure per-track color is obvious
+                    g.setColor(rowAccent);
+                    g.fillRect(leftX - 6, blockTop, Math.max(4, border + 2), blockH - 2);
+
+                    // Row outline
+                    g.setColor(mix(borderC, rowAccent, 0.10));
+                    g.setStroke(new BasicStroke(Math.max(1, border - 1)));
+                    g.drawRect(leftX - 6, blockTop, colW + 11, blockH - 3);
+
+                    // Mini-map viewport inside the track row (right side of the row)
+                    // RUNNING tracks should be minimal: hide the per-row minimap.
+                    boolean minimalRunningRow = (ti.status == TrackStatus.RUNNING);
+
+                    int miniW = 0;
+                    if (!minimalRunningRow) {
+                        int mapPad = Math.max(8, (int) Math.round(bodySize * 0.55));
+                        miniW = clamp((int) Math.round(colW * 0.40), 72, Math.max(72, colW - 140));
+                        int miniH = Math.max(24, blockH - (mapPad * 2));
+                        int miniX = leftX + colW - miniW;
+                        int miniY = blockTop + mapPad;
+                        drawMiniMap(g, ti.centerline, miniX, miniY, miniW, miniH, rowAccent, borderC, textDim, smallFont, minimapStrokeFromBorder(border));
+                    }
+
+                    int textW = Math.max(0, colW - (minimalRunningRow ? 0 : miniW) - 10);
+
+                    // Line 1: name + status
+                    String line1 = "● " + ti.trackName + "  [" + statusLabel(ti.status, ti.registered, ti.maxRacers, ti.countdownSeconds) + "]";
+                    g.setFont(bodyFont);
+                    drawTrackRow(g, line1, leftX, blockTop + fmBody.getAscent(), textW, bodyFont, accent, text, textDim);
+
+                        // Line 2/3: compact info. RUNNING tracks are rendered in a minimal form.
+                        g.setFont(smallFont);
+                        g.setColor(textDim);
+                        if (ti.status == TrackStatus.RUNNING) {
+                            drawTrimmed(g, "Đang đua: " + Math.max(0, ti.registered) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                        } else if (ti.status == TrackStatus.COUNTDOWN) {
+                            drawTrimmed(g, "⏳ Bắt đầu: " + Time.formatCountdownSeconds(Math.max(0, ti.countdownSeconds)), leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                            drawTrimmed(g, "Người chơi: " + Math.max(0, ti.registered) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getHeight() + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                        } else {
+                            // Line 2: max racers
+                            drawTrimmed(g, "Tối đa: " + Math.max(0, ti.maxRacers) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+
+                            // Line 3: record
+                            drawTrimmed(g, recordLabel(ti.recordMillis, ti.recordHolderName), leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getHeight() + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                        }
+
+                    y += blockH;
+                    idx++;
                 }
 
-                // Alternating row background for readability
-                if ((rowIndex % 2) == 1) {
-                    g.setColor(new Color(0x12, 0x13, 0x16));
-                    g.fillRect(leftX - 6, yLeft - fmBody.getAscent(), colW + 12, fmBody.getHeight());
-                }
-
-                // Style hints
-                if (line.startsWith("Dùng:")) {
+                // Hint
+                if (y + (fmSmall.getHeight() * 2) + 4 < contentBottom) {
                     g.setFont(smallFont);
                     g.setColor(textDim);
-                    drawTrimmed(g, line, leftX, yLeft, colW);
-                    g.setFont(bodyFont);
-                } else if (line.startsWith("● ")) {
-                    // Track rows: bullet accent + state coloring
-                    drawTrackRow(g, line, leftX, yLeft, colW, bodyFont, accent, text, textDim);
-                } else {
-                    g.setColor(text);
-                    drawTrimmed(g, line, leftX, yLeft, colW);
-                }
+                    drawTrimmed(g, "Dùng: /boatracing race join <tên>", leftX, y + fmSmall.getAscent(), colW);
 
-                yLeft += rowH;
-                rowIndex++;
+                    // Page indicator
+                    int blockH2 = rowH + fmSmall.getHeight() * 2 + blockGap;
+                    int hintLines2 = 2;
+                    int hintH2 = hintLines2 * fmSmall.getHeight() + 10;
+                    int availableH2 = Math.max(0, (contentBottom - contentTop) - hintH2);
+                    int perPage2 = Math.max(1, availableH2 / Math.max(1, blockH2));
+                    int total2 = tracks.size();
+                    int totalPages2 = Math.max(1, (int) Math.ceil(total2 / (double) perPage2));
+                    long now2 = System.currentTimeMillis();
+                    long pageMs2 = getTrackPageSeconds() * 1000L;
+                    int pageIndex2 = (totalPages2 <= 1) ? 0 : (int) ((now2 / Math.max(1L, pageMs2)) % totalPages2);
+                    String pageLabel = "Trang " + (pageIndex2 + 1) + "/" + totalPages2;
+                    drawTrimmed(g, pageLabel, leftX, y + fmSmall.getHeight() + fmSmall.getAscent(), colW);
+                }
             }
 
-            int yRight = contentTop + fmBody.getAscent();
-            List<String> rightLines = buildRightLines();
+            // Right: ongoing races list
+            int rightPanelX = rightX - 6;
+            int rightPanelY = contentTop;
+            int rightPanelW = colW + 12;
+            int rightPanelH = Math.max(0, contentBottom - contentTop);
+            g.setColor(panel2);
+            g.fillRect(rightPanelX, rightPanelY, rightPanelW, rightPanelH);
 
-            int rRowIndex = 0;
+            // Small inner border for the map panel
+            g.setColor(borderC);
+            g.setStroke(new BasicStroke(Math.max(1, border - 1)));
+            g.drawRect(rightPanelX, rightPanelY, rightPanelW - 1, rightPanelH - 1);
+
+            int listTop = rightPanelY + Math.max(10, (int) Math.round(bodySize * 0.55));
+            int ry = listTop;
+
+            // Minimap of the focused running track (shown above the live ranking list).
+            try {
+                TrackInfo mapTrack = (focused != null && (focused.status == TrackStatus.RUNNING || focused.status == TrackStatus.COUNTDOWN)) ? focused : null;
+                RaceManager mapRm = null;
+                if (mapTrack != null) {
+                    try { mapRm = raceService != null ? raceService.getOrCreate(mapTrack.trackName) : null; }
+                    catch (Throwable ignored) { mapRm = null; }
+                    if (mapRm != null && !(mapRm.isRunning() || mapRm.isAnyCountdownActive())) mapRm = null;
+                }
+
+                // Fallback: pick the first live race (prefer RUNNING, else COUNTDOWN).
+                if (mapRm == null && raceService != null) {
+                    RaceManager running = null;
+                    RaceManager countdown = null;
+                    String runningName = null;
+                    String countdownName = null;
+
+                    for (RaceManager rm : raceService.allRaces()) {
+                        if (rm == null) continue;
+                        String tn = null;
+                        try { tn = rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null; } catch (Throwable ignored) { tn = null; }
+                        if (tn == null || tn.isBlank()) tn = "(không rõ)";
+
+                        if (running == null && rm.isRunning()) {
+                            running = rm;
+                            runningName = tn;
+                        }
+                        if (countdown == null && rm.isAnyCountdownActive()) {
+                            countdown = rm;
+                            countdownName = tn;
+                        }
+
+                        if (running != null) break;
+                    }
+
+                    if (running != null) {
+                        mapRm = running;
+                        String tn = runningName;
+                        TrackInfo found = null;
+                        if (tracks != null) {
+                            for (TrackInfo ti : tracks) {
+                                if (ti != null && ti.trackName != null && ti.trackName.equalsIgnoreCase(tn)) { found = ti; break; }
+                            }
+                        }
+                        if (found != null) mapTrack = found;
+                        else {
+                            List<Location> cl = java.util.Collections.emptyList();
+                            try {
+                                if (running.getTrackConfig() != null) {
+                                    List<Location> got = running.getTrackConfig().getCenterline();
+                                    if (got != null) cl = got;
+                                }
+                            } catch (Throwable ignored) {}
+                            mapTrack = new TrackInfo(tn, statusOf(running), 0, 0, 0L, "", cl, 0);
+                        }
+                    } else if (countdown != null) {
+                        mapRm = countdown;
+                        String tn = countdownName;
+                        TrackInfo found = null;
+                        if (tracks != null) {
+                            for (TrackInfo ti : tracks) {
+                                if (ti != null && ti.trackName != null && ti.trackName.equalsIgnoreCase(tn)) { found = ti; break; }
+                            }
+                        }
+                        if (found != null) mapTrack = found;
+                        else {
+                            List<Location> cl = java.util.Collections.emptyList();
+                            try {
+                                if (countdown.getTrackConfig() != null) {
+                                    List<Location> got = countdown.getTrackConfig().getCenterline();
+                                    if (got != null) cl = got;
+                                }
+                            } catch (Throwable ignored) {}
+                            int cd = 0;
+                            try { cd = Math.max(0, countdown.getCountdownRemainingSeconds()); } catch (Throwable ignored) { cd = 0; }
+                            mapTrack = new TrackInfo(tn, statusOf(countdown), 0, 0, 0L, "", cl, cd);
+                        }
+                    }
+                }
+
+                if (mapTrack != null && mapRm != null && mapTrack.centerline != null && mapTrack.centerline.size() >= 2) {
+                    int mapX = rightX;
+                    int mapW = colW;
+                    int idealMapH = (int) Math.round(mapW * 0.62);
+                    // Scale up the focused minimap on large boards, while reserving space for rankings.
+                    int maxMapH = Math.max(140, (int) Math.round(rightPanelH * 0.42));
+                    int mapH = clamp(idealMapH, 70, maxMapH);
+
+                    int reserveForList = Math.max(60, rowH * 6);
+                    mapH = Math.min(mapH, Math.max(0, rightPanelH - reserveForList));
+
+                    int gapAfterMap = Math.max(10, (int) Math.round(bodySize * 0.55));
+                    if (mapH >= 50 && (listTop + mapH + gapAfterMap) < contentBottom) {
+                        List<MiniDot> dots = collectRacerDots(mapRm);
+                        drawMiniMapWithDots(g, mapTrack.centerline, dots, mapX, listTop, mapW, mapH, accent, borderC, textDim, smallFont, minimapStrokeFromBorder(border));
+
+                        // COUNTDOWN: draw a very large number overlay at the center of the track-in-progress area.
+                        if (mapTrack.status == TrackStatus.COUNTDOWN) {
+                            int sec = Math.max(0, mapTrack.countdownSeconds);
+                            try { sec = Math.max(0, mapRm.getCountdownRemainingSeconds()); } catch (Throwable ignored) {}
+
+                            String s = String.valueOf(sec);
+                            int cx = mapX + (mapW / 2);
+                            int cy = listTop + (mapH / 2);
+
+                            // Start big and shrink-to-fit.
+                            int px = clamp((int) Math.round(mapH * 0.75), 28, 260);
+                            Font f = bodyFont.deriveFont(Font.BOLD, (float) px);
+                            g.setFont(f);
+                            java.awt.FontMetrics fm = g.getFontMetrics();
+                            while (px > 18 && (fm.stringWidth(s) > (int) Math.round(mapW * 0.85)
+                                    || fm.getAscent() > (int) Math.round(mapH * 0.85))) {
+                                px = (int) Math.round(px * 0.9);
+                                f = bodyFont.deriveFont(Font.BOLD, (float) px);
+                                g.setFont(f);
+                                fm = g.getFontMetrics();
+                            }
+
+                            int tx = cx - (fm.stringWidth(s) / 2);
+                            int ty = cy + ((fm.getAscent() - fm.getDescent()) / 2);
+
+                            // Shadow for readability
+                            int shadowOff = Math.max(2, (int) Math.round(border * 0.45));
+                            g.setColor(new Color(0, 0, 0, 170));
+                            g.drawString(s, tx + shadowOff, ty + shadowOff);
+                            g.drawString(s, tx - shadowOff, ty + shadowOff);
+                            g.drawString(s, tx + shadowOff, ty - shadowOff);
+                            g.drawString(s, tx - shadowOff, ty - shadowOff);
+
+                            // Main number
+                            g.setColor(accent);
+                            g.drawString(s, tx, ty);
+
+                            // Restore font for subsequent UI.
+                            g.setFont(bodyFont);
+                        }
+
+                        ry = listTop + mapH + gapAfterMap;
+                    }
+                }
+            } catch (Throwable ignored) {}
+
+            java.util.List<String> rightLines = buildRightLines();
             for (String line : rightLines) {
-                if (yRight > contentBottom) break;
-                if (line == null) line = "";
+                if (ry + fmBody.getHeight() > contentBottom) break;
 
-                if (line.isEmpty()) {
-                    yRight += Math.max(6, rowH / 2);
+                if (line == null || line.isBlank()) {
+                    ry += Math.max(6, fmSmall.getHeight() / 2);
                     continue;
                 }
 
-                if ((rRowIndex % 2) == 1) {
-                    g.setColor(new Color(0x12, 0x13, 0x16));
-                    g.fillRect(rightX - 6, yRight - fmBody.getAscent(), colW + 12, fmBody.getHeight());
-                }
-
-                if (line.startsWith("● ")) {
-                    // Track group header
-                    g.setFont(headerFont);
+                g.setFont(bodyFont);
+                if (line.startsWith("●")) {
+                    // Track header
                     g.setColor(accent);
-                    drawTrimmed(g, line.substring(2).trim(), rightX, yRight, colW);
-                    g.setFont(bodyFont);
-                } else if (line.matches("\\d+\\)\\s+.*")) {
-                    // Position row
-                    drawRankingRow(g, line, rightX, yRight, colW, bodyFont, accent, text, textDim);
-                } else {
-                    g.setColor(textDim);
-                    drawTrimmed(g, line, rightX, yRight, colW);
+                    drawTrimmed(g, line, rightX, ry + fmBody.getAscent(), colW);
+                    ry += fmBody.getHeight();
+                    continue;
                 }
 
-                yRight += rowH;
-                rRowIndex++;
+                if (isRankingLine(line)) {
+                    g.setColor(text);
+                    drawRankingRow(g, line, rightX, ry + fmBody.getAscent(), colW, bodyFont, accent, text, textDim);
+                    ry += fmBody.getHeight();
+                    continue;
+                }
+
+                g.setFont(smallFont);
+                g.setColor(textDim);
+                drawTrimmed(g, line, rightX, ry + fmSmall.getAscent(), colW);
+                ry += fmSmall.getHeight();
             }
 
             // Footer hint
@@ -715,14 +1450,19 @@ public final class LobbyBoardService {
             g.setColor(textDim);
             int fy = footerTop + (footerBoxH + fmSmall.getAscent() - fmSmall.getDescent()) / 2;
             fy = Math.max(fmSmall.getAscent() + inset, fy);
-                drawStringWithFallback(
-                    g,
-                    "ℹ Chỉ hiển thị khi bạn ở sảnh và gần bảng.",
-                    titleBarX + pad,
-                    fy,
-                    smallFont,
-                    monoMatch(smallFont)
-                );
+            // Left: visibility hint
+            String footerHint = ICON_INFO + " Chỉ hiển thị khi bạn ở sảnh và gần bảng.";
+            drawStringWithFallback(g, footerHint, titleBarX + pad, fy, smallFont, monoMatch(smallFont));
+
+            // Right: server current time
+            try {
+                java.time.LocalTime now = java.time.LocalTime.now();
+                String clock = ICON_CLOCK + " " + now.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                int clockW = stringWidthWithFallback(g, clock, smallFont, monoMatch(smallFont));
+                int rightEdge = titleBarX + (w - (titleBarX * 2)) - pad;
+                int cx = Math.max(titleBarX + pad, rightEdge - clockW);
+                drawStringWithFallback(g, clock, cx, fy, smallFont, monoMatch(smallFont));
+            } catch (Throwable ignored) {}
 
         } finally {
             g.dispose();
@@ -734,6 +1474,10 @@ public final class LobbyBoardService {
                                      Color accent, Color text, Color textDim) {
         if (g == null) return;
         if (line == null) line = "";
+
+		// Add a bit more breathing room from the left edge of the row background.
+		x += TRACK_ROW_INNER_PAD;
+		maxWidth = Math.max(0, maxWidth - TRACK_ROW_INNER_PAD);
 
         // Expected: "● <name>  [<state...>]"
         String s = line;
@@ -821,7 +1565,18 @@ public final class LobbyBoardService {
         }
 
         String posStr = line.substring(0, close).trim();
-        String name = line.substring(close + 1).trim();
+        String full = line.substring(close + 1).trim();
+
+        // Optional metadata suffix separated by a double-space.
+        // Example: "1) Racer  V1/3  CP2/5  47%"
+        String name = full;
+        String meta = null;
+        int sep = full.indexOf("  ");
+        if (sep > 0) {
+            name = full.substring(0, sep).trim();
+            meta = full.substring(sep).trim();
+            if (meta != null && meta.isBlank()) meta = null;
+        }
 
         int pos;
         try { pos = Integer.parseInt(posStr); } catch (Throwable ignored) { pos = 0; }
@@ -835,8 +1590,31 @@ public final class LobbyBoardService {
         g.setColor(posC);
         drawStringWithFallback(g, posDraw, x, y, bodyFont, fallbackFont);
         int nx = x + stringWidthWithFallback(g, posDraw + "  ", bodyFont, fallbackFont);
+
+        int available = Math.max(0, maxWidth - (nx - x));
+        if (meta == null || meta.isEmpty()) {
+            g.setColor(text);
+            drawTrimmed(g, name, nx, y, available);
+            return;
+        }
+
+        // Reserve a little room for the racer name so meta doesn't consume the whole row.
+        final int reserveNamePx = 40;
+        int metaMax = Math.max(0, available - reserveNamePx);
+        String metaTrim = trimToWidthWithFallback(g, meta, metaMax, bodyFont, fallbackFont);
+        int metaW = stringWidthWithFallback(g, metaTrim, bodyFont, fallbackFont);
+
+        int gapW = stringWidthWithFallback(g, "  ", bodyFont, fallbackFont);
+        int nameMax = Math.max(0, available - gapW - metaW);
+        String nameTrim = trimToWidthWithFallback(g, name, nameMax, bodyFont, fallbackFont);
+
         g.setColor(text);
-        drawTrimmed(g, name, nx, y, Math.max(0, maxWidth - (nx - x)));
+        drawStringWithFallback(g, nameTrim, nx, y, bodyFont, fallbackFont);
+
+        int rightEdge = nx + available;
+        int metaX = Math.max(nx, rightEdge - metaW);
+        g.setColor(textDim);
+        drawStringWithFallback(g, metaTrim, metaX, y, bodyFont, fallbackFont);
     }
 
     private static Font monoMatch(Font f) {
@@ -974,17 +1752,35 @@ public final class LobbyBoardService {
             return out;
         }
 
-        record Entry(String track, int pos, UUID id, String name) {}
+        // Countdown tracks are shown as summaries (no live ranking yet).
+        List<String> countdownLines = new ArrayList<>();
+
+        record Entry(String track, int pos, UUID id, String name, String meta) {}
         List<Entry> entries = new ArrayList<>();
 
         try {
             for (RaceManager rm : raceService.allRaces()) {
-                if (rm == null || !rm.isRunning()) continue;
+                if (rm == null) continue;
                 String track = "(không rõ)";
                 try {
                     String n = rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null;
                     if (n != null && !n.isBlank()) track = n;
                 } catch (Throwable ignored) {}
+
+                // Countdown (non-running) summary
+                try {
+                    if (!rm.isRunning() && rm.isAnyCountdownActive()) {
+                        int sec = Math.max(0, rm.getCountdownRemainingSeconds());
+                        int racers = 0;
+                        try { racers = rm.getInvolved().size(); } catch (Throwable ignored2) { racers = 0; }
+
+                        countdownLines.add("● " + track + "  [Đếm ngược " + Time.formatCountdownSeconds(sec) + "]");
+                        countdownLines.add("⏳ Bắt đầu: " + Time.formatCountdownSeconds(sec) + "  ●  Người chơi: " + racers);
+                        countdownLines.add("");
+                    }
+                } catch (Throwable ignored) {}
+
+                if (!rm.isRunning()) continue;
 
                 List<UUID> order = rm.getLiveOrder();
                 int limit = Math.min(5, order.size());
@@ -994,13 +1790,56 @@ public final class LobbyBoardService {
                     var st = rm.getParticipantState(id);
                     if (st != null && st.finished) continue;
                     String name = nameOf(id);
-                    entries.add(new Entry(track, i + 1, id, name));
+
+                    // Live telemetry: lap / checkpoint / total progress.
+                    String meta = "";
+                    try {
+                        int lapTotal = Math.max(1, rm.getTotalLaps());
+                        int lapCurrent = 1;
+                        int passedCp = 0;
+                        int totalCp = 0;
+                        if (st != null) {
+                            lapCurrent = Math.min(lapTotal, Math.max(1, st.currentLap + 1));
+                            passedCp = Math.max(0, st.nextCheckpointIndex);
+                        }
+
+                        try {
+                            totalCp = (rm.getTrackConfig() != null && rm.getTrackConfig().getCheckpoints() != null)
+                                    ? rm.getTrackConfig().getCheckpoints().size()
+                                    : 0;
+                        } catch (Throwable ignored2) { totalCp = 0; }
+
+                        String cpPart = (totalCp > 0)
+                                ? ("CP" + Math.min(passedCp, totalCp) + "/" + totalCp)
+                                : "CP-";
+
+                        double lapRatio = 0.0;
+                        try { lapRatio = rm.getLapProgressRatio(id); } catch (Throwable ignored2) { lapRatio = 0.0; }
+                        if (!Double.isFinite(lapRatio)) lapRatio = 0.0;
+                        lapRatio = Math.max(0.0, Math.min(1.0, lapRatio));
+
+                        double overall = ((st == null ? 0.0 : (double) Math.max(0, st.currentLap)) + lapRatio) / (double) lapTotal;
+                        overall = Math.max(0.0, Math.min(1.0, overall));
+                        int pct = (int) Math.round(overall * 100.0);
+
+                        meta = "V" + lapCurrent + "/" + lapTotal + "  " + cpPart + "  " + pct + "%";
+                    } catch (Throwable ignored2) { meta = ""; }
+
+                    entries.add(new Entry(track, i + 1, id, name, meta));
                 }
             }
         } catch (Throwable ignored) {}
 
+        if (!countdownLines.isEmpty()) {
+            // Trim possible trailing blank
+            while (!countdownLines.isEmpty() && countdownLines.get(countdownLines.size() - 1).isBlank()) countdownLines.remove(countdownLines.size() - 1);
+            out.addAll(countdownLines);
+            // If there are also running races, we'll append them below.
+            if (!entries.isEmpty()) out.add("");
+        }
+
         if (entries.isEmpty()) {
-            out.add("(Chưa có cuộc đua nào đang chạy)");
+            if (out.isEmpty()) out.add("(Chưa có cuộc đua nào đang chạy)");
             return out;
         }
 
@@ -1030,7 +1869,9 @@ public final class LobbyBoardService {
                     racer = stripLegacyColors(profileManager.formatRacerLegacy(e.id, e.name));
                 }
             } catch (Throwable ignored) {}
-            out.add(e.pos + ") " + racer);
+            String meta = e.meta;
+            if (meta != null && !meta.isBlank()) out.add(e.pos + ") " + racer + "  " + meta);
+            else out.add(e.pos + ") " + racer);
             lines++;
         }
 
@@ -1277,8 +2118,10 @@ public final class LobbyBoardService {
                 high = Math.abs(a.getBlockY() - b.getBlockY()) + 1;
             }
 
-            wide = clamp(wide, 1, 16);
-            high = clamp(high, 1, 16);
+            // Do not enforce an arbitrary size cap here.
+            // The placement selection determines the board size; MapEngine will be the practical limit.
+            wide = Math.max(1, wide);
+            high = Math.max(1, high);
             return new int[] { wide, high };
         }
     }

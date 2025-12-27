@@ -173,6 +173,10 @@ mapengine:
     # Enable the lobby information board.
     enabled: false
 
+    # If there are too many tracks to fit, auto-cycle pages like an airport board.
+    # Unit: seconds per page.
+    page-seconds: 6
+
     # Font file for the lobby board renderer (TTF/OTF).
     # - Mặc định: dùng font hệ thống (monospace).
     # - Bạn có thể cung cấp font Minecraft dạng .ttf/.otf tại:
@@ -190,6 +194,13 @@ mapengine:
 
     # How often to redraw the board (in server ticks). Default: 20 (1s)
     update-ticks: 20
+
+    # MapEngine pipeline options
+    # - buffering: enable internal buffering for smoother updates
+    # - bundling: batch multiple updates into one send; disable to reduce "blank"/partial frames on some setups
+    pipeline:
+      buffering: true
+      bundling: false
 
     # Placement is written by the /boatracing board set command.
     placement: {}

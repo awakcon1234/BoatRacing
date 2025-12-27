@@ -1,6 +1,7 @@
 package dev.belikhun.boatracing.util;
 
 import org.bukkit.DyeColor;
+import java.awt.Color;
 
 /**
  * Centralized color formatting helpers.
@@ -60,6 +61,32 @@ public final class DyeColorFormats {
             case RED -> "&c";
             case BLACK -> "&0";
             default -> "&f";
+        };
+    }
+
+    /**
+     * Map Bukkit DyeColor to a stable java.awt.Color for UI rendering (MapEngine lobby board).
+     * Note: these are approximate "Minecraft-like" tones, not exact map palette indices.
+     */
+    public static Color awtColor(DyeColor color) {
+        if (color == null) color = DyeColor.WHITE;
+        return switch (color) {
+            case WHITE -> new Color(0xF0F0F0);
+            case ORANGE -> new Color(0xF9801D);
+            case MAGENTA -> new Color(0xC74EBD);
+            case LIGHT_BLUE -> new Color(0x3AB3DA);
+            case YELLOW -> new Color(0xFED83D);
+            case LIME -> new Color(0x80C71F);
+            case PINK -> new Color(0xF38BAA);
+            case GRAY -> new Color(0x474F52);
+            case LIGHT_GRAY -> new Color(0x9D9D97);
+            case CYAN -> new Color(0x169C9C);
+            case PURPLE -> new Color(0x8932B8);
+            case BLUE -> new Color(0x3C44AA);
+            case BROWN -> new Color(0x835432);
+            case GREEN -> new Color(0x5E7C16);
+            case RED -> new Color(0xB02E26);
+            case BLACK -> new Color(0x1D1D21);
         };
     }
 }
