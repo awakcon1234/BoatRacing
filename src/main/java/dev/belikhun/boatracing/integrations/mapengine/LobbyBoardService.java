@@ -532,7 +532,9 @@ public final class LobbyBoardService {
 
             // Broadcast-like scaling: drive sizes from pixel height.
             // (We use FontMetrics for row height to prevent overlap.)
-            int bodySize = clamp((int) Math.round(h / 34.0), 14, 72);
+            // Requested: overall UI size increase ~25%.
+            final double uiScale = 1.25;
+            int bodySize = clamp((int) Math.round((h / 34.0) * uiScale), 14, 72);
             int headerSize = clamp((int) Math.round(bodySize * 1.10), 16, 84);
             int titleSize = clamp((int) Math.round(bodySize * 1.70), 20, 110);
             int footerSize = clamp((int) Math.round(bodySize * 0.85), 12, 60);
@@ -622,7 +624,12 @@ public final class LobbyBoardService {
 
             // Panels
             int contentTop = top + headerRowH + Math.max(10, (int) Math.round(bodySize * 0.6));
-            int contentBottom = h - inset - Math.max(fmSmall.getHeight() + 6, (int) Math.round(bodySize * 1.2));
+
+            // Reserve a footer box inside the inner border so footer text never overlaps the border.
+            int footerPadV = Math.max(6, (int) Math.round(bodySize * 0.35));
+            int footerBoxH = fmSmall.getHeight() + footerPadV;
+            int footerTop = h - inset - footerBoxH;
+            int contentBottom = footerTop - Math.max(8, (int) Math.round(bodySize * 0.50));
             int panelH = Math.max(0, contentBottom - contentTop);
             g.setColor(panel);
             g.fillRect(inset + 1, contentTop - 6, w - (inset * 2 + 2), panelH + 12);
@@ -706,9 +713,16 @@ public final class LobbyBoardService {
             // Footer hint
             g.setFont(smallFont);
             g.setColor(textDim);
-            int fy = h - Math.max(8, inset);
+            int fy = footerTop + (footerBoxH + fmSmall.getAscent() - fmSmall.getDescent()) / 2;
             fy = Math.max(fmSmall.getAscent() + inset, fy);
-            g.drawString("ℹ Chỉ hiển thị khi bạn ở sảnh và gần bảng.", titleBarX + pad, fy);
+                drawStringWithFallback(
+                    g,
+                    "ℹ Chỉ hiển thị khi bạn ở sảnh và gần bảng.",
+                    titleBarX + pad,
+                    fy,
+                    smallFont,
+                    monoMatch(smallFont)
+                );
 
         } finally {
             g.dispose();
@@ -735,13 +749,13 @@ public final class LobbyBoardService {
         }
 
         g.setFont(bodyFont);
-        java.awt.FontMetrics fm = g.getFontMetrics();
+        Font fallbackFont = monoMatch(bodyFont);
 
         // Bullet
         g.setColor(accent);
         String bullet = "●";
-        g.drawString(bullet, x, y);
-        int bx = x + fm.stringWidth(bullet + " ");
+        drawStringWithFallback(g, bullet, x, y, bodyFont, fallbackFont);
+        int bx = x + stringWidthWithFallback(g, bullet + " ", bodyFont, fallbackFont);
 
         // Name
         g.setColor(text);
@@ -753,13 +767,14 @@ public final class LobbyBoardService {
         }
 
         // Reserve some space for bracket (trim name first if needed)
-        int bracketW = fm.stringWidth(" " + bracket);
+        int bracketW = stringWidthWithFallback(g, " " + bracket, bodyFont, fallbackFont);
         int nameW = Math.max(0, available - bracketW);
-        drawTrimmed(g, name, bx, y, nameW);
+        String trimmedName = trimToWidthWithFallback(g, name, nameW, bodyFont, fallbackFont);
+        drawTrimmed(g, trimmedName, bx, y, nameW);
 
-        int nx = bx + Math.min(fm.stringWidth(name), nameW);
         // Always place bracket after a single space
-        int brX = bx + Math.min(fm.stringWidth(trimToWidth(fm, name, nameW)), nameW) + fm.stringWidth(" ");
+        int brX = bx + Math.min(stringWidthWithFallback(g, trimmedName, bodyFont, fallbackFont), nameW)
+                + stringWidthWithFallback(g, " ", bodyFont, fallbackFont);
 
         // State color hint
         Color stC = textDim;
@@ -775,14 +790,16 @@ public final class LobbyBoardService {
 
         // Try to color the inside of bracket
         if (bracket.startsWith("[") && bracket.endsWith("]") && bracket.length() >= 2) {
-            g.drawString("[", brX, y);
-            int insideX = brX + fm.stringWidth("[");
+            drawStringWithFallback(g, "[", brX, y, bodyFont, fallbackFont);
+            int insideX = brX + stringWidthWithFallback(g, "[", bodyFont, fallbackFont);
             String inside = bracket.substring(1, bracket.length() - 1);
             g.setColor(stC);
-            drawTrimmed(g, inside, insideX, y, Math.max(0, maxBr - fm.stringWidth("[]")));
-            int insideW = fm.stringWidth(trimToWidth(fm, inside, Math.max(0, maxBr - fm.stringWidth("[]"))));
+            int insideMax = Math.max(0, maxBr - stringWidthWithFallback(g, "[]", bodyFont, fallbackFont));
+            String insideTrim = trimToWidthWithFallback(g, inside, insideMax, bodyFont, fallbackFont);
+            drawTrimmed(g, insideTrim, insideX, y, insideMax);
+            int insideW = stringWidthWithFallback(g, insideTrim, bodyFont, fallbackFont);
             g.setColor(textDim);
-            g.drawString("]", insideX + insideW, y);
+            drawStringWithFallback(g, "]", insideX + insideW, y, bodyFont, fallbackFont);
         } else {
             g.setColor(stC);
             drawTrimmed(g, bracket, brX, y, maxBr);
@@ -794,7 +811,7 @@ public final class LobbyBoardService {
         if (g == null) return;
         if (line == null) line = "";
         g.setFont(bodyFont);
-        java.awt.FontMetrics fm = g.getFontMetrics();
+        Font fallbackFont = monoMatch(bodyFont);
 
         int close = line.indexOf(')');
         if (close <= 0) {
@@ -816,17 +833,89 @@ public final class LobbyBoardService {
 
         String posDraw = (pos > 0 ? ("#" + pos) : "#?");
         g.setColor(posC);
-        g.drawString(posDraw, x, y);
-        int nx = x + fm.stringWidth(posDraw + "  ");
+        drawStringWithFallback(g, posDraw, x, y, bodyFont, fallbackFont);
+        int nx = x + stringWidthWithFallback(g, posDraw + "  ", bodyFont, fallbackFont);
         g.setColor(text);
         drawTrimmed(g, name, nx, y, Math.max(0, maxWidth - (nx - x)));
     }
 
-    private static String trimToWidth(java.awt.FontMetrics fm, String s, int maxWidth) {
-        if (fm == null) return "";
-        if (s == null) return "";
+    private static Font monoMatch(Font f) {
+        if (f == null) return new Font(Font.MONOSPACED, Font.PLAIN, 12);
+        return new Font(Font.MONOSPACED, f.getStyle(), f.getSize());
+    }
+
+    private static int stringWidthWithFallback(Graphics2D g, String s, Font primary, Font fallback) {
+        if (g == null) return 0;
+        if (s == null || s.isEmpty()) return 0;
+        Font p = (primary != null ? primary : g.getFont());
+        Font f = (fallback != null ? fallback : monoMatch(p));
+
+        int w = 0;
+        for (int i = 0; i < s.length();) {
+            int cp = s.codePointAt(i);
+            int len = Character.charCount(cp);
+            boolean canPrimary;
+            try { canPrimary = p != null && p.canDisplay(cp); }
+            catch (Throwable ignored) { canPrimary = true; }
+            Font use = canPrimary ? p : f;
+            try {
+                w += g.getFontMetrics(use).stringWidth(new String(Character.toChars(cp)));
+            } catch (Throwable ignored) {
+                // Best-effort fallback: count as 0 width if metrics fails.
+            }
+            i += len;
+        }
+        return w;
+    }
+
+    private static void drawStringWithFallback(Graphics2D g, String s, int x, int y, Font primary, Font fallback) {
+        if (g == null) return;
+        if (s == null || s.isEmpty()) return;
+        Font p = (primary != null ? primary : g.getFont());
+        Font f = (fallback != null ? fallback : monoMatch(p));
+
+        int cx = x;
+        StringBuilder run = new StringBuilder();
+        Font runFont = null;
+
+        for (int i = 0; i < s.length();) {
+            int cp = s.codePointAt(i);
+            int len = Character.charCount(cp);
+
+            boolean canPrimary;
+            try { canPrimary = p != null && p.canDisplay(cp); }
+            catch (Throwable ignored) { canPrimary = true; }
+
+            Font use = canPrimary ? p : f;
+            if (runFont == null) runFont = use;
+
+            if (use != runFont) {
+                if (!run.isEmpty()) {
+                    g.setFont(runFont);
+                    g.drawString(run.toString(), cx, y);
+                    cx += g.getFontMetrics(runFont).stringWidth(run.toString());
+                    run.setLength(0);
+                }
+                runFont = use;
+            }
+
+            run.appendCodePoint(cp);
+            i += len;
+        }
+
+        if (!run.isEmpty()) {
+            g.setFont(runFont);
+            g.drawString(run.toString(), cx, y);
+        }
+    }
+
+    private static String trimToWidthWithFallback(Graphics2D g, String s, int maxWidth, Font primary, Font fallback) {
+        if (g == null) return "";
+        if (s == null || s.isEmpty()) return "";
+        if (maxWidth <= 0) return "";
+
         String out = s;
-        while (!out.isEmpty() && fm.stringWidth(out) > maxWidth) {
+        while (!out.isEmpty() && stringWidthWithFallback(g, out, primary, fallback) > maxWidth) {
             out = out.substring(0, out.length() - 1);
         }
         return out;
@@ -969,24 +1058,22 @@ public final class LobbyBoardService {
         if (g == null) return;
         if (line == null) line = "";
         String s = line;
-        java.awt.FontMetrics fm = g.getFontMetrics();
+        Font primary = g.getFont();
+        Font fallback = monoMatch(primary);
         if (maxWidth <= 0) return;
 
         // Fast path
-        if (fm.stringWidth(s) <= maxWidth) {
-            g.drawString(s, x, y);
+        if (stringWidthWithFallback(g, s, primary, fallback) <= maxWidth) {
+            drawStringWithFallback(g, s, x, y, primary, fallback);
             return;
         }
 
         // Ellipsize using "..." (safe for Minecraft fonts).
         final String ell = "...";
-        int ellW = fm.stringWidth(ell);
+        int ellW = stringWidthWithFallback(g, ell, primary, fallback);
         int target = Math.max(0, maxWidth - ellW);
-        String cut = s;
-        while (!cut.isEmpty() && fm.stringWidth(cut) > target) {
-            cut = cut.substring(0, cut.length() - 1);
-        }
-        g.drawString(cut + ell, x, y);
+        String cut = trimToWidthWithFallback(g, s, target, primary, fallback);
+        drawStringWithFallback(g, cut + ell, x, y, primary, fallback);
     }
 
     private static int clamp(int v, int min, int max) {
