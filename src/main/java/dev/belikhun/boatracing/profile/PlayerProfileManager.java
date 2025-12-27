@@ -2,7 +2,7 @@ package dev.belikhun.boatracing.profile;
 
 import org.bukkit.DyeColor;
 import org.bukkit.configuration.file.YamlConfiguration;
-import dev.belikhun.boatracing.util.DyeColorFormats;
+import dev.belikhun.boatracing.util.ColorTranslator;
 
 import java.io.File;
 import java.io.IOException;
@@ -55,7 +55,7 @@ public class PlayerProfileManager {
         String n = (name == null || name.isBlank()) ? shortId(id) : name;
         String icon = (p.icon == null || p.icon.isBlank()) ? "●" : p.icon;
         String number = (p.number > 0) ? String.valueOf(p.number) : "-";
-        return DyeColorFormats.miniColorTag(p.color) + "[" + icon + " <u>" + number + "</u>] " + n;
+        return ColorTranslator.miniColorTag(p.color) + "[" + icon + " <u>" + number + "</u>] " + n;
     }
 
     /**
@@ -68,7 +68,7 @@ public class PlayerProfileManager {
         String n = (name == null || name.isBlank()) ? shortId(id) : name;
         String icon = (p.icon == null || p.icon.isBlank()) ? "●" : p.icon;
         String number = (p.number > 0) ? String.valueOf(p.number) : "-";
-        String c = DyeColorFormats.legacyColorCode(p.color);
+        String c = ColorTranslator.legacyColorCode(p.color);
         return c + "[" + icon + " " + c + "&n" + number + "&r" + c + "] " + n;
     }
 

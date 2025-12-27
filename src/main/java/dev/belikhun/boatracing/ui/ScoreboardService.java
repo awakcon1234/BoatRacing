@@ -4,7 +4,7 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.profile.PlayerProfileManager;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
-import dev.belikhun.boatracing.util.DyeColorFormats;
+import dev.belikhun.boatracing.util.ColorTranslator;
 import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
@@ -292,7 +292,7 @@ public class ScoreboardService {
         Sidebar sb = ensureSidebar(p);
         PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
         java.util.Map<String,String> ph = new java.util.HashMap<>();
-        ph.put("racer_name", p.getName()); ph.put("racer_color", DyeColorFormats.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
+        ph.put("racer_name", p.getName()); ph.put("racer_color", ColorTranslator.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("completed", String.valueOf(prof.completed)); ph.put("wins", String.valueOf(prof.wins));
         ph.put("time_raced", Time.formatDurationShort(prof.timeRacedMillis));
@@ -322,7 +322,7 @@ public class ScoreboardService {
         try { cps = rm.getTrackConfig().getCheckpoints().size(); } catch (Throwable ignored) { cps = 0; }
         PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
         java.util.Map<String,String> ph = new java.util.HashMap<>();
-        ph.put("racer_name", p.getName()); ph.put("racer_color", DyeColorFormats.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
+        ph.put("racer_name", p.getName()); ph.put("racer_color", ColorTranslator.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
         ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
         ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
         ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));

@@ -10,7 +10,7 @@ import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
 import dev.belikhun.boatracing.track.TrackLibrary;
 import dev.belikhun.boatracing.track.TrackRecordManager;
-import dev.belikhun.boatracing.util.DyeColorFormats;
+import dev.belikhun.boatracing.util.ColorTranslator;
 import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
@@ -707,7 +707,8 @@ public final class LobbyBoardService {
         if (st == null) st = TrackStatus.OFF;
         return switch (st) {
             case RUNNING -> "Đang chạy";
-            case COUNTDOWN -> "Đếm ngược " + Time.formatCountdownSeconds(Math.max(0, countdownSeconds));
+            // Countdown seconds are shown only as the large centered overlay on the focused minimap.
+            case COUNTDOWN -> "Đếm ngược";
             case REGISTERING -> "Đang đăng ký " + regs + "/" + max;
             case READY -> "Sẵn sàng";
             case OFF -> "Tắt";
@@ -863,7 +864,7 @@ public final class LobbyBoardService {
                 if (profileManager != null) {
                     var prof = profileManager.get(id);
                     if (prof != null && prof.color != null) {
-                        c = DyeColorFormats.awtColor(prof.color);
+                        c = ColorTranslator.awtColor(prof.color);
                     }
                 }
             } catch (Throwable ignored) {}
@@ -1123,7 +1124,8 @@ public final class LobbyBoardService {
             g.setColor(panel2);
             g.fillRect(inset + 1, top, w - (inset * 2 + 2), headerRowH);
             g.setColor(accent);
-            g.fillRect(inset + 1, top + headerRowH - Math.max(2, border), w - (inset * 2 + 2), Math.max(2, border));
+            int headerStripeH = Math.min(headerRowH, Math.max(3, border + 1));
+            g.fillRect(inset + 1, top + headerRowH - headerStripeH, w - (inset * 2 + 2), headerStripeH);
 
             g.setFont(headerFont);
             g.setColor(accent);
@@ -1220,8 +1222,7 @@ public final class LobbyBoardService {
                         if (ti.status == TrackStatus.RUNNING) {
                             drawTrimmed(g, "Đang đua: " + Math.max(0, ti.registered) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
                         } else if (ti.status == TrackStatus.COUNTDOWN) {
-                            drawTrimmed(g, "⏳ Bắt đầu: " + Time.formatCountdownSeconds(Math.max(0, ti.countdownSeconds)), leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
-                            drawTrimmed(g, "Người chơi: " + Math.max(0, ti.registered) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getHeight() + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                            drawTrimmed(g, "Người chơi: " + Math.max(0, ti.registered) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
                         } else {
                             // Line 2: max racers
                             drawTrimmed(g, "Tối đa: " + Math.max(0, ti.maxRacers) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
@@ -1269,7 +1270,8 @@ public final class LobbyBoardService {
             g.setStroke(new BasicStroke(Math.max(1, border - 1)));
             g.drawRect(rightPanelX, rightPanelY, rightPanelW - 1, rightPanelH - 1);
 
-            int listTop = rightPanelY + Math.max(10, (int) Math.round(bodySize * 0.55));
+            // Keep the focused minimap tight to the top of the right panel (screenshot polish).
+            int listTop = rightPanelY + Math.max(6, border + 2);
             int ry = listTop;
 
             // Minimap of the focused running track (shown above the live ranking list).
@@ -1363,7 +1365,8 @@ public final class LobbyBoardService {
                     int reserveForList = Math.max(60, rowH * 6);
                     mapH = Math.min(mapH, Math.max(0, rightPanelH - reserveForList));
 
-                    int gapAfterMap = Math.max(10, (int) Math.round(bodySize * 0.55));
+                    // Reduce extra empty space between the minimap and the list.
+                    int gapAfterMap = Math.max(6, (int) Math.round(bodySize * 0.25));
                     if (mapH >= 50 && (listTop + mapH + gapAfterMap) < contentBottom) {
                         List<MiniDot> dots = collectRacerDots(mapRm);
                         drawMiniMapWithDots(g, mapTrack.centerline, dots, mapX, listTop, mapW, mapH, accent, borderC, textDim, smallFont, minimapStrokeFromBorder(border));
@@ -1594,7 +1597,9 @@ public final class LobbyBoardService {
         int available = Math.max(0, maxWidth - (nx - x));
         if (meta == null || meta.isEmpty()) {
             g.setColor(text);
-            drawTrimmed(g, name, nx, y, available);
+            // Name may contain legacy color codes (&/§). Render it with colors.
+            String nameTrim = trimLegacyToWidthWithFallback(g, name, available, bodyFont, fallbackFont);
+            drawLegacyStringWithFallback(g, nameTrim, nx, y, bodyFont, text);
             return;
         }
 
@@ -1606,15 +1611,250 @@ public final class LobbyBoardService {
 
         int gapW = stringWidthWithFallback(g, "  ", bodyFont, fallbackFont);
         int nameMax = Math.max(0, available - gapW - metaW);
-        String nameTrim = trimToWidthWithFallback(g, name, nameMax, bodyFont, fallbackFont);
+        String nameTrim = trimLegacyToWidthWithFallback(g, name, nameMax, bodyFont, fallbackFont);
 
         g.setColor(text);
-        drawStringWithFallback(g, nameTrim, nx, y, bodyFont, fallbackFont);
+        drawLegacyStringWithFallback(g, nameTrim, nx, y, bodyFont, text);
 
         int rightEdge = nx + available;
         int metaX = Math.max(nx, rightEdge - metaW);
         g.setColor(textDim);
         drawStringWithFallback(g, metaTrim, metaX, y, bodyFont, fallbackFont);
+    }
+
+    // ===================== Legacy color rendering (for lobby board ranking) =====================
+    // Supports Minecraft legacy formatting codes using either '&' or '§'.
+    // We implement color + bold/italic and ignore other formatting codes.
+
+    private static int legacyRenderedWidthWithFallback(Graphics2D g, String s, Font baseFont, Font fallbackFont) {
+        if (g == null) return 0;
+        if (s == null || s.isEmpty()) return 0;
+        Font base = (baseFont != null ? baseFont : g.getFont());
+        int baseStyle = base.getStyle();
+
+        boolean bold = false;
+        boolean italic = false;
+
+        int w = 0;
+        for (int i = 0; i < s.length();) {
+            char ch = s.charAt(i);
+            if ((ch == '&' || ch == '§') && (i + 1) < s.length()) {
+                char code = s.charAt(i + 1);
+                char lc = Character.toLowerCase(code);
+                Color c = ColorTranslator.legacyChatColorToAwt(lc);
+                if (c != null) {
+                    // Color codes reset formats in vanilla.
+                    bold = false;
+                    italic = false;
+                } else if (lc == 'r') {
+                    bold = false;
+                    italic = false;
+                } else if (lc == 'l') {
+                    bold = true;
+                } else if (lc == 'o') {
+                    italic = true;
+                }
+                i += 2;
+                continue;
+            }
+
+            int cp = s.codePointAt(i);
+            int len = Character.charCount(cp);
+            int style = baseStyle | (bold ? Font.BOLD : 0) | (italic ? Font.ITALIC : 0);
+            Font useBase;
+            try { useBase = base.deriveFont(style); }
+            catch (Throwable ignored) { useBase = base; }
+            Font useFallback = (fallbackFont != null ? fallbackFont : monoMatch(useBase));
+            // Ensure fallback matches style/size.
+            try { useFallback = useFallback.deriveFont(style, (float) useBase.getSize()); } catch (Throwable ignored) {}
+
+            boolean canPrimary;
+            try { canPrimary = useBase.canDisplay(cp); }
+            catch (Throwable ignored) { canPrimary = true; }
+            Font use = canPrimary ? useBase : useFallback;
+            try {
+                w += g.getFontMetrics(use).stringWidth(new String(Character.toChars(cp)));
+            } catch (Throwable ignored) {}
+            i += len;
+        }
+        return w;
+    }
+
+    private static String trimLegacyToWidthWithFallback(Graphics2D g, String s, int maxWidth, Font baseFont, Font fallbackFont) {
+        if (g == null) return "";
+        if (s == null || s.isEmpty()) return "";
+        if (maxWidth <= 0) return "";
+
+        Font base = (baseFont != null ? baseFont : g.getFont());
+        int baseStyle = base.getStyle();
+
+        boolean bold = false;
+        boolean italic = false;
+        int w = 0;
+        int cutIndex = 0;
+
+        for (int i = 0; i < s.length();) {
+            char ch = s.charAt(i);
+            if ((ch == '&' || ch == '§') && (i + 1) < s.length()) {
+                char code = s.charAt(i + 1);
+                char lc = Character.toLowerCase(code);
+                Color c = ColorTranslator.legacyChatColorToAwt(lc);
+                if (c != null) {
+                    bold = false;
+                    italic = false;
+                } else if (lc == 'r') {
+                    bold = false;
+                    italic = false;
+                } else if (lc == 'l') {
+                    bold = true;
+                } else if (lc == 'o') {
+                    italic = true;
+                }
+                i += 2;
+                // Keep codes that occur before the trimmed text (does not add width).
+                cutIndex = i;
+                continue;
+            }
+
+            int cp = s.codePointAt(i);
+            int len = Character.charCount(cp);
+            int style = baseStyle | (bold ? Font.BOLD : 0) | (italic ? Font.ITALIC : 0);
+            Font useBase;
+            try { useBase = base.deriveFont(style); }
+            catch (Throwable ignored) { useBase = base; }
+            Font useFallback = (fallbackFont != null ? fallbackFont : monoMatch(useBase));
+            try { useFallback = useFallback.deriveFont(style, (float) useBase.getSize()); } catch (Throwable ignored) {}
+
+            boolean canPrimary;
+            try { canPrimary = useBase.canDisplay(cp); }
+            catch (Throwable ignored) { canPrimary = true; }
+            Font use = canPrimary ? useBase : useFallback;
+            int cw = 0;
+            try { cw = g.getFontMetrics(use).stringWidth(new String(Character.toChars(cp))); }
+            catch (Throwable ignored) { cw = 0; }
+
+            if (w + cw > maxWidth) break;
+            w += cw;
+            i += len;
+            cutIndex = i;
+        }
+
+        if (cutIndex <= 0) return "";
+        return s.substring(0, Math.min(cutIndex, s.length()));
+    }
+
+    private static int drawLegacyRunWithFallback(Graphics2D g, String text, int x, int y, Font baseFont, Font fallbackBase, Color color, int style) {
+        if (g == null) return 0;
+        if (text == null || text.isEmpty()) return 0;
+
+        Font base = (baseFont != null ? baseFont : g.getFont());
+        Font fallback = (fallbackBase != null ? fallbackBase : monoMatch(base));
+
+        Font runFont;
+        try { runFont = base.deriveFont(style); }
+        catch (Throwable ignored) { runFont = base; }
+
+        Font runFallback = fallback;
+        try { runFallback = runFallback.deriveFont(style, (float) runFont.getSize()); }
+        catch (Throwable ignored) {}
+
+        try { g.setColor(color != null ? color : Color.WHITE); } catch (Throwable ignored) {}
+
+        try { drawStringWithFallback(g, text, x, y, runFont, runFallback); }
+        catch (Throwable ignored) {}
+
+        try { return stringWidthWithFallback(g, text, runFont, runFallback); }
+        catch (Throwable ignored) { return 0; }
+    }
+
+    private static int flushLegacyRunWithFallback(Graphics2D g, StringBuilder run, int x, int y, Font baseFont, Font fallbackBase, Color color, int style) {
+        if (run == null || run.isEmpty()) return 0;
+        int w = drawLegacyRunWithFallback(g, run.toString(), x, y, baseFont, fallbackBase, color, style);
+        try { run.setLength(0); } catch (Throwable ignored) {}
+        return w;
+    }
+
+    private static void drawLegacyStringWithFallback(Graphics2D g, String s, int x, int y, Font baseFont, Color defaultColor) {
+        if (g == null) return;
+        if (s == null || s.isEmpty()) return;
+
+        Font base = (baseFont != null ? baseFont : g.getFont());
+        int baseStyle = base.getStyle();
+        Font baseFallback = monoMatch(base);
+
+        boolean bold = false;
+        boolean italic = false;
+        Color curColor = (defaultColor != null ? defaultColor : Color.WHITE);
+
+        int cx = x;
+        StringBuilder run = new StringBuilder();
+        Color runColor = curColor;
+        int runStyle = baseStyle;
+
+        for (int i = 0; i < s.length();) {
+            char ch = s.charAt(i);
+            if ((ch == '&' || ch == '§') && (i + 1) < s.length()) {
+                char code = s.charAt(i + 1);
+                char lc = Character.toLowerCase(code);
+
+                Color nextColor = ColorTranslator.legacyChatColorToAwt(lc);
+                boolean styleChanged = false;
+
+                if (nextColor != null) {
+                    // Color codes reset formats.
+                    bold = false;
+                    italic = false;
+                    curColor = nextColor;
+                    styleChanged = true;
+                } else if (lc == 'r') {
+                    bold = false;
+                    italic = false;
+                    curColor = (defaultColor != null ? defaultColor : Color.WHITE);
+                    styleChanged = true;
+                } else if (lc == 'l') {
+                    if (!bold) styleChanged = true;
+                    bold = true;
+                } else if (lc == 'o') {
+                    if (!italic) styleChanged = true;
+                    italic = true;
+                } else {
+                    // Ignore other formats (k, n, m, etc.)
+                }
+
+                int style = baseStyle | (bold ? Font.BOLD : 0) | (italic ? Font.ITALIC : 0);
+
+                if (styleChanged) {
+                    if (!run.isEmpty()) {
+                        cx += flushLegacyRunWithFallback(g, run, cx, y, base, baseFallback, runColor, runStyle);
+                    }
+                    runColor = curColor;
+                    runStyle = style;
+                }
+
+                i += 2;
+                continue;
+            }
+
+            int cp = s.codePointAt(i);
+            int len = Character.charCount(cp);
+
+            // If style/color drifted since last run, flush and start a new run.
+            int style = baseStyle | (bold ? Font.BOLD : 0) | (italic ? Font.ITALIC : 0);
+            if (runColor != curColor || runStyle != style) {
+                if (!run.isEmpty()) {
+                    cx += flushLegacyRunWithFallback(g, run, cx, y, base, baseFallback, runColor, runStyle);
+                }
+                runColor = curColor;
+                runStyle = style;
+            }
+
+            run.appendCodePoint(cp);
+            i += len;
+        }
+
+        if (!run.isEmpty()) {
+            flushLegacyRunWithFallback(g, run, cx, y, base, baseFallback, runColor, runStyle);
+        }
     }
 
     private static Font monoMatch(Font f) {
@@ -1770,12 +2010,11 @@ public final class LobbyBoardService {
                 // Countdown (non-running) summary
                 try {
                     if (!rm.isRunning() && rm.isAnyCountdownActive()) {
-                        int sec = Math.max(0, rm.getCountdownRemainingSeconds());
                         int racers = 0;
                         try { racers = rm.getInvolved().size(); } catch (Throwable ignored2) { racers = 0; }
 
-                        countdownLines.add("● " + track + "  [Đếm ngược " + Time.formatCountdownSeconds(sec) + "]");
-                        countdownLines.add("⏳ Bắt đầu: " + Time.formatCountdownSeconds(sec) + "  ●  Người chơi: " + racers);
+                        countdownLines.add("● " + track + "  [Đếm ngược]");
+                        countdownLines.add("Người chơi: " + racers);
                         countdownLines.add("");
                     }
                 } catch (Throwable ignored) {}
@@ -1866,7 +2105,8 @@ public final class LobbyBoardService {
             String racer = e.name;
             try {
                 if (profileManager != null) {
-                    racer = stripLegacyColors(profileManager.formatRacerLegacy(e.id, e.name));
+                    // Keep legacy color codes so the ranking renderer can show colored racer display.
+                    racer = profileManager.formatRacerLegacy(e.id, e.name);
                 }
             } catch (Throwable ignored) {}
             String meta = e.meta;
