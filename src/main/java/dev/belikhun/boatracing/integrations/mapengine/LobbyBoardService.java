@@ -55,12 +55,12 @@ public final class LobbyBoardService {
 	private static final String ICON_CLOCK = "⏰";
 
     // Inner padding for left track rows (moves the leading status dot away from the border)
-    private static final int TRACK_ROW_INNER_PAD = 4;
+    private static final int TRACK_ROW_INNER_PAD = 8;
 
     private static int trackRowInnerPad(Font bodyFont) {
         int size = (bodyFont != null ? bodyFont.getSize() : 16);
         // Scale gently with font size so spacing remains consistent across board resolutions.
-        return Math.max(TRACK_ROW_INNER_PAD, (int) Math.round(size * 0.25));
+        return Math.max(TRACK_ROW_INNER_PAD, (int) Math.round(size * 0.40));
     }
 
     private static float minimapStrokeFromBorder(int border) {
@@ -1122,10 +1122,10 @@ public final class LobbyBoardService {
             // Header row (two columns)
             int headerRowH = Math.max(rowH, fmHeader.getHeight() + Math.max(6, border * 2));
             g.setColor(panel2);
-            g.fillRect(inset + 1, top, w - (inset * 2 + 2), headerRowH);
+            g.fillRect(titleBarX, top, titleBarW, headerRowH);
             g.setColor(accent);
             int headerStripeH = Math.min(headerRowH, Math.max(3, border + 1));
-            g.fillRect(inset + 1, top + headerRowH - headerStripeH, w - (inset * 2 + 2), headerStripeH);
+            g.fillRect(titleBarX, top + headerRowH - headerStripeH, titleBarW, headerStripeH);
 
             g.setFont(headerFont);
             g.setColor(accent);
@@ -1133,16 +1133,18 @@ public final class LobbyBoardService {
             g.drawString("ĐƯỜNG ĐUA", leftX, hy);
             g.drawString("BẢNG XẾP HẠNG", rightX, hy);
 
-            // Divider
-            g.setColor(borderC);
-            g.setStroke(new BasicStroke(Math.max(1, border - 1)));
-            g.drawLine(mid, top, mid, h - inset);
-
             // Panels
             int contentTop = top + headerRowH + Math.max(10, (int) Math.round(bodySize * 0.6));
             int panelH = Math.max(0, contentBottom - contentTop);
             g.setColor(panel);
-            g.fillRect(inset + 1, contentTop - 6, w - (inset * 2 + 2), panelH + 12);
+            g.fillRect(titleBarX, contentTop - 6, titleBarW, panelH + 12);
+
+            // Divider (content only) — do not draw through the header.
+            g.setColor(borderC);
+            g.setStroke(new BasicStroke(Math.max(1, border - 1)));
+            int panelTopY = contentTop - 6;
+            int panelBottomY = panelTopY + panelH + 12;
+            g.drawLine(mid, panelTopY, mid, panelBottomY);
 
             // Content
             // Left: track list with details
@@ -1158,11 +1160,13 @@ public final class LobbyBoardService {
                 drawTrimmed(g, "Dùng /boatracing setup để tạo.", leftX, y + rowH + fmSmall.getAscent(), colW);
             } else {
                 // Airport-board style paging for long track lists
-                int blockH = rowH + fmSmall.getHeight() * 2 + blockGap;
+                int blockPadV = Math.max(4, (int) Math.round(bodySize * 0.22));
+                int estSmallLines = 2;
+                int blockH = rowH + (fmSmall.getHeight() * estSmallLines) + blockPadV;
                 int hintLines = 2;
                 int hintH = hintLines * fmSmall.getHeight() + 10;
                 int availableH = Math.max(0, (contentBottom - contentTop) - hintH);
-                int perPage = Math.max(1, availableH / Math.max(1, blockH));
+                int perPage = Math.max(1, availableH / Math.max(1, blockH + blockGap));
                 int total = tracks.size();
                 int totalPages = Math.max(1, (int) Math.ceil(total / (double) perPage));
                 long now = System.currentTimeMillis();
@@ -1176,24 +1180,27 @@ public final class LobbyBoardService {
                     TrackInfo ti = tracks.get(i);
                     if (ti == null) continue;
 
+                    int smallLines = (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) ? 1 : 2;
+                    int thisBlockH = rowH + (fmSmall.getHeight() * smallLines) + blockPadV;
+
                     int blockTop = y;
-                    if (blockTop + blockH > contentBottom) break;
+                    if (blockTop + thisBlockH > contentBottom) break;
 
                     // Stronger status-tinted block background (visible on map palette)
                     Color rowAccent = accentForStatus(ti.status);
                     Color rowTint = mix(new Color(0x10, 0x11, 0x13), rowAccent, 0.22);
                     if ((idx % 2) == 1) rowTint = mix(rowTint, new Color(0x00, 0x00, 0x00), 0.16);
                     g.setColor(rowTint);
-                    g.fillRect(leftX - 6, blockTop, colW + 12, blockH - 2);
+                    g.fillRect(leftX - 6, blockTop, colW + 12, thisBlockH - 2);
 
                     // Bold accent stripe to ensure per-track color is obvious
                     g.setColor(rowAccent);
-                    g.fillRect(leftX - 6, blockTop, Math.max(4, border + 2), blockH - 2);
+                    g.fillRect(leftX - 6, blockTop, Math.max(4, border + 2), thisBlockH - 2);
 
                     // Row outline
                     g.setColor(mix(borderC, rowAccent, 0.10));
                     g.setStroke(new BasicStroke(Math.max(1, border - 1)));
-                    g.drawRect(leftX - 6, blockTop, colW + 11, blockH - 3);
+                    g.drawRect(leftX - 6, blockTop, colW + 11, thisBlockH - 3);
 
                     // Mini-map viewport inside the track row (right side of the row)
                     // RUNNING tracks should be minimal: hide the per-row minimap.
@@ -1201,9 +1208,20 @@ public final class LobbyBoardService {
 
                     int miniW = 0;
                     if (!minimalRunningRow) {
-                        int mapPad = Math.max(8, (int) Math.round(bodySize * 0.55));
-                        miniW = clamp((int) Math.round(colW * 0.40), 72, Math.max(72, colW - 140));
-                        int miniH = Math.max(24, blockH - (mapPad * 2));
+                        // Make the minimap thumbnail fill the row height (no vertical letterboxing).
+                        int mapPad = Math.max(3, border + 1);
+                        int availH = thisBlockH - (mapPad * 2);
+                        if (availH < 24) {
+                            availH = Math.max(24, thisBlockH - 2);
+                            mapPad = Math.max(1, (thisBlockH - availH) / 2);
+                        }
+
+                        // Use full available height for the minimap box.
+                        int maxMiniW = clamp((int) Math.round(colW * 0.40), 72, Math.max(72, colW - 140));
+                        int miniH = Math.max(24, availH);
+                        int desiredW = (int) Math.round(miniH * 4.0 / 3.0);
+                        miniW = Math.min(maxMiniW, Math.max(24, desiredW));
+
                         int miniX = leftX + colW - miniW;
                         int miniY = blockTop + mapPad;
                         drawMiniMap(g, ti.centerline, miniX, miniY, miniW, miniH, rowAccent, borderC, textDim, smallFont, minimapStrokeFromBorder(border));
@@ -1214,7 +1232,7 @@ public final class LobbyBoardService {
                     // Line 1: name + status
                     String line1 = "● " + ti.trackName + "  [" + statusLabel(ti.status, ti.registered, ti.maxRacers, ti.countdownSeconds) + "]";
                     g.setFont(bodyFont);
-                    drawTrackRow(g, line1, leftX, blockTop + fmBody.getAscent(), textW, bodyFont, accent, text, textDim);
+                    drawTrackRow(g, line1, leftX, blockTop + fmBody.getAscent(), textW, trackInnerPad, bodyFont, accent, text, textDim);
 
                         // Line 2/3: compact info. RUNNING tracks are rendered in a minimal form.
                         g.setFont(smallFont);
@@ -1224,14 +1242,22 @@ public final class LobbyBoardService {
                         } else if (ti.status == TrackStatus.COUNTDOWN) {
                             drawTrimmed(g, "Người chơi: " + Math.max(0, ti.registered) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
                         } else {
-                            // Line 2: max racers
-                            drawTrimmed(g, "Tối đa: " + Math.max(0, ti.maxRacers) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
-
-                            // Line 3: record
-                            drawTrimmed(g, recordLabel(ti.recordMillis, ti.recordHolderName), leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getHeight() + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                            // Line 2/3: compact info for idle/registering.
+                            // REGISTERING: avoid duplicating max racers (already shown in status); show remaining waiting time instead.
+                            if (ti.status == TrackStatus.REGISTERING) {
+                                String remain = (ti.countdownSeconds > 0)
+                                        ? ("⌛ Còn lại: " + dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.countdownSeconds))
+                                        : "⌛ Chờ người chơi...";
+                                drawTrimmed(g, remain, leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                                drawTrimmed(g, recordLabel(ti.recordMillis, ti.recordHolderName), leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getHeight() + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                            } else {
+                                // IDLE: show max racers + record.
+                                drawTrimmed(g, "Tối đa: " + Math.max(0, ti.maxRacers) + " người", leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                                drawTrimmed(g, recordLabel(ti.recordMillis, ti.recordHolderName), leftX + 18 + trackInnerPad, blockTop + rowH + fmSmall.getHeight() + fmSmall.getAscent(), Math.max(0, textW - (18 + trackInnerPad)));
+                            }
                         }
 
-                    y += blockH;
+                    y += thisBlockH + blockGap;
                     idx++;
                 }
 
@@ -1242,11 +1268,11 @@ public final class LobbyBoardService {
                     drawTrimmed(g, "Dùng: /boatracing race join <tên>", leftX, y + fmSmall.getAscent(), colW);
 
                     // Page indicator
-                    int blockH2 = rowH + fmSmall.getHeight() * 2 + blockGap;
+                    int blockH2 = rowH + (fmSmall.getHeight() * 2) + blockPadV;
                     int hintLines2 = 2;
                     int hintH2 = hintLines2 * fmSmall.getHeight() + 10;
                     int availableH2 = Math.max(0, (contentBottom - contentTop) - hintH2);
-                    int perPage2 = Math.max(1, availableH2 / Math.max(1, blockH2));
+                    int perPage2 = Math.max(1, availableH2 / Math.max(1, blockH2 + blockGap));
                     int total2 = tracks.size();
                     int totalPages2 = Math.max(1, (int) Math.ceil(total2 / (double) perPage2));
                     long now2 = System.currentTimeMillis();
@@ -1430,7 +1456,7 @@ public final class LobbyBoardService {
                 if (line.startsWith("●")) {
                     // Track header
                     g.setColor(accent);
-                    drawTrimmed(g, line, rightX, ry + fmBody.getAscent(), colW);
+                    drawTrackRow(g, line, rightX, ry + fmBody.getAscent(), colW, 0, bodyFont, accent, text, textDim);
                     ry += fmBody.getHeight();
                     continue;
                 }
@@ -1473,14 +1499,15 @@ public final class LobbyBoardService {
         return image;
     }
 
-    private static void drawTrackRow(Graphics2D g, String line, int x, int y, int maxWidth, Font bodyFont,
+    private static void drawTrackRow(Graphics2D g, String line, int x, int y, int maxWidth, int innerPad, Font bodyFont,
                                      Color accent, Color text, Color textDim) {
         if (g == null) return;
         if (line == null) line = "";
 
-		// Add a bit more breathing room from the left edge of the row background.
-		x += TRACK_ROW_INNER_PAD;
-		maxWidth = Math.max(0, maxWidth - TRACK_ROW_INNER_PAD);
+        // Add a bit more breathing room from the left edge of the row background.
+        int pad = Math.max(0, innerPad);
+        x += pad;
+        maxWidth = Math.max(0, maxWidth - pad);
 
         // Expected: "● <name>  [<state...>]"
         String s = line;
@@ -1502,6 +1529,10 @@ public final class LobbyBoardService {
         g.setColor(accent);
         String bullet = "●";
         drawStringWithFallback(g, bullet, x, y, bodyFont, fallbackFont);
+        // drawStringWithFallback() leaves the Graphics font as the last used runFont.
+        // If the bullet can't be rendered by the board font, it will switch to the fallback font;
+        // restore bodyFont so the track name keeps the Minecraft-like font.
+        g.setFont(bodyFont);
         int bx = x + stringWidthWithFallback(g, bullet + " ", bodyFont, fallbackFont);
 
         // Name
@@ -1509,6 +1540,7 @@ public final class LobbyBoardService {
         int used = bx - x;
         int available = Math.max(0, maxWidth - used);
         if (bracket == null) {
+            g.setFont(bodyFont);
             drawTrimmed(g, name, bx, y, available);
             return;
         }
@@ -1517,6 +1549,7 @@ public final class LobbyBoardService {
         int bracketW = stringWidthWithFallback(g, " " + bracket, bodyFont, fallbackFont);
         int nameW = Math.max(0, available - bracketW);
         String trimmedName = trimToWidthWithFallback(g, name, nameW, bodyFont, fallbackFont);
+        g.setFont(bodyFont);
         drawTrimmed(g, trimmedName, bx, y, nameW);
 
         // Always place bracket after a single space
@@ -1538,17 +1571,20 @@ public final class LobbyBoardService {
         // Try to color the inside of bracket
         if (bracket.startsWith("[") && bracket.endsWith("]") && bracket.length() >= 2) {
             drawStringWithFallback(g, "[", brX, y, bodyFont, fallbackFont);
+            g.setFont(bodyFont);
             int insideX = brX + stringWidthWithFallback(g, "[", bodyFont, fallbackFont);
             String inside = bracket.substring(1, bracket.length() - 1);
             g.setColor(stC);
             int insideMax = Math.max(0, maxBr - stringWidthWithFallback(g, "[]", bodyFont, fallbackFont));
             String insideTrim = trimToWidthWithFallback(g, inside, insideMax, bodyFont, fallbackFont);
+            g.setFont(bodyFont);
             drawTrimmed(g, insideTrim, insideX, y, insideMax);
             int insideW = stringWidthWithFallback(g, insideTrim, bodyFont, fallbackFont);
             g.setColor(textDim);
             drawStringWithFallback(g, "]", insideX + insideW, y, bodyFont, fallbackFont);
         } else {
             g.setColor(stC);
+            g.setFont(bodyFont);
             drawTrimmed(g, bracket, brX, y, maxBr);
         }
     }
