@@ -57,8 +57,11 @@
   - Waiting/countdown: `⌛ ⏳`
   - Arrows (Minecraft-safe): `🡠 🡢 🡡 🡣 🡤 🡥 🡦 🡧 ⮎ ⮌ ⮏ ⮍`
   - Refresh/retry (Minecraft-safe): `🔁 🔂 🔃 🔄 🗘`
+- **MapEngine board icons exception**:
+  - When rendering text/icons on MapEngine boards (server-side font rendering), you may freely use any Unicode symbols that are supported by the configured monospace font (see `mapengine.lobby-board.font-file` in `config.yml`).
+  - The Minecraft-safe symbol list still applies to in-game chat/HUD/GUI text.
 - **Racer display format is standardized** everywhere a player sees it:
-  - Format: `<color><icon> <number> <name>`
+  - Format: `<color>[<icon> <number>] <name>`
   - Prefer using the centralized helpers in `PlayerProfileManager`:
     - `formatRacerMini(UUID, String)` for MiniMessage strings (scoreboard/actionbar/templates)
     - `formatRacerLegacy(UUID, String)` for legacy `&` colored strings (chat/item names)

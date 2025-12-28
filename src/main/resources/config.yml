@@ -90,6 +90,19 @@ racing:
           - "<gray>Biểu tượng: <white>%icon%"
           - "<gray>Số đua: <white>%number%"
           - "<gray>Bắt đầu: <white>%countdown%"
+
+      # Countdown (đã vào vị trí xuất phát, đang đếm ngược đèn)
+      countdown:
+        title: "<gold>Chuẩn bị"
+        lines:
+          - "<yellow>Vào vị trí xuất phát"
+          - "<gray>Đường: <white>%track%"
+          - "<gray>Vòng: <white>%laps%"
+          - "<gray>Người chơi: <white>%joined%/%max%"
+          - "<gray>Điểm kiểm tra: <white>%checkpoint_total%"
+          - ""
+          - "<yellow>Đếm ngược"
+          - "<gray>Bắt đầu trong: <white>%countdown%"
       racing:
         title: "<gold>Đang đua"
         lines:

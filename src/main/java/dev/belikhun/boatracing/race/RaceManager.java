@@ -1721,6 +1721,19 @@ public class RaceManager {
 		int pos = (int) participants.values().stream().filter(x -> x.finished && x.finishTimeMillis > 0).count();
 		s.finishPosition = Math.max(1, pos);
 
+		String finisherName = null;
+		try {
+			org.bukkit.entity.Player online = participantPlayers.get(uuid);
+			finisherName = (online != null ? online.getName() : null);
+		} catch (Throwable ignored) { finisherName = null; }
+		if (finisherName == null || finisherName.isBlank()) {
+			try {
+				org.bukkit.OfflinePlayer op = org.bukkit.Bukkit.getOfflinePlayer(uuid);
+				finisherName = (op != null ? op.getName() : null);
+			} catch (Throwable ignored) { finisherName = null; }
+		}
+		if (finisherName == null) finisherName = "";
+
 		// Profile metric: total time raced (only count finished races).
 		try {
 			if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br && br.getProfileManager() != null) {
@@ -1757,7 +1770,10 @@ public class RaceManager {
 
 						try {
 							if (br.getTrackRecordManager() != null) {
-								br.getTrackRecordManager().updateIfBetter(trackName, uuid, holderName, totalMs);
+								boolean improved = br.getTrackRecordManager().updateIfBetter(trackName, uuid, holderName, totalMs);
+								if (improved) {
+									try { broadcastNewTrackRecord(trackName, uuid, holderName, totalMs); } catch (Throwable ignored) {}
+								}
 							}
 						} catch (Throwable ignored) {}
 						try { br.getProfileManager().updatePersonalBestIfBetter(uuid, trackName, totalMs); } catch (Throwable ignored) {}
@@ -1765,6 +1781,14 @@ public class RaceManager {
 				} catch (Throwable ignored) {}
 			}
 		} catch (Throwable ignored) {}
+
+			// Broadcast finish message to other racers in this track.
+			try {
+				long rawMs = Math.max(0L, s.finishTimeMillis - getRaceStartMillis());
+				long penaltyMs = Math.max(0L, s.penaltySeconds) * 1000L;
+				long totalMs = rawMs + penaltyMs;
+				broadcastRacerFinished(uuid, finisherName, s.finishPosition, totalMs);
+			} catch (Throwable ignored) {}
 
 		Player p = participantPlayers.get(uuid);
 		if (p != null) {
@@ -2107,6 +2131,64 @@ public class RaceManager {
 		}
 	}
 
+	private String racerDisplayLegacy(UUID id, String name) {
+		String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
+		try {
+			if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br && br.getProfileManager() != null && id != null) {
+				return br.getProfileManager().formatRacerLegacy(id, n);
+			}
+		} catch (Throwable ignored) {}
+		return "&f" + n;
+	}
+
+	private void broadcastRegistrationLeave(UUID leftId, String leftName) {
+		if (leftId == null) return;
+		String track = safeTrackName();
+		int joinedCount = 0;
+		int max = 0;
+		try { joinedCount = registered.size(); } catch (Throwable ignored) { joinedCount = 0; }
+		try { max = trackConfig != null ? trackConfig.getStarts().size() : 0; } catch (Throwable ignored) { max = 0; }
+
+		String racerDisplay = racerDisplayLegacy(leftId, leftName);
+		String msg = "&c● " + racerDisplay + " &cđã rời đăng ký &e" + track + "&c. &7(" + joinedCount + "/" + max + ")";
+
+		for (UUID id : new java.util.LinkedHashSet<>(registered)) {
+			try {
+				if (id == null || id.equals(leftId)) continue;
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline()) continue;
+				Text.msg(p, msg);
+			} catch (Throwable ignored) {}
+		}
+	}
+
+	private void broadcastRacerFinished(UUID finisherId, String finisherName, int place, long finalMillis) {
+		if (finisherId == null) return;
+		String racerDisplay = racerDisplayLegacy(finisherId, finisherName);
+		String msg = "&a✔ " + racerDisplay + " &ađã về đích: &e#" + Math.max(1, place) + " &7(⌚ &f" + Time.formatStopwatchMillis(Math.max(0L, finalMillis)) + "&7)";
+
+		for (UUID id : getInvolved()) {
+			try {
+				if (id == null || id.equals(finisherId)) continue;
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline()) continue;
+				Text.msg(p, msg);
+			} catch (Throwable ignored) {}
+		}
+	}
+
+	private void broadcastNewTrackRecord(String trackName, UUID holderId, String holderName, long timeMillis) {
+		if (plugin == null) return;
+		String t = (trackName == null || trackName.isBlank()) ? "(không rõ)" : trackName;
+		String holder = racerDisplayLegacy(holderId, holderName);
+		String msg = "&6✔ &eKỷ lục mới tại &f" + t + "&e: " + holder + " &7(⌚ &f" + Time.formatStopwatchMillis(Math.max(0L, timeMillis)) + "&7)";
+		try {
+			for (Player p : Bukkit.getOnlinePlayers()) {
+				try { Text.msg(p, msg); } catch (Throwable ignored) {}
+			}
+		} catch (Throwable ignored) {}
+	}
+
 	public boolean openRegistration(int laps, Object unused) {
 		boolean wasRegistering = this.registering;
 
@@ -2216,8 +2298,13 @@ public class RaceManager {
 
 	public boolean leave(Player p) {
 		if (p == null) return false;
+		boolean wasRegistering = registering;
 		boolean removed = registered.remove(p.getUniqueId());
 		if (!removed) return false;
+
+		if (wasRegistering) {
+			try { broadcastRegistrationLeave(p.getUniqueId(), p.getName()); } catch (Throwable ignored) {}
+		}
 
 		// If the last racer leaves during registration, reset the waiting timer so the next join
 		// gets a full countdown again.
@@ -2870,9 +2957,26 @@ public class RaceManager {
 		if (id == null) return false;
 
 		boolean changed = false;
+		boolean wasRegistering = registering;
+		boolean wasRegistered = registered.contains(id);
+		String leftName = null;
+		try {
+			Player p = participantPlayers.get(id);
+			leftName = (p != null ? p.getName() : null);
+		} catch (Throwable ignored) { leftName = null; }
+		if (leftName == null || leftName.isBlank()) {
+			try {
+				org.bukkit.OfflinePlayer op = org.bukkit.Bukkit.getOfflinePlayer(id);
+				leftName = (op != null ? op.getName() : null);
+			} catch (Throwable ignored) { leftName = null; }
+		}
+		if (leftName == null) leftName = "";
 
 		// Remove from registration.
 		if (registered.remove(id)) changed = true;
+		if (wasRegistering && wasRegistered) {
+			try { broadcastRegistrationLeave(id, leftName); } catch (Throwable ignored) {}
+		}
 
 		// Remove from countdown/freeze state.
 		if (countdownPlayers.remove(id)) changed = true;

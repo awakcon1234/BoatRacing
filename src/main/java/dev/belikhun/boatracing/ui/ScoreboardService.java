@@ -170,8 +170,10 @@ public class ScoreboardService {
 
 		boolean running = rm.isRunning();
 		boolean registering = rm.isRegistering();
+		boolean countdown = rm.isAnyCountdownActive();
 		ctx.running = running;
 		ctx.registering = registering;
+		ctx.countdown = countdown;
 
 		if (running) {
 			ctx.liveOrder = rm.getLiveOrder();
@@ -212,6 +214,14 @@ public class ScoreboardService {
 			return;
 		}
 
+		if (ctx.countdown) {
+			setState(p, "COUNTDOWN");
+			applyCountdownBoard(p, rm, trackName);
+			// Reuse waiting actionbar template for countdown.
+			applyActionBarForWaiting(p, rm);
+			return;
+		}
+
 		var st = rm.getParticipantState(p.getUniqueId());
 
 		// Race ended: everybody finished -> show full results list for everyone.
@@ -245,6 +255,39 @@ public class ScoreboardService {
 		}
 		setState(p, "LOBBY");
 		applyLobbyBoard(p); clearActionBar(p);
+	}
+
+	private void applyCountdownBoard(Player p, RaceManager rm, String trackName) {
+		Sidebar sb = ensureSidebar(p);
+		String track = (trackName != null && !trackName.isBlank()) ? trackName : "(unknown)";
+		int joined = rm.getRegistered().size();
+		int max = rm.getTrackConfig().getStarts().size();
+		int laps = rm.getTotalLaps();
+		int cps = 0;
+		try { cps = rm.getTrackConfig().getCheckpoints().size(); } catch (Throwable ignored) { cps = 0; }
+		PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
+		java.util.Map<String,String> ph = new java.util.HashMap<>();
+		ph.put("racer_name", p.getName()); ph.put("racer_color", ColorTranslator.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
+		ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
+		ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
+		ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
+		ph.put("checkpoint_total", String.valueOf(cps));
+		ph.put("countdown", Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
+
+		Component title = parse(p, cfgString("scoreboard.templates.countdown.title", "<gold>Chuẩn bị"), ph);
+		java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.countdown.lines", java.util.List.of()), ph);
+		if (lines.isEmpty()) {
+			lines = parseLines(p, java.util.List.of(
+				"<yellow>Vào vị trí xuất phát",
+				"<gray>Đường: <white>%track%",
+				"<gray>Vòng: <white>%laps%",
+				"<gray>Người chơi: <white>%joined%/%max%",
+				"<gray>Điểm kiểm tra: <white>%checkpoint_total%",
+				"",
+				"<yellow>Đếm ngược",
+				"<gray>Bắt đầu trong: <white>%countdown%"), ph);
+		}
+		applySidebarComponents(p, sb, title, lines);
 	}
 
 	private void applyActionBarForCompleted(Player p, RaceManager rm, RaceManager.ParticipantState st) {
@@ -663,6 +706,7 @@ public class ScoreboardService {
 	private static class TickContext {
 		boolean running;
 		boolean registering;
+		boolean countdown;
 		boolean anyFinished;
 		boolean allFinished;
 		java.util.List<java.util.UUID> liveOrder = java.util.List.of();
