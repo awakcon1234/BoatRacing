@@ -131,9 +131,9 @@ racing:
         header:
           - "<yellow>Kết quả"
         # #1 line (shows absolute time)
-        winner_line: "<gold>#%finish_pos%</gold> %racer_display% <gray>●</gray> <white>%finish_time%"
+        winner_line: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%"
         # Everyone else (shows +delta from #1)
-        delta_line: "<yellow>#%finish_pos%</yellow> %racer_display% <gray>●</gray> <white>+%delta_time%"
+        delta_line: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>+%delta_time%"
       # ActionBar templates shown only while waiting and racing; supports MiniMessage and PlaceholderAPI
       actionbar:
         enabled: true
@@ -141,9 +141,9 @@ racing:
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>"
         # Racing placeholders: %position% %racer_display% %lap_current% %lap_total% %progress% %progress_int% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
         # %speed% chooses unit based on scoreboard.speed.unit (bps|kmh). Example: <%speed_color%>%speed% %speed_unit%</%speed_color%>
-        racing: "<gray>#%position%</gray> %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>"
+        racing: "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>"
         # Completed placeholders: %finish_pos% %racer_display% %finish_time% %avg_speed% %speed_unit% %speed_color%
-        completed: "<gold>#%finish_pos%</gold> %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
+        completed: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
 
 # Speed unit and color thresholds
 scoreboard:

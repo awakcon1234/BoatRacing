@@ -316,12 +316,13 @@ public class ScoreboardService {
 
 		String tpl = cfgString(
 				"scoreboard.actionbar.completed",
-			"<gold>#%finish_pos%</gold> %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
+			"%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
 		);
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
 		ph.put("racer_name", p.getName());
 		ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
-		ph.put("finish_pos", String.valueOf(pos));
+		ph.put("finish_pos", colorizePlacement(pos));
+		ph.put("finish_pos_tag", colorizePlacementTag(pos));
 		ph.put("finish_time", Time.formatStopwatchMillis(t));
 		ph.put("avg_speed", speedVal);
 		ph.put("speed_unit", speedUnit);
@@ -434,7 +435,9 @@ public class ScoreboardService {
 			int lapCurrent = st.finished ? laps : Math.min(laps, st.currentLap + 1);
 			ph.put("lap_current", String.valueOf(lapCurrent));
 			ph.put("lap_total", String.valueOf(laps));
-			ph.put("position", String.valueOf(pos)); ph.put("joined", String.valueOf(ctx.liveOrder.size()));
+			ph.put("position", colorizePlacement(pos));
+			ph.put("position_tag", colorizePlacementTag(pos));
+			ph.put("joined", String.valueOf(ctx.liveOrder.size()));
 			ph.put("progress", fmt2(progressPct));
 			ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
 			int totalCp = rm.getTrackConfig().getCheckpoints().size();
@@ -509,15 +512,16 @@ public class ScoreboardService {
 				java.util.Map<String,String> ph = new java.util.HashMap<>();
 				ph.put("racer_name", name);
 				ph.put("racer_display", racerDisplay(s.id, name));
-				ph.put("finish_pos", String.valueOf(s.finishPosition));
+				ph.put("finish_pos", colorizePlacement(s.finishPosition));
+				ph.put("finish_pos_tag", colorizePlacementTag(s.finishPosition));
 				ph.put("finish_time", Time.formatStopwatchMillis(t));
 				ph.put("delta_time", Time.formatStopwatchMillis(delta));
 				String key = (s.finishPosition == 1 || delta == 0L)
 						? "scoreboard.templates.ended.winner_line"
 						: "scoreboard.templates.ended.delta_line";
 				String def = (s.finishPosition == 1 || delta == 0L)
-					? "<gold>#%finish_pos%</gold> %racer_display% <gray>●</gray> <white>%finish_time%</white>"
-					: "<yellow>#%finish_pos%</yellow> %racer_display% <gray>●</gray> <white>+%delta_time%</white>";
+					? "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white>"
+					: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>+%delta_time%</white>";
 				lines.add(parse(p, cfgString(key, def), ph));
 			}
 
@@ -538,7 +542,8 @@ public class ScoreboardService {
 			java.util.Map<String,String> ph = new java.util.HashMap<>();
 			ph.put("racer_name", name);
 			ph.put("racer_display", racerDisplay(s.id, name));
-			ph.put("finish_pos", String.valueOf(s.finishPosition));
+			ph.put("finish_pos", colorizePlacement(s.finishPosition));
+			ph.put("finish_pos_tag", colorizePlacementTag(s.finishPosition));
 			ph.put("finish_time", Time.formatStopwatchMillis(t));
 			lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_line", "<white>%finish_pos%)</white> %racer_display%"), ph));
 			lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_time_line", "<gray>  thời gian: <white>%finish_time%"), ph));
@@ -562,7 +567,8 @@ public class ScoreboardService {
 			java.util.Map<String,String> ph = new java.util.HashMap<>();
 			ph.put("racer_name", name);
 			ph.put("racer_display", racerDisplay(id, name));
-			ph.put("position", String.valueOf(pos));
+			ph.put("position", colorizePlacement(pos));
+			ph.put("position_tag", colorizePlacementTag(pos));
 			ph.put("progress", fmt2(progressPct));
 			ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
 			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_line", "<white>%position%)</white> %racer_display%"), ph));
@@ -632,7 +638,7 @@ public class ScoreboardService {
 		if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
 		// Default template uses the dynamic %speed_color% placeholder as a MiniMessage tag name
 		// so that servers can get auto-colored speed without touching config
-		String tpl = cfgString("scoreboard.actionbar.racing", "<gray>#%position%</gray> %racer_display% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>");
+		String tpl = cfgString("scoreboard.actionbar.racing", "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>");
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
 		var st = rm.getParticipantState(p.getUniqueId());
 		int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
@@ -657,7 +663,8 @@ public class ScoreboardService {
 		else if ("bph".equals(unit)) { speedVal = fmt2(bph); speedUnit = "bph"; }
 		else { speedVal = fmt2(kmh); speedUnit = "km/h"; unit = "kmh"; }
 		String speedColor = resolveSpeedColorByUnit(bps, unit);
-		ph.put("position", String.valueOf(pos));
+		ph.put("position", colorizePlacement(pos));
+		ph.put("position_tag", colorizePlacementTag(pos));
 		ph.put("racer_name", p.getName());
 		ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
 		ph.put("lap_current", String.valueOf(lapCurrent));
@@ -690,6 +697,29 @@ public class ScoreboardService {
 	private static String fmt2(double v) {
 		if (!Double.isFinite(v)) return "0.00";
 		return String.format(Locale.US, "%.2f", v);
+	}
+
+	private static String colorizePlacement(int placement) {
+		int pos = Math.max(1, placement);
+		String colored = coloredPlacement(String.valueOf(pos), pos);
+		return "<shadow:#000000:0.65>" + colored + "</shadow>";
+	}
+
+	private static String colorizePlacementTag(int placement) {
+		int pos = Math.max(1, placement);
+		String colored = coloredPlacement("#" + pos, pos);
+		return "<shadow:#000000:0.65>" + colored + "</shadow>";
+	}
+
+	private static String coloredPlacement(String content, int placement) {
+		int pos = Math.max(1, placement);
+		String c = (content == null ? "" : content);
+		return switch (pos) {
+			case 1 -> "<#FFD700>" + c + "</#FFD700>"; // vàng
+			case 2 -> "<#C0C0C0>" + c + "</#C0C0C0>"; // bạc
+			case 3 -> "<#CD7F32>" + c + "</#CD7F32>"; // đồng
+			default -> "<#B0B0B0>" + c + "</#B0B0B0>"; // xám trung tính
+		};
 	}
 
 	private int cfgIntAny(java.util.List<String> paths, int def) {
