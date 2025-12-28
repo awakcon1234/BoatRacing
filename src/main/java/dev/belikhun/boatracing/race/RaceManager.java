@@ -2192,8 +2192,24 @@ public class RaceManager {
 		// Update live path index for player (for live positions)
 		if (pathReady) {
 			int seed = s.lastPathIndex;
-			if (s.awaitingFinish && gateIndex != null && gateIndex.length > 0) {
-				seed = gateIndex[gateIndex.length - 1];
+			if (s.awaitingFinish && gateIndex != null && gateIndex.length > 1) {
+				// IMPORTANT: while awaiting finish (after last checkpoint), do NOT seed toward
+				// the finish gate. Doing so can snap the nearestPathIndex to the finish side of
+				// the loop and make lap progress jump to 100% instantly.
+				// Instead, bias toward the last checkpoint gate so progress stays live.
+				int cpCount;
+				try {
+					cpCount = trackConfig != null && trackConfig.getCheckpoints() != null
+							? trackConfig.getCheckpoints().size()
+							: 0;
+				} catch (Throwable ignored) {
+					cpCount = 0;
+				}
+
+				int lastCpGateIdx = Math.max(0, Math.min(cpCount - 1, gateIndex.length - 2));
+				if (cpCount > 0) {
+					seed = gateIndex[lastCpGateIdx];
+				}
 			} else if (s.nextCheckpointIndex == 0 && s.currentLap > 0) {
 				// After wrapping a lap, bias toward the finish gate (lap start).
 				seed = finishGateIndex();
@@ -3562,10 +3578,11 @@ public class RaceManager {
 									.append(dot.color(dark)).append(net.kyori.adventure.text.Component.text(" "))
 									.append(dot.color(net.kyori.adventure.text.format.NamedTextColor.GREEN));
 						}
-						// Countdown: no fade in/out, keep 1s display.
+						// Countdown: no fade in/out. Keep slightly >1s display to avoid flicker
+						// when the server tick drifts and the next title arrives a hair late.
 						p.showTitle(net.kyori.adventure.title.Title.title(title, sub,
 								net.kyori.adventure.title.Title.Times.times(java.time.Duration.ZERO,
-										java.time.Duration.ofMillis(1000), java.time.Duration.ZERO)));
+										java.time.Duration.ofMillis(1200), java.time.Duration.ZERO)));
 						if (sec == 3) {
 							p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 0.90f);
 						} else if (sec == 2) {
