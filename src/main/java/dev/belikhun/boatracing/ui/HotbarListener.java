@@ -28,6 +28,17 @@ public class HotbarListener implements Listener {
 		Player p = e.getPlayer();
 		if (p == null) return;
 
+		// Paper fires PlayerInteractEvent for both hands; only execute hotbar actions for main-hand.
+		try {
+			EquipmentSlot hand = e.getHand();
+			if (hand == EquipmentSlot.OFF_HAND) return;
+		} catch (Throwable ignored) {}
+
+		// Avoid triggering hotbar actions on PHYSICAL interactions (pressure plates, tripwires, etc.).
+		try {
+			if (e.getAction() != null && e.getAction().name().equalsIgnoreCase("PHYSICAL")) return;
+		} catch (Throwable ignored) {}
+
 		// On modern Paper, prefer resolving the held item via the interaction hand.
 		ItemStack it = null;
 		try {

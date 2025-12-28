@@ -26,6 +26,7 @@ public class ScoreboardService {
 	private final RaceService raceService;
 	private final PlayerProfileManager pm;
 	private int taskId = -1;
+	private int updatePeriodTicks = 5;
 	private ScoreboardLibrary lib;
 	private final java.util.Map<java.util.UUID, Sidebar> sidebars = new java.util.HashMap<>();
 	private final java.util.Map<java.util.UUID, Integer> lastCounts = new java.util.HashMap<>();
@@ -57,6 +58,7 @@ public class ScoreboardService {
 			5
 		);
 		period = Math.max(1, period);
+		this.updatePeriodTicks = period;
 		taskId = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 0L, period).getTaskId();
 		log("ScoreboardService started. taskId=" + taskId);
 		// Always print a one-time info so admins know how to enable debug
@@ -119,20 +121,43 @@ public class ScoreboardService {
 				TickContext ctx = ctxByRace.computeIfAbsent(rm, this::buildTickContext);
 				String trackName = safeTrackName(p.getUniqueId());
 
-				// compute speed (blocks per second) based on movement since last tick (variable rate)
-				org.bukkit.Location now = p.getLocation();
+				// Compute speed (blocks per second) based on movement since last tick.
+				// IMPORTANT: use vehicle position when in a boat to avoid passenger jitter producing fake idle speed.
+				org.bukkit.Location now = riderOrVehicleLocation(p);
+				if (now == null) now = p.getLocation();
 				org.bukkit.Location prev = lastLocations.get(p.getUniqueId());
 				Long prevT = lastLocationTimes.get(p.getUniqueId());
 				double bps = 0.0;
 				if (prev != null && prevT != null && prev.getWorld() != null && now.getWorld() != null && prev.getWorld().equals(now.getWorld())) {
-					long dtMs = Math.max(0L, nowMs - prevT);
-					if (dtMs > 0L) {
-						double dist = now.distance(prev); // blocks
-						bps = dist / (dtMs / 1000.0);
+					long dtMsRaw = nowMs - prevT;
+					if (dtMsRaw > 0L) {
+						long expectedMs = Math.max(1L, (long) Math.max(1, updatePeriodTicks) * 50L);
+						long dtMs = Math.max(dtMsRaw, expectedMs);
+						double dist;
+						try {
+							dist = now.distance(prev);
+						} catch (Throwable ignored) {
+							dist = 0.0;
+						}
+
+						// Ignore teleport-like jumps (joins/respawns/vehicle snaps) to avoid spikes.
+						double maxDist = 5.0 * (double) Math.max(1, updatePeriodTicks);
+						if (Double.isFinite(dist) && dist >= 0.0 && dist <= maxDist) {
+							// Deadzone for micro-jitter (especially while seated): treat as 0 speed.
+							// Scale by update period so 2-tick sampling doesn't turn idle jitter into ~1 bps.
+							double deadzone = 0.03 * (double) Math.max(1, updatePeriodTicks);
+							if (dist >= deadzone) {
+								bps = Math.max(0.0, dist / (dtMs / 1000.0));
+							}
+						}
 					}
 				}
 				lastBps.put(p.getUniqueId(), bps);
-				lastLocations.put(p.getUniqueId(), now);
+				try {
+					lastLocations.put(p.getUniqueId(), now.clone());
+				} catch (Throwable ignored) {
+					lastLocations.put(p.getUniqueId(), now);
+				}
 				lastLocationTimes.put(p.getUniqueId(), nowMs);
 
 				updateFor(p, rm, ctx, trackName);
@@ -314,11 +339,12 @@ public class ScoreboardService {
 		if ("bps".equals(unit)) { speedVal = fmt2(avgBps); speedUnit = "bps"; }
 		else if ("bph".equals(unit)) { speedVal = fmt2(avgBps * 3600.0); speedUnit = "bph"; }
 		else { speedVal = fmt2(avgBps * 3.6); speedUnit = "km/h"; unit = "kmh"; }
-		String speedColor = resolveSpeedColorByUnit(avgBps, unit);
+		String speedColorName = resolveSpeedColorByUnit(avgBps, unit);
+		String avgSpeedDisplay = miniWrapTag(speedColorName, speedVal + " " + speedUnit);
 
 		String tpl = cfgString(
 				"scoreboard.actionbar.completed",
-			"%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
+			"%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
 		);
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
 		ph.put("racer_name", p.getName());
@@ -328,7 +354,11 @@ public class ScoreboardService {
 		ph.put("finish_time", Time.formatStopwatchMillis(t));
 		ph.put("avg_speed", speedVal);
 		ph.put("speed_unit", speedUnit);
-		ph.put("speed_color", speedColor);
+		ph.put("avg_speed_display", avgSpeedDisplay);
+		// %speed_color% now returns a full MiniMessage tag, e.g. "<red>".
+		ph.put("speed_color_name", speedColorName);
+		ph.put("speed_color", miniOpenTag(speedColorName));
+		ph.put("speed_color_close", miniCloseTag(speedColorName));
 
 		Component c = parse(p, tpl, ph);
 		sendActionBar(p, c);
@@ -433,15 +463,23 @@ public class ScoreboardService {
 		java.util.List<Component> lines;
 		if (st != null) {
 			int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
-			double progressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
+			double lapProgressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
+			double trackProgressPct;
+			if (st.finished) {
+				trackProgressPct = 100.0;
+			} else {
+				double lapRatio = Math.max(0.0, Math.min(1.0, rm.getLapProgressRatio(p.getUniqueId())));
+				trackProgressPct = ((double) st.currentLap + lapRatio) / (double) Math.max(1, laps) * 100.0;
+				trackProgressPct = Math.max(0.0, Math.min(100.0, trackProgressPct));
+			}
 			int lapCurrent = st.finished ? laps : Math.min(laps, st.currentLap + 1);
 			ph.put("lap_current", String.valueOf(lapCurrent));
 			ph.put("lap_total", String.valueOf(laps));
 			ph.put("position", colorizePlacement(pos));
 			ph.put("position_tag", colorizePlacementTag(pos));
 			ph.put("joined", String.valueOf(ctx.liveOrder.size()));
-			ph.put("progress", fmt2(progressPct));
-			ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
+			ph.put("lap_progress", fmt2(lapProgressPct));
+			ph.put("track_progress", fmt2(trackProgressPct));
 			int totalCp = rm.getTrackConfig().getCheckpoints().size();
 			int passedCp = (st.nextCheckpointIndex);
 			ph.put("checkpoint_passed", String.valueOf(passedCp));
@@ -460,7 +498,8 @@ public class ScoreboardService {
 						"<gray>Vòng: <white>%lap_current%/%lap_total%",
 						"<gray>Checkpoint: <white>%checkpoint_passed%/%checkpoint_total%",
 						"<gray>Vị trí: <white>%position%/%joined%",
-						"<gray>Tiến độ: <white>%progress%%"), ph);
+						"<gray>Tiến độ vòng: <white>%lap_progress%%",
+						"<gray>Tiến độ tổng: <white>%track_progress%%"), ph);
 			}
 		} else {
 			lines = parseLines(p, cfgStringList("scoreboard.templates.racing.lines", java.util.List.of("<gray>Đường: <white>%track%", "<gray>Thời gian: <white>%timer%")), ph);
@@ -584,17 +623,26 @@ public class ScoreboardService {
 			posCounter++;
 			int pos = posCounter;
 			String name = nameOf(id);
-			double progressPct = rm.getLapProgressRatio(id) * 100.0;
+			double lapProgressPct = rm.getLapProgressRatio(id) * 100.0;
+			double trackProgressPct;
+			if (s.finished) {
+				trackProgressPct = 100.0;
+			} else {
+				double lapRatio = Math.max(0.0, Math.min(1.0, rm.getLapProgressRatio(id)));
+				trackProgressPct = ((double) s.currentLap + lapRatio) / (double) Math.max(1, rm.getTotalLaps()) * 100.0;
+				trackProgressPct = Math.max(0.0, Math.min(100.0, trackProgressPct));
+			}
 			java.util.Map<String,String> ph = new java.util.HashMap<>();
 			ph.put("racer_name", name);
 			ph.put("racer_display", racerDisplay(id, name));
 			ph.put("position", colorizePlacement(pos));
 			ph.put("position_tag", colorizePlacementTag(pos));
-			ph.put("progress", fmt2(progressPct));
-			ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
+			ph.put("lap_progress", fmt2(lapProgressPct));
+			ph.put("track_progress", fmt2(trackProgressPct));
 			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_line", "<white>%position%)</white> %racer_display%"), ph));
-			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_progress_line", "<gray>  tiến độ: <white>%progress%%"), ph));
-			count += 2;
+			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_progress_line", "<gray>  tiến độ vòng: <white>%lap_progress%%"), ph));
+			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_track_progress_line", "<gray>  tiến độ tổng: <white>%track_progress%%"), ph));
+			count += 3;
 			if (count >= limit) break;
 		}
 
@@ -661,9 +709,8 @@ public class ScoreboardService {
 
 	private void applyActionBarForRacing(Player p, RaceManager rm, TickContext ctx) {
 		if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
-		// Default template uses the dynamic %speed_color% placeholder as a MiniMessage tag name
-		// so that servers can get auto-colored speed without touching config
-		String tpl = cfgString("scoreboard.actionbar.racing", "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>");
+		// Default template uses the unified %speed_display% placeholder (already colored).
+		String tpl = cfgString("scoreboard.actionbar.racing", "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%lap_progress%%</yellow> %speed_display%");
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
 		var st = rm.getParticipantState(p.getUniqueId());
 		int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
@@ -672,7 +719,17 @@ public class ScoreboardService {
 		if (st != null) {
 			lapCurrent = st.finished ? lapTotal : Math.min(lapTotal, st.currentLap + 1);
 		}
-		double progressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
+		double lapProgressPct = rm.getLapProgressRatio(p.getUniqueId()) * 100.0;
+		double trackProgressPct;
+		if (st != null && st.finished) {
+			trackProgressPct = 100.0;
+		} else if (st != null) {
+			double lapRatio = Math.max(0.0, Math.min(1.0, rm.getLapProgressRatio(p.getUniqueId())));
+			trackProgressPct = ((double) st.currentLap + lapRatio) / (double) Math.max(1, lapTotal) * 100.0;
+			trackProgressPct = Math.max(0.0, Math.min(100.0, trackProgressPct));
+		} else {
+			trackProgressPct = 0.0;
+		}
 		int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
 		int totalCp = rm.getTrackConfig().getCheckpoints().size();
 		int passedCp = (st == null ? 0 : st.nextCheckpointIndex);
@@ -687,25 +744,31 @@ public class ScoreboardService {
 		if ("bps".equals(unit)) { speedVal = fmt2(bps); speedUnit = "bps"; }
 		else if ("bph".equals(unit)) { speedVal = fmt2(bph); speedUnit = "bph"; }
 		else { speedVal = fmt2(kmh); speedUnit = "km/h"; unit = "kmh"; }
-		String speedColor = resolveSpeedColorByUnit(bps, unit);
+		String speedColorName = resolveSpeedColorByUnit(bps, unit);
+		String speedDisplay = miniWrapTag(speedColorName, speedVal + " " + speedUnit);
 		ph.put("position", colorizePlacement(pos));
 		ph.put("position_tag", colorizePlacementTag(pos));
 		ph.put("racer_name", p.getName());
 		ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
 		ph.put("lap_current", String.valueOf(lapCurrent));
 		ph.put("lap_total", String.valueOf(lapTotal));
-		ph.put("progress", fmt2(progressPct));
-		ph.put("progress_int", String.valueOf((int) Math.round(progressPct)));
+		ph.put("lap_progress", fmt2(lapProgressPct));
+		ph.put("track_progress", fmt2(trackProgressPct));
 		ph.put("next_checkpoint", String.valueOf(nextCp)); ph.put("checkpoint_total", String.valueOf(totalCp));
 		ph.put("checkpoint_passed", String.valueOf(passedCp));
 		// Speed placeholders (configurable unit + back-compat)
 		ph.put("speed", speedVal);
 		ph.put("speed_unit", speedUnit);
+		ph.put("speed_display", speedDisplay);
 		ph.put("speed_bps", fmt2(bps));
 		ph.put("speed_kmh", fmt2(kmh));
 		ph.put("speed_bph", fmt2(bph));
-		// color placeholder
-		ph.put("speed_color", speedColor);
+		// Color placeholders
+		// - %speed_color% returns the full tag, e.g. "<red>".
+		// - %speed_color_name% returns the legacy tag name, e.g. "red".
+		ph.put("speed_color_name", speedColorName);
+		ph.put("speed_color", miniOpenTag(speedColorName));
+		ph.put("speed_color_close", miniCloseTag(speedColorName));
 		Component c = parse(p, tpl, ph);
 		sendActionBar(p, c);
 		log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed(bps)=" + fmt2(bps) + " unit=" + unit);
@@ -722,6 +785,45 @@ public class ScoreboardService {
 	private static String fmt2(double v) {
 		if (!Double.isFinite(v)) return "0.00";
 		return String.format(Locale.US, "%.2f", v);
+	}
+
+	private static String miniOpenTag(String tagName) {
+		if (tagName == null)
+			return "";
+		String t = tagName.trim();
+		if (t.isEmpty())
+			return "";
+		if (t.startsWith("<") && t.endsWith(">"))
+			return t;
+		return "<" + t + ">";
+	}
+
+	private static String miniCloseTag(String tagNameOrOpenTag) {
+		if (tagNameOrOpenTag == null)
+			return "";
+		String t = tagNameOrOpenTag.trim();
+		if (t.isEmpty())
+			return "";
+		if (t.startsWith("<") && t.endsWith(">"))
+			t = t.substring(1, t.length() - 1).trim();
+		if (t.startsWith("/"))
+			t = t.substring(1);
+		int space = t.indexOf(' ');
+		if (space > 0)
+			t = t.substring(0, space);
+		int colon = t.indexOf(':');
+		if (colon > 0 && t.charAt(0) != '#')
+			t = t.substring(0, colon);
+		return "</" + t + ">";
+	}
+
+	private static String miniWrapTag(String tagName, String content) {
+		String open = miniOpenTag(tagName);
+		String close = miniCloseTag(tagName);
+		String c = (content == null ? "" : content);
+		if (open.isEmpty() || close.isEmpty())
+			return c;
+		return open + c + close;
 	}
 
 	private static String colorizePlacement(int placement) {
@@ -940,7 +1042,10 @@ public class ScoreboardService {
 			ph.put(pfx + "_racer_display", "-");
 			ph.put(pfx + "_speed", "-");
 			ph.put(pfx + "_speed_unit", unitLabel);
-			ph.put(pfx + "_speed_color", "gray");
+			ph.put(pfx + "_speed_color_name", "gray");
+			ph.put(pfx + "_speed_color", "<gray>");
+			ph.put(pfx + "_speed_color_close", "</gray>");
+			ph.put(pfx + "_speed_display", "<gray>-</gray>");
 			ph.put(pfx + "_distance", "-");
 			ph.put(pfx + "_distance_unit", "m");
 			return;
@@ -963,7 +1068,11 @@ public class ScoreboardService {
 		else speedVal = fmt2(kmh);
 		ph.put(pfx + "_speed", speedVal);
 		ph.put(pfx + "_speed_unit", unitLabel);
-		ph.put(pfx + "_speed_color", resolveSpeedColorByUnit(bps, unit));
+		String speedColorName = resolveSpeedColorByUnit(bps, unit);
+		ph.put(pfx + "_speed_color_name", speedColorName);
+		ph.put(pfx + "_speed_color", miniOpenTag(speedColorName));
+		ph.put(pfx + "_speed_color_close", miniCloseTag(speedColorName));
+		ph.put(pfx + "_speed_display", miniWrapTag(speedColorName, speedVal + " " + unitLabel));
 
 		// Distance (blocks)
 		String distOut = "-";

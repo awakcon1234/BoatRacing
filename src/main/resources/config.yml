@@ -58,10 +58,17 @@ racing:
     # Lobby-only: %completed% %wins% %time_raced%
     #
     # Waiting: %track% %laps% %joined% %max% %countdown%
-    # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %progress% %progress_int% %checkpoint_passed% %checkpoint_total%
+    # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %lap_progress% %track_progress% %checkpoint_passed% %checkpoint_total%
     # Racing neighbor (ahead/behind) placeholders:
-    #   %ahead_position% %ahead_position_tag% %ahead_racer_name% %ahead_racer_display% %ahead_speed% %ahead_speed_unit% %ahead_speed_color% %ahead_distance% %ahead_distance_unit%
-    #   %behind_position% %behind_position_tag% %behind_racer_name% %behind_racer_display% %behind_speed% %behind_speed_unit% %behind_speed_color% %behind_distance% %behind_distance_unit%
+    #   %ahead_position% %ahead_position_tag% %ahead_racer_name% %ahead_racer_display%
+    #   %ahead_speed_display% %ahead_speed% %ahead_speed_unit% %ahead_speed_color% %ahead_speed_color_close%
+    #   %ahead_distance% %ahead_distance_unit%
+    #
+    #   %behind_position% %behind_position_tag% %behind_racer_name% %behind_racer_display%
+    #   %behind_speed_display% %behind_speed% %behind_speed_unit% %behind_speed_color% %behind_speed_color_close%
+    #   %behind_distance% %behind_distance_unit%
+    #
+    # Lưu ý: %*_speed_color% trả về tag MiniMessage đầy đủ (ví dụ: "<red>").
     # Completed (finished racers): %finish_pos% %finish_time% (plus %racer_display%)
     # Ended (everyone finished): also provides %delta_time%
     # Special control marker:
@@ -116,7 +123,8 @@ racing:
           - "<gray>Vòng: <white>%lap_current%/%lap_total%"
           - "<gray>Checkpoint: <white>%checkpoint_passed%/%checkpoint_total%"
           - "<gray>Vị trí: <white>%position%/%joined%"
-          - "<gray>Tiến độ: <white>%progress%%"
+          - "<gray>Tiến độ vòng: <white>%lap_progress%%"
+          - "<gray>Tiến độ tổng: <white>%track_progress%%"
       completed:
         title: "<gold>Kết quả"
         header:
@@ -127,7 +135,8 @@ racing:
         unfinished_header:
           - "<yellow>Đang đua"
         unfinished_line: "<white>%position%)</white> %racer_display%"
-        unfinished_progress_line: "<gray>  tiến độ: <white>%progress%%"
+        unfinished_progress_line: "<gray>  tiến độ vòng: <white>%lap_progress%%"
+        unfinished_track_progress_line: "<gray>  tiến độ tổng: <white>%track_progress%%"
         max_finished_lines: 8
         max_unfinished_lines: 6
         # Optional footer lines appended to the completed board.
@@ -150,11 +159,12 @@ racing:
         enabled: true
         # Waiting placeholders: %countdown% %joined% %max%
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>"
-        # Racing placeholders: %position% %racer_display% %lap_current% %lap_total% %progress% %progress_int% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
-        # %speed% chooses unit based on scoreboard.speed.unit (bps|kmh). Example: <%speed_color%>%speed% %speed_unit%</%speed_color%>
-        racing: "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%progress%%</yellow> <%speed_color%>%speed% %speed_unit%</%speed_color%>"
-        # Completed placeholders: %finish_pos% %racer_display% %finish_time% %avg_speed% %speed_unit% %speed_color%
-        completed: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> <%speed_color%>%avg_speed% %speed_unit%</%speed_color%>"
+        # Racing placeholders: %position% %racer_display% %lap_current% %lap_total% %lap_progress% %track_progress% %speed_display% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
+        # - %speed_display% is a pre-colored and unit-aware string (recommended).
+        # - %speed_color% returns the full MiniMessage tag (e.g. "<red>"), not just a tag name.
+        racing: "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%lap_progress%%</yellow> %speed_display%"
+        # Completed placeholders: %finish_pos% %racer_display% %finish_time% %avg_speed_display% %avg_speed% %speed_unit% %speed_color%
+        completed: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
 
 # Speed unit and color thresholds
 scoreboard:
