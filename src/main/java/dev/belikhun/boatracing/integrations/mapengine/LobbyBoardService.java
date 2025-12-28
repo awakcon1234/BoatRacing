@@ -54,16 +54,20 @@ import java.util.UUID;
  *
  * Visibility rules (per user request):
  * - Only for online players who are currently in the lobby (not in any race)
- * - AND are within a configurable chunk radius (default: 12 chunks) of the board
+ * - AND are within a configurable chunk radius (default: 12 chunks) of the
+ * board
  */
 public final class LobbyBoardService {
-	// Icons used on the lobby board UI (Unicode). These are rendered with font fallback.
+	// Icons used on the lobby board UI (Unicode). These are rendered with font
+	// fallback.
 	private static final String ICON_INFO = "ⓘ";
 	private static final String ICON_CLOCK = "⏰";
 
 	// ===================== Render backbuffer reuse =====================
-	// Creating a full-size BufferedImage every tick is extremely allocation-heavy and causes GC/memory spikes.
-	// We keep 2 reusable backbuffers and alternate between them to avoid downstream code retaining the same
+	// Creating a full-size BufferedImage every tick is extremely allocation-heavy
+	// and causes GC/memory spikes.
+	// We keep 2 reusable backbuffers and alternate between them to avoid downstream
+	// code retaining the same
 	// image reference across ticks.
 	private final BufferedImage[] renderBuffers = new BufferedImage[2];
 	private int renderBufferW = -1;
@@ -83,12 +87,14 @@ public final class LobbyBoardService {
 		return renderBuffers[renderBufferCursor];
 	}
 
-	// Inner padding for left track rows (moves the leading status dot away from the border)
+	// Inner padding for left track rows (moves the leading status dot away from the
+	// border)
 	private static final int TRACK_ROW_INNER_PAD = 8;
 
 	private static int trackRowInnerPad(Font bodyFont) {
 		int size = (bodyFont != null ? bodyFont.getSize() : 16);
-		// Scale gently with font size so spacing remains consistent across board resolutions.
+		// Scale gently with font size so spacing remains consistent across board
+		// resolutions.
 		return Math.max(TRACK_ROW_INNER_PAD, (int) Math.round(size * 0.40));
 	}
 
@@ -97,8 +103,10 @@ public final class LobbyBoardService {
 		// Clamp to keep the map readable without becoming chunky.
 		float b = Math.max(1, border);
 		float s = b * 0.90f;
-		if (s < 1.5f) s = 1.5f;
-		if (s > 6.0f) s = 6.0f;
+		if (s < 1.5f)
+			s = 1.5f;
+		if (s > 6.0f)
+			s = 6.0f;
 		return s;
 	}
 
@@ -131,7 +139,8 @@ public final class LobbyBoardService {
 	private boolean mapBuffering = true;
 	private boolean mapBundling = false;
 
-	// Optional custom font (Minecraft-style). We do not ship a font file; users can provide one.
+	// Optional custom font (Minecraft-style). We do not ship a font file; users can
+	// provide one.
 	private String fontFile;
 	private volatile Font boardFontBase;
 
@@ -162,7 +171,8 @@ public final class LobbyBoardService {
 
 	private void loadConfig() {
 		placement = BoardPlacement.load(plugin.getConfig().getConfigurationSection("mapengine.lobby-board"));
-		visibleRadiusChunks = clamp(plugin.getConfig().getInt("mapengine.lobby-board.visible-radius-chunks", 12), 1, 64);
+		visibleRadiusChunks = clamp(plugin.getConfig().getInt("mapengine.lobby-board.visible-radius-chunks", 12), 1,
+				64);
 		updateTicks = clamp(plugin.getConfig().getInt("mapengine.lobby-board.update-ticks", 20), 1, 200);
 		debug = plugin.getConfig().getBoolean("mapengine.lobby-board.debug", false);
 
@@ -170,20 +180,28 @@ public final class LobbyBoardService {
 		try {
 			dev.belikhun.boatracing.integrations.mapengine.ui.UiComposer.setPerfDebug(debug,
 					debug ? (m) -> {
-						try { plugin.getLogger().info("[LobbyBoard] " + m); } catch (Throwable ignored) {}
-					} : null
-			);
-		} catch (Throwable ignored) {}
+						try {
+							plugin.getLogger().info("[LobbyBoard] " + m);
+						} catch (Throwable ignored) {
+						}
+					} : null);
+		} catch (Throwable ignored) {
+		}
 
 		// MapEngine pipeline options
 		mapBuffering = plugin.getConfig().getBoolean("mapengine.lobby-board.pipeline.buffering", true);
 		mapBundling = plugin.getConfig().getBoolean("mapengine.lobby-board.pipeline.bundling", false);
 
 		String ff = null;
-		try { ff = plugin.getConfig().getString("mapengine.lobby-board.font-file", null); } catch (Throwable ignored) { ff = null; }
+		try {
+			ff = plugin.getConfig().getString("mapengine.lobby-board.font-file", null);
+		} catch (Throwable ignored) {
+			ff = null;
+		}
 		if (ff != null) {
 			ff = ff.trim();
-			if (ff.isEmpty()) ff = null;
+			if (ff.isEmpty())
+				ff = null;
 		}
 		this.fontFile = ff;
 		this.boardFontBase = null;
@@ -194,7 +212,8 @@ public final class LobbyBoardService {
 	}
 
 	public void start() {
-		if (tickTask != null) return;
+		if (tickTask != null)
+			return;
 
 		if (!plugin.getConfig().getBoolean("mapengine.lobby-board.enabled", false)) {
 			dbg("start(): disabled by config");
@@ -219,12 +238,16 @@ public final class LobbyBoardService {
 
 		tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, updateTicks);
 		dbg("start(): started tick task (updateTicks=" + updateTicks + ") maps="
-				+ placement.mapsWide + "x" + placement.mapsHigh + " px=" + placement.pixelWidth() + "x" + placement.pixelHeight());
+				+ placement.mapsWide + "x" + placement.mapsHigh + " px=" + placement.pixelWidth() + "x"
+				+ placement.pixelHeight());
 	}
 
 	public void stop() {
 		if (tickTask != null) {
-			try { tickTask.cancel(); } catch (Throwable ignored) {}
+			try {
+				tickTask.cancel();
+			} catch (Throwable ignored) {
+			}
 			tickTask = null;
 		}
 
@@ -232,7 +255,10 @@ public final class LobbyBoardService {
 		for (UUID id : new HashSet<>(spawnedTo)) {
 			Player p = Bukkit.getPlayer(id);
 			if (p != null && p.isOnline()) {
-				try { despawnFor(p); } catch (Throwable ignored) {}
+				try {
+					despawnFor(p);
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 		spawnedTo.clear();
@@ -257,7 +283,11 @@ public final class LobbyBoardService {
 		java.util.List<String> out = new java.util.ArrayList<>();
 
 		boolean enabled = false;
-		try { enabled = plugin.getConfig().getBoolean("mapengine.lobby-board.enabled", false); } catch (Throwable ignored) { enabled = false; }
+		try {
+			enabled = plugin.getConfig().getBoolean("mapengine.lobby-board.enabled", false);
+		} catch (Throwable ignored) {
+			enabled = false;
+		}
 		boolean apiOk = MapEngineService.isAvailable();
 
 		out.add("&eBảng thông tin sảnh (MapEngine):");
@@ -269,10 +299,13 @@ public final class LobbyBoardService {
 		if (placement == null || !placement.isValid()) {
 			out.add("&7● Vị trí: &cChưa đặt hoặc không hợp lệ");
 		} else {
-			out.add("&7● Vị trí: &a" + placement.world + " &7(" + placement.a.getBlockX() + "," + placement.a.getBlockY() + "," + placement.a.getBlockZ() + ")"
-					+ " -> &7(" + placement.b.getBlockX() + "," + placement.b.getBlockY() + "," + placement.b.getBlockZ() + ")"
+			out.add("&7● Vị trí: &a" + placement.world + " &7(" + placement.a.getBlockX() + ","
+					+ placement.a.getBlockY() + "," + placement.a.getBlockZ() + ")"
+					+ " -> &7(" + placement.b.getBlockX() + "," + placement.b.getBlockY() + ","
+					+ placement.b.getBlockZ() + ")"
 					+ " &8● &7hướng &f" + placement.facing);
-			out.add("&7● Kích thước: &f" + placement.mapsWide + "&7x&f" + placement.mapsHigh + "&7 maps (&f" + placement.pixelWidth() + "&7x&f" + placement.pixelHeight() + "&7 px)");
+			out.add("&7● Kích thước: &f" + placement.mapsWide + "&7x&f" + placement.mapsHigh + "&7 maps (&f"
+					+ placement.pixelWidth() + "&7x&f" + placement.pixelHeight() + "&7 px)");
 		}
 
 		out.add("&7● Người đang thấy: &f" + spawnedTo.size());
@@ -280,22 +313,28 @@ public final class LobbyBoardService {
 		try {
 			Font f = boardFontBase;
 			out.add("&7● Font: &f" + (f != null ? (f.getFontName() + " (" + f.getFamily() + ")") : "Mặc định"));
-			if (fontFile != null) out.add("&7● Font file: &f" + fontFile);
-			else out.add("&7● Font file: &8(chưa cấu hình)");
-		} catch (Throwable ignored) {}
+			if (fontFile != null)
+				out.add("&7● Font file: &f" + fontFile);
+			else
+				out.add("&7● Font file: &8(chưa cấu hình)");
+		} catch (Throwable ignored) {
+		}
 		return out;
 	}
 
 	private void tryLoadBoardFont() {
-		// NOTE: We do not distribute any Minecraft font file. Admins can provide a TTF/OTF they have rights to use.
+		// NOTE: We do not distribute any Minecraft font file. Admins can provide a
+		// TTF/OTF they have rights to use.
 		// This method searches in:
-		// 1) config path mapengine.lobby-board.font-file (relative to plugin data folder if not absolute)
+		// 1) config path mapengine.lobby-board.font-file (relative to plugin data
+		// folder if not absolute)
 		// 2) plugins/BoatRacing/fonts/minecraft.ttf|otf
 		// 3) plugins/BoatRacing/minecraft.ttf|otf
 		// 4) bundled resources fonts/minecraft.ttf|otf (optional)
 
 		// Keep existing font if already loaded.
-		if (boardFontBase != null) return;
+		if (boardFontBase != null)
+			return;
 
 		List<java.util.function.Supplier<InputStream>> candidates = new ArrayList<>();
 
@@ -303,51 +342,75 @@ public final class LobbyBoardService {
 			candidates.add(() -> {
 				try {
 					File f = new File(fontFile);
-					if (!f.isAbsolute()) f = new File(plugin.getDataFolder(), fontFile);
-					if (!f.exists() || !f.isFile()) return null;
+					if (!f.isAbsolute())
+						f = new File(plugin.getDataFolder(), fontFile);
+					if (!f.exists() || !f.isFile())
+						return null;
 					return new FileInputStream(f);
-				} catch (Throwable ignored) { return null; }
+				} catch (Throwable ignored) {
+					return null;
+				}
 			});
 		}
 
 		candidates.add(() -> {
 			try {
 				File f = new File(plugin.getDataFolder(), "fonts/minecraft.ttf");
-				if (!f.exists()) f = new File(plugin.getDataFolder(), "fonts/minecraft.otf");
-				if (!f.exists()) return null;
+				if (!f.exists())
+					f = new File(plugin.getDataFolder(), "fonts/minecraft.otf");
+				if (!f.exists())
+					return null;
 				return new FileInputStream(f);
-			} catch (Throwable ignored) { return null; }
+			} catch (Throwable ignored) {
+				return null;
+			}
 		});
 		candidates.add(() -> {
 			try {
 				File f = new File(plugin.getDataFolder(), "minecraft.ttf");
-				if (!f.exists()) f = new File(plugin.getDataFolder(), "minecraft.otf");
-				if (!f.exists()) return null;
+				if (!f.exists())
+					f = new File(plugin.getDataFolder(), "minecraft.otf");
+				if (!f.exists())
+					return null;
 				return new FileInputStream(f);
-			} catch (Throwable ignored) { return null; }
+			} catch (Throwable ignored) {
+				return null;
+			}
 		});
 		candidates.add(() -> {
 			try {
 				InputStream is = plugin.getResource("fonts/minecraft.ttf");
-				if (is == null) is = plugin.getResource("fonts/minecraft.otf");
+				if (is == null)
+					is = plugin.getResource("fonts/minecraft.otf");
 				return is;
-			} catch (Throwable ignored) { return null; }
+			} catch (Throwable ignored) {
+				return null;
+			}
 		});
 
 		for (var sup : candidates) {
 			InputStream is = null;
 			try {
 				is = sup.get();
-				if (is == null) continue;
+				if (is == null)
+					continue;
 				Font f = Font.createFont(Font.TRUETYPE_FONT, is);
-				try { GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(f); } catch (Throwable ignored) {}
+				try {
+					GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(f);
+				} catch (Throwable ignored) {
+				}
 				boardFontBase = f;
 				dbg("Loaded board font: " + f.getFontName());
 				return;
 			} catch (Throwable t) {
-				dbg("Failed to load board font: " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+				dbg("Failed to load board font: "
+						+ (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
 			} finally {
-				try { if (is != null) is.close(); } catch (Throwable ignored) {}
+				try {
+					if (is != null)
+						is.close();
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 	}
@@ -355,20 +418,33 @@ public final class LobbyBoardService {
 	private Font boardPlain(int size) {
 		int s = Math.max(8, size);
 		Font base = boardFontBase;
-		if (base == null) return new Font(Font.MONOSPACED, Font.PLAIN, s);
-		try { return base.deriveFont(Font.PLAIN, (float) s); } catch (Throwable ignored) { return new Font(Font.MONOSPACED, Font.PLAIN, s); }
+		if (base == null)
+			return new Font(Font.MONOSPACED, Font.PLAIN, s);
+		try {
+			return base.deriveFont(Font.PLAIN, (float) s);
+		} catch (Throwable ignored) {
+			return new Font(Font.MONOSPACED, Font.PLAIN, s);
+		}
 	}
 
 	private Font boardBold(int size) {
 		int s = Math.max(8, size);
 		Font base = boardFontBase;
-		if (base == null) return new Font(Font.MONOSPACED, Font.BOLD, s);
-		try { return base.deriveFont(Font.BOLD, (float) s); } catch (Throwable ignored) { return base.deriveFont(Font.PLAIN, (float) s); }
+		if (base == null)
+			return new Font(Font.MONOSPACED, Font.BOLD, s);
+		try {
+			return base.deriveFont(Font.BOLD, (float) s);
+		} catch (Throwable ignored) {
+			return base.deriveFont(Font.PLAIN, (float) s);
+		}
 	}
 
-	public boolean setPlacementFromSelection(org.bukkit.entity.Player p, org.bukkit.util.BoundingBox box, BlockFace facing) {
-		if (p == null || box == null) return false;
-		if (p.getWorld() == null) return false;
+	public boolean setPlacementFromSelection(org.bukkit.entity.Player p, org.bukkit.util.BoundingBox box,
+			BlockFace facing) {
+		if (p == null || box == null)
+			return false;
+		if (p.getWorld() == null)
+			return false;
 
 		BlockFace dir;
 		if (facing != null) {
@@ -376,10 +452,12 @@ public final class LobbyBoardService {
 		} else {
 			dir = autoFacingFromPlayer(p, box);
 		}
-		if (dir == null) return false;
+		if (dir == null)
+			return false;
 
 		BoardPlacement pl = BoardPlacement.fromSelection(p.getWorld(), box, dir);
-		if (pl == null || !pl.isValid()) return false;
+		if (pl == null || !pl.isValid())
+			return false;
 
 		// persist
 		pl.save(plugin.getConfig().createSection("mapengine.lobby-board.placement"));
@@ -389,37 +467,56 @@ public final class LobbyBoardService {
 		// reload running service
 		reloadFromConfig();
 
-		// Preview: spawn/render immediately for the setter so they can confirm placement instantly.
-		try { previewTo(p); } catch (Throwable ignored) {}
+		// Preview: spawn/render immediately for the setter so they can confirm
+		// placement instantly.
+		try {
+			previewTo(p);
+		} catch (Throwable ignored) {
+		}
 		return true;
 	}
 
 	private void previewTo(org.bukkit.entity.Player p) {
-		if (p == null || !p.isOnline()) return;
-		if (!plugin.getConfig().getBoolean("mapengine.lobby-board.enabled", false)) return;
-		if (placement == null || !placement.isValid()) return;
+		if (p == null || !p.isOnline())
+			return;
+		if (!plugin.getConfig().getBoolean("mapengine.lobby-board.enabled", false))
+			return;
+		if (placement == null || !placement.isValid())
+			return;
 
 		MapEngineApi api = MapEngineService.get();
-		if (api == null) return;
+		if (api == null)
+			return;
 
 		ensureDisplay(api);
-		if (display == null || drawing == null) return;
+		if (display == null || drawing == null)
+			return;
 
-		// Always show preview to the admin who just placed it, regardless of lobby/radius filters.
-		try { spawnFor(p); } catch (Throwable ignored) {}
-		try { spawnedTo.add(p.getUniqueId()); } catch (Throwable ignored) {}
+		// Always show preview to the admin who just placed it, regardless of
+		// lobby/radius filters.
+		try {
+			spawnFor(p);
+		} catch (Throwable ignored) {
+		}
+		try {
+			spawnedTo.add(p.getUniqueId());
+		} catch (Throwable ignored) {
+		}
 
 		try {
 			BufferedImage img = renderImage(placement.pixelWidth(), placement.pixelHeight());
 			drawing.image(img, 0, 0);
 			drawing.flush();
-		} catch (Throwable ignored) {}
+		} catch (Throwable ignored) {
+		}
 	}
 
 	private static BlockFace autoFacingFromPlayer(org.bukkit.entity.Player p, org.bukkit.util.BoundingBox box) {
-		if (p == null || box == null) return null;
+		if (p == null || box == null)
+			return null;
 		org.bukkit.Location loc = p.getLocation();
-		if (loc == null) return null;
+		if (loc == null)
+			return null;
 
 		int minX = (int) Math.floor(Math.min(box.getMinX(), box.getMaxX()));
 		int maxX = (int) Math.floor(Math.max(box.getMinX(), box.getMaxX()));
@@ -429,7 +526,8 @@ public final class LobbyBoardService {
 		int dx = maxX - minX;
 		int dz = maxZ - minZ;
 
-		// If selection is a thin vertical plane, determine facing from which side the player is on.
+		// If selection is a thin vertical plane, determine facing from which side the
+		// player is on.
 		double cx = (minX + maxX) * 0.5;
 		double cz = (minZ + maxZ) * 0.5;
 		double px = loc.getX();
@@ -444,10 +542,12 @@ public final class LobbyBoardService {
 			return (pz >= cz) ? BlockFace.SOUTH : BlockFace.NORTH;
 		}
 
-		// Otherwise, pick based on where the player is looking: board should face the player.
+		// Otherwise, pick based on where the player is looking: board should face the
+		// player.
 		float yaw = loc.getYaw();
 		BlockFace looking = yawToCardinal(yaw);
-		if (looking == null) return BlockFace.SOUTH;
+		if (looking == null)
+			return BlockFace.SOUTH;
 		return looking.getOppositeFace();
 	}
 
@@ -455,9 +555,12 @@ public final class LobbyBoardService {
 		float y = yaw;
 		y = (y % 360.0f + 360.0f) % 360.0f;
 		// 0=south, 90=west, 180=north, 270=east
-		if (y >= 315.0f || y < 45.0f) return BlockFace.SOUTH;
-		if (y < 135.0f) return BlockFace.WEST;
-		if (y < 225.0f) return BlockFace.NORTH;
+		if (y >= 315.0f || y < 45.0f)
+			return BlockFace.SOUTH;
+		if (y < 135.0f)
+			return BlockFace.WEST;
+		if (y < 225.0f)
+			return BlockFace.NORTH;
 		return BlockFace.EAST;
 	}
 
@@ -470,15 +573,18 @@ public final class LobbyBoardService {
 	}
 
 	public String placementSummary() {
-		if (placement == null || !placement.isValid()) return "&cChưa đặt bảng.";
+		if (placement == null || !placement.isValid())
+			return "&cChưa đặt bảng.";
 		return "&aĐã đặt bảng tại &f" + placement.world
 				+ " &7(" + placement.a.getBlockX() + "," + placement.a.getBlockY() + "," + placement.a.getBlockZ() + ")"
-				+ " -> &7(" + placement.b.getBlockX() + "," + placement.b.getBlockY() + "," + placement.b.getBlockZ() + ")"
+				+ " -> &7(" + placement.b.getBlockX() + "," + placement.b.getBlockY() + "," + placement.b.getBlockZ()
+				+ ")"
 				+ " &8● &7hướng &f" + placement.facing;
 	}
 
 	private void tick() {
-		if (placement == null || !placement.isValid()) return;
+		if (placement == null || !placement.isValid())
+			return;
 		MapEngineApi api = MapEngineService.get();
 		if (api == null) {
 			dbg("tick(): MapEngineApi became unavailable; stopping");
@@ -487,17 +593,21 @@ public final class LobbyBoardService {
 		}
 
 		ensureDisplay(api);
-		if (display == null || drawing == null) return;
+		if (display == null || drawing == null)
+			return;
 
 		// Determine eligible viewers.
 		Set<UUID> eligible = new HashSet<>();
 		for (Player p : Bukkit.getOnlinePlayers()) {
-			if (p == null || !p.isOnline() || p.getWorld() == null) continue;
+			if (p == null || !p.isOnline() || p.getWorld() == null)
+				continue;
 
 			// Only lobby players (not in any race).
-			if (raceService != null && raceService.findRaceFor(p.getUniqueId()) != null) continue;
+			if (raceService != null && raceService.findRaceFor(p.getUniqueId()) != null)
+				continue;
 
-			if (!isWithinRadiusChunks(p, placement, visibleRadiusChunks)) continue;
+			if (!isWithinRadiusChunks(p, placement, visibleRadiusChunks))
+				continue;
 			eligible.add(p.getUniqueId());
 		}
 
@@ -508,7 +618,10 @@ public final class LobbyBoardService {
 			if (!eligible.contains(id)) {
 				Player p = Bukkit.getPlayer(id);
 				if (p != null && p.isOnline()) {
-					try { despawnFor(p); } catch (Throwable ignored) {}
+					try {
+						despawnFor(p);
+					} catch (Throwable ignored) {
+					}
 				}
 				spawnedTo.remove(id);
 			}
@@ -516,14 +629,20 @@ public final class LobbyBoardService {
 
 		// Spawn to new eligible viewers.
 		for (UUID id : eligible) {
-			if (spawnedTo.contains(id)) continue;
+			if (spawnedTo.contains(id))
+				continue;
 			Player p = Bukkit.getPlayer(id);
-			if (p == null || !p.isOnline()) continue;
-			try { spawnFor(p); } catch (Throwable ignored) {}
+			if (p == null || !p.isOnline())
+				continue;
+			try {
+				spawnFor(p);
+			} catch (Throwable ignored) {
+			}
 			spawnedTo.add(id);
 		}
 
-		if (spawnedTo.isEmpty()) return;
+		if (spawnedTo.isEmpty())
+			return;
 
 		// Render content and flush to receivers.
 		try {
@@ -559,9 +678,12 @@ public final class LobbyBoardService {
 	}
 
 	private void ensureDisplay(MapEngineApi api) {
-		if (api == null) return;
-		if (placement == null || !placement.isValid()) return;
-		if (display != null && drawing != null) return;
+		if (api == null)
+			return;
+		if (placement == null || !placement.isValid())
+			return;
+		if (display != null && drawing != null)
+			return;
 
 		try {
 			display = api.displayProvider().createBasic(placement.a, placement.b, placement.facing);
@@ -570,7 +692,8 @@ public final class LobbyBoardService {
 				// Best for UI: crisp solids and stable text (avoid dithering artifacts).
 				drawing.ctx().converter(Converter.DIRECT);
 				applyPipelineToggles();
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 		} catch (Throwable t) {
 			dbg("ensureDisplay(): failed: " + t.getClass().getSimpleName() + ": " + t.getMessage());
 			display = null;
@@ -579,10 +702,14 @@ public final class LobbyBoardService {
 	}
 
 	private void applyPipelineToggles() {
-		if (drawing == null) return;
+		if (drawing == null)
+			return;
 		Object ctx;
-		try { ctx = drawing.ctx(); }
-		catch (Throwable ignored) { return; }
+		try {
+			ctx = drawing.ctx();
+		} catch (Throwable ignored) {
+			return;
+		}
 
 		// Buffering: improves visual stability and reduces partial-frame flicker.
 		if (mapBuffering) {
@@ -607,10 +734,13 @@ public final class LobbyBoardService {
 	}
 
 	private void spawnFor(Player p) {
-		if (p == null) return;
-		if (display == null || drawing == null) return;
+		if (p == null)
+			return;
+		if (display == null || drawing == null)
+			return;
 
-		// Different MapEngine versions may differ in method names/signatures; use best-effort reflection.
+		// Different MapEngine versions may differ in method names/signatures; use
+		// best-effort reflection.
 		boolean spawnOk = false;
 		try {
 			// Prefer direct call (fast path)
@@ -637,8 +767,10 @@ public final class LobbyBoardService {
 	}
 
 	private void despawnFor(Player p) {
-		if (p == null) return;
-		if (display == null || drawing == null) return;
+		if (p == null)
+			return;
+		if (display == null || drawing == null)
+			return;
 
 		// Receiver removal name varies; try a few.
 		tryInvoke(drawing.ctx(), "removeReceiver", p);
@@ -653,32 +785,47 @@ public final class LobbyBoardService {
 	}
 
 	private void dbg(String msg) {
-		if (!debug || plugin == null) return;
-		try { plugin.getLogger().info("[LobbyBoard] " + msg); } catch (Throwable ignored) {}
+		if (!debug || plugin == null)
+			return;
+		try {
+			plugin.getLogger().info("[LobbyBoard] " + msg);
+		} catch (Throwable ignored) {
+		}
 	}
 
 	private void dbgPerf(String msg) {
-		if (!debug || plugin == null) return;
+		if (!debug || plugin == null)
+			return;
 		long now = System.currentTimeMillis();
 		// Rate limit noisy perf logs.
-		if (lastPerfLogMillis != 0L && (now - lastPerfLogMillis) < 1000L) return;
+		if (lastPerfLogMillis != 0L && (now - lastPerfLogMillis) < 1000L)
+			return;
 		lastPerfLogMillis = now;
-		try { plugin.getLogger().info("[LobbyBoard] " + msg); } catch (Throwable ignored) {}
+		try {
+			plugin.getLogger().info("[LobbyBoard] " + msg);
+		} catch (Throwable ignored) {
+		}
 	}
 
 	private static String fmtMs(long ns) {
 		double ms = (double) ns / 1_000_000.0;
-		if (!Double.isFinite(ms)) ms = 0.0;
+		if (!Double.isFinite(ms))
+			ms = 0.0;
 		return String.format(java.util.Locale.ROOT, "%.2fms", ms);
 	}
 
 	private void dbgTick(String msg) {
-		if (!debug || plugin == null) return;
+		if (!debug || plugin == null)
+			return;
 		long now = System.currentTimeMillis();
 		// Rate limit noisy tick logs.
-		if (lastDebugTickLogMillis != 0L && (now - lastDebugTickLogMillis) < 1500L) return;
+		if (lastDebugTickLogMillis != 0L && (now - lastDebugTickLogMillis) < 1500L)
+			return;
 		lastDebugTickLogMillis = now;
-		try { plugin.getLogger().info("[LobbyBoard] " + msg); } catch (Throwable ignored) {}
+		try {
+			plugin.getLogger().info("[LobbyBoard] " + msg);
+		} catch (Throwable ignored) {
+		}
 	}
 
 	private enum TrackStatus {
@@ -699,22 +846,29 @@ public final class LobbyBoardService {
 			String recordHolderName,
 			List<Location> centerline,
 			int countdownSeconds,
-			int endingSeconds
-	) {}
+			int endingSeconds) {
+	}
 
 	private static TrackStatus statusOf(RaceManager rm) {
-		if (rm == null) return TrackStatus.OFF;
+		if (rm == null)
+			return TrackStatus.OFF;
 		try {
-			if (isRaceFullyCompleted(rm) && rm.getPostFinishCleanupRemainingSeconds() > 0) return TrackStatus.ENDING;
-		} catch (Throwable ignored) {}
-		if (rm.isRunning()) return TrackStatus.RUNNING;
-		if (rm.isAnyCountdownActive()) return TrackStatus.COUNTDOWN;
-		if (rm.isRegistering()) return TrackStatus.REGISTERING;
+			if (isRaceFullyCompleted(rm) && rm.getPostFinishCleanupRemainingSeconds() > 0)
+				return TrackStatus.ENDING;
+		} catch (Throwable ignored) {
+		}
+		if (rm.isRunning())
+			return TrackStatus.RUNNING;
+		if (rm.isAnyCountdownActive())
+			return TrackStatus.COUNTDOWN;
+		if (rm.isRegistering())
+			return TrackStatus.REGISTERING;
 		return TrackStatus.READY;
 	}
 
 	private static Color accentForStatus(TrackStatus status) {
-		if (status == null) status = TrackStatus.OFF;
+		if (status == null)
+			status = TrackStatus.OFF;
 		return switch (status) {
 			case RUNNING -> new Color(0x56, 0xF2, 0x7A);
 			case COUNTDOWN -> new Color(0xFF, 0xB8, 0x4D);
@@ -726,8 +880,10 @@ public final class LobbyBoardService {
 	}
 
 	private static Color mix(Color a, Color b, double t) {
-		if (a == null) return b;
-		if (b == null) return a;
+		if (a == null)
+			return b;
+		if (b == null)
+			return a;
 		double k = Math.max(0.0, Math.min(1.0, t));
 		int r = (int) Math.round(a.getRed() * (1.0 - k) + b.getRed() * k);
 		int g = (int) Math.round(a.getGreen() * (1.0 - k) + b.getGreen() * k);
@@ -736,21 +892,34 @@ public final class LobbyBoardService {
 	}
 
 	private List<TrackInfo> collectTrackInfos() {
-		if (trackLibrary == null) return java.util.Collections.emptyList();
+		if (trackLibrary == null)
+			return java.util.Collections.emptyList();
 
 		List<String> tracks = new ArrayList<>();
-		try { tracks.addAll(trackLibrary.list()); } catch (Throwable ignored) {}
+		try {
+			tracks.addAll(trackLibrary.list());
+		} catch (Throwable ignored) {
+		}
 		tracks.sort(String.CASE_INSENSITIVE_ORDER);
 
 		List<TrackInfo> out = new ArrayList<>();
 		TrackRecordManager trm = null;
-		try { trm = plugin != null ? plugin.getTrackRecordManager() : null; } catch (Throwable ignored) { trm = null; }
+		try {
+			trm = plugin != null ? plugin.getTrackRecordManager() : null;
+		} catch (Throwable ignored) {
+			trm = null;
+		}
 
 		for (String tn : tracks) {
-			if (tn == null || tn.isBlank()) continue;
+			if (tn == null || tn.isBlank())
+				continue;
 
 			RaceManager rm = null;
-			try { rm = raceService != null ? raceService.getOrCreate(tn) : null; } catch (Throwable ignored) { rm = null; }
+			try {
+				rm = raceService != null ? raceService.getOrCreate(tn) : null;
+			} catch (Throwable ignored) {
+				rm = null;
+			}
 
 			TrackStatus status = statusOf(rm);
 			int regs = 0;
@@ -766,7 +935,8 @@ public final class LobbyBoardService {
 					countdownSec = Math.max(0, rm.getCountdownRemainingSeconds());
 					endingSec = Math.max(0, rm.getPostFinishCleanupRemainingSeconds());
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			// Reuse the 'registered' column for display counts:
 			// - REGISTERING: registered count
@@ -786,15 +956,18 @@ public final class LobbyBoardService {
 					bestMs = Math.max(0L, rec.bestTimeMillis);
 					holder = rec.holderName == null ? "" : rec.holderName;
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			List<Location> cl = java.util.Collections.emptyList();
 			try {
 				if (rm != null && rm.getTrackConfig() != null) {
 					List<Location> got = rm.getTrackConfig().getCenterline();
-					if (got != null) cl = got;
+					if (got != null)
+						cl = got;
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			out.add(new TrackInfo(tn, status, displayCount, max, bestMs, holder, cl, countdownSec, endingSec));
 		}
@@ -802,20 +975,33 @@ public final class LobbyBoardService {
 	}
 
 	private static TrackInfo pickFocusedTrack(List<TrackInfo> infos) {
-		if (infos == null || infos.isEmpty()) return null;
-		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.RUNNING) return i;
-		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.COUNTDOWN) return i;
-		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.ENDING) return i;
-		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.REGISTERING) return i;
-		for (TrackInfo i : infos) if (i != null) return i;
+		if (infos == null || infos.isEmpty())
+			return null;
+		for (TrackInfo i : infos)
+			if (i != null && i.status == TrackStatus.RUNNING)
+				return i;
+		for (TrackInfo i : infos)
+			if (i != null && i.status == TrackStatus.COUNTDOWN)
+				return i;
+		for (TrackInfo i : infos)
+			if (i != null && i.status == TrackStatus.ENDING)
+				return i;
+		for (TrackInfo i : infos)
+			if (i != null && i.status == TrackStatus.REGISTERING)
+				return i;
+		for (TrackInfo i : infos)
+			if (i != null)
+				return i;
 		return null;
 	}
 
 	private static String statusLabel(TrackStatus st, int regs, int max, int countdownSeconds) {
-		if (st == null) st = TrackStatus.OFF;
+		if (st == null)
+			st = TrackStatus.OFF;
 		return switch (st) {
 			case RUNNING -> "Đang chạy";
-			// Countdown seconds are shown only as the large centered overlay on the focused minimap.
+			// Countdown seconds are shown only as the large centered overlay on the focused
+			// minimap.
 			case COUNTDOWN -> "Đếm ngược";
 			case REGISTERING -> "Đang đăng ký " + regs + "/" + max;
 			case ENDING -> "Đang kết thúc";
@@ -825,10 +1011,12 @@ public final class LobbyBoardService {
 	}
 
 	private static String recordLabel(long ms, String holderName) {
-		if (ms <= 0L) return ICON_CLOCK + " Kỷ lục: -";
+		if (ms <= 0L)
+			return ICON_CLOCK + " Kỷ lục: -";
 		String t = Time.formatStopwatchMillis(ms);
 		String hn = (holderName == null ? "" : holderName.trim());
-		if (hn.isEmpty()) return ICON_CLOCK + " Kỷ lục: " + t;
+		if (hn.isEmpty())
+			return ICON_CLOCK + " Kỷ lục: " + t;
 		return ICON_CLOCK + " Kỷ lục: " + t + " - " + hn;
 	}
 
@@ -838,13 +1026,17 @@ public final class LobbyBoardService {
 				int v = plugin.getConfig().getInt("mapengine.lobby-board.page-seconds", 6);
 				return Math.max(2, v);
 			}
-		} catch (Throwable ignored) {}
+		} catch (Throwable ignored) {
+		}
 		return 6;
 	}
 
-	private static void drawMiniMap(Graphics2D g, List<Location> centerline, int x, int y, int w, int h, Color accent, Color borderC, Color textDim, Font smallFont, float strokePx) {
-		if (g == null) return;
-		if (w <= 2 || h <= 2) return;
+	private static void drawMiniMap(Graphics2D g, List<Location> centerline, int x, int y, int w, int h, Color accent,
+			Color borderC, Color textDim, Font smallFont, float strokePx) {
+		if (g == null)
+			return;
+		if (w <= 2 || h <= 2)
+			return;
 
 		float stroke = Math.max(1.0f, strokePx);
 		int shadowOff = Math.max(1, (int) Math.round(stroke));
@@ -870,13 +1062,18 @@ public final class LobbyBoardService {
 		double minZ = Double.POSITIVE_INFINITY;
 		double maxZ = Double.NEGATIVE_INFINITY;
 		for (Location p : centerline) {
-			if (p == null) continue;
+			if (p == null)
+				continue;
 			double px = p.getX();
 			double pz = p.getZ();
-			if (px < minX) minX = px;
-			if (px > maxX) maxX = px;
-			if (pz < minZ) minZ = pz;
-			if (pz > maxZ) maxZ = pz;
+			if (px < minX)
+				minX = px;
+			if (px > maxX)
+				maxX = px;
+			if (pz < minZ)
+				minZ = pz;
+			if (pz > maxZ)
+				maxZ = pz;
 		}
 		if (!Double.isFinite(minX) || !Double.isFinite(maxX) || !Double.isFinite(minZ) || !Double.isFinite(maxZ)) {
 			return;
@@ -899,15 +1096,18 @@ public final class LobbyBoardService {
 		int lastPx = Integer.MIN_VALUE;
 		int lastPy = Integer.MIN_VALUE;
 		for (Location p : centerline) {
-			if (p == null) continue;
+			if (p == null)
+				continue;
 			int px = (int) Math.round(ox + (p.getX() - minX) * s);
 			int py = (int) Math.round(oz + (p.getZ() - minZ) * s);
-			if (px == lastPx && py == lastPy) continue;
+			if (px == lastPx && py == lastPy)
+				continue;
 			pts.add(new java.awt.Point(px, py));
 			lastPx = px;
 			lastPy = py;
 		}
-		if (pts.size() < 2) return;
+		if (pts.size() < 2)
+			return;
 
 		// Draw: shadow then main line (integer aligned)
 		g.setStroke(new BasicStroke(stroke));
@@ -935,38 +1135,58 @@ public final class LobbyBoardService {
 		g.fillRect(end.x - r, end.y - r, r * 2 + 1, r * 2 + 1);
 	}
 
-	private record MiniDot(double x, double z, Color color) {}
+	private record MiniDot(double x, double z, Color color) {
+	}
 
 	private List<MiniDot> collectRacerDots(RaceManager rm) {
-		if (rm == null || !rm.isRunning()) return java.util.Collections.emptyList();
+		if (rm == null || !rm.isRunning())
+			return java.util.Collections.emptyList();
 
 		List<MiniDot> dots = new java.util.ArrayList<>();
 		List<UUID> order;
-		try { order = rm.getLiveOrder(); }
-		catch (Throwable t) { order = java.util.Collections.emptyList(); }
+		try {
+			order = rm.getLiveOrder();
+		} catch (Throwable t) {
+			order = java.util.Collections.emptyList();
+		}
 
 		for (UUID id : order) {
-			if (id == null) continue;
+			if (id == null)
+				continue;
 
 			try {
 				var st = rm.getParticipantState(id);
-				if (st != null && st.finished) continue;
-			} catch (Throwable ignored) {}
+				if (st != null && st.finished)
+					continue;
+			} catch (Throwable ignored) {
+			}
 
 			Player p;
-			try { p = Bukkit.getPlayer(id); }
-			catch (Throwable t) { p = null; }
-			if (p == null || !p.isOnline()) continue;
+			try {
+				p = Bukkit.getPlayer(id);
+			} catch (Throwable t) {
+				p = null;
+			}
+			if (p == null || !p.isOnline())
+				continue;
 
 			Location loc = null;
 			try {
 				var v = p.getVehicle();
-				if (v != null) loc = v.getLocation();
-			} catch (Throwable ignored) { loc = null; }
-			if (loc == null) {
-				try { loc = p.getLocation(); } catch (Throwable ignored) { loc = null; }
+				if (v != null)
+					loc = v.getLocation();
+			} catch (Throwable ignored) {
+				loc = null;
 			}
-			if (loc == null) continue;
+			if (loc == null) {
+				try {
+					loc = p.getLocation();
+				} catch (Throwable ignored) {
+					loc = null;
+				}
+			}
+			if (loc == null)
+				continue;
 
 			Color c = new Color(0xEE, 0xEE, 0xEE);
 			try {
@@ -976,7 +1196,8 @@ public final class LobbyBoardService {
 						c = ColorTranslator.awtColor(prof.color);
 					}
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			dots.add(new MiniDot(loc.getX(), loc.getZ(), c));
 		}
@@ -985,10 +1206,12 @@ public final class LobbyBoardService {
 	}
 
 	private static void drawMiniMapWithDots(Graphics2D g, List<Location> centerline, List<MiniDot> dots,
-										   int x, int y, int w, int h,
-										   Color accent, Color borderC, Color textDim, Font smallFont, float strokePx) {
-		if (g == null) return;
-		if (w <= 2 || h <= 2) return;
+			int x, int y, int w, int h,
+			Color accent, Color borderC, Color textDim, Font smallFont, float strokePx) {
+		if (g == null)
+			return;
+		if (w <= 2 || h <= 2)
+			return;
 
 		float stroke = Math.max(1.0f, strokePx);
 		int shadowOff = Math.max(1, (int) Math.round(stroke));
@@ -1014,13 +1237,18 @@ public final class LobbyBoardService {
 		double minZ = Double.POSITIVE_INFINITY;
 		double maxZ = Double.NEGATIVE_INFINITY;
 		for (Location p : centerline) {
-			if (p == null) continue;
+			if (p == null)
+				continue;
 			double px = p.getX();
 			double pz = p.getZ();
-			if (px < minX) minX = px;
-			if (px > maxX) maxX = px;
-			if (pz < minZ) minZ = pz;
-			if (pz > maxZ) maxZ = pz;
+			if (px < minX)
+				minX = px;
+			if (px > maxX)
+				maxX = px;
+			if (pz < minZ)
+				minZ = pz;
+			if (pz > maxZ)
+				maxZ = pz;
 		}
 		if (!Double.isFinite(minX) || !Double.isFinite(maxX) || !Double.isFinite(minZ) || !Double.isFinite(maxZ)) {
 			return;
@@ -1033,7 +1261,8 @@ public final class LobbyBoardService {
 		int innerH = Math.max(1, h - margin * 2);
 
 		// Optional rotation (90deg) to better match the available panel aspect.
-		// If the track is taller but the panel is wider (or vice versa), rotate the map so it fills more.
+		// If the track is taller but the panel is wider (or vice versa), rotate the map
+		// so it fills more.
 		boolean mapWide = dx >= dz;
 		boolean panelWide = innerW >= innerH;
 		final boolean rotate = (mapWide != panelWide);
@@ -1056,7 +1285,8 @@ public final class LobbyBoardService {
 		int lastPx = Integer.MIN_VALUE;
 		int lastPy = Integer.MIN_VALUE;
 		for (Location p : centerline) {
-			if (p == null) continue;
+			if (p == null)
+				continue;
 			double px = p.getX();
 			double pz = p.getZ();
 
@@ -1075,7 +1305,8 @@ public final class LobbyBoardService {
 			int iz = (int) Math.round(v * s);
 			int rx = ox + clamp(ix, 0, drawW);
 			int ry = oy + clamp(iz, 0, drawH);
-			if (rx == lastPx && ry == lastPy) continue;
+			if (rx == lastPx && ry == lastPy)
+				continue;
 			pts.add(new java.awt.Point(rx, ry));
 			lastPx = rx;
 			lastPy = ry;
@@ -1116,10 +1347,12 @@ public final class LobbyBoardService {
 			int maxPy = y + h - 2;
 
 			for (MiniDot d : dots) {
-				if (d == null) continue;
+				if (d == null)
+					continue;
 				double px = d.x;
 				double pz = d.z;
-				if (!Double.isFinite(px) || !Double.isFinite(pz)) continue;
+				if (!Double.isFinite(px) || !Double.isFinite(pz))
+					continue;
 
 				double u;
 				double v;
@@ -1148,14 +1381,18 @@ public final class LobbyBoardService {
 	}
 
 	private static boolean isRankingLine(String s) {
-		if (s == null) return false;
+		if (s == null)
+			return false;
 		int close = s.indexOf(')');
-		if (close <= 0) return false;
+		if (close <= 0)
+			return false;
 		String head = s.substring(0, close).trim();
-		if (head.isEmpty()) return false;
+		if (head.isEmpty())
+			return false;
 		for (int i = 0; i < head.length(); i++) {
 			char c = head.charAt(i);
-			if (c < '0' || c > '9') return false;
+			if (c < '0' || c > '9')
+				return false;
 		}
 		return true;
 	}
@@ -1176,8 +1413,12 @@ public final class LobbyBoardService {
 			lastPerfH = h;
 		}
 
-		// Ensure we tried loading the board font before we select default fonts for the context.
-		try { tryLoadBoardFont(); } catch (Throwable ignored) {}
+		// Ensure we tried loading the board font before we select default fonts for the
+		// context.
+		try {
+			tryLoadBoardFont();
+		} catch (Throwable ignored) {
+		}
 
 		// Drive sizes from pixel height (same as legacy) to keep spacing consistent.
 		final double uiScale = 1.25;
@@ -1192,7 +1433,8 @@ public final class LobbyBoardService {
 
 		// Data (used for theming + minimap)
 		List<TrackInfo> tracks = collectTrackInfos();
-		if (doPerf) tAfterCollect = System.nanoTime();
+		if (doPerf)
+			tAfterCollect = System.nanoTime();
 		TrackInfo focused = pickFocusedTrack(tracks);
 		TrackStatus focusedStatus = focused != null ? focused.status : TrackStatus.OFF;
 		Color statusAccent = accentForStatus(focusedStatus);
@@ -1212,7 +1454,8 @@ public final class LobbyBoardService {
 		Font smallFont = boardPlain(footerSize);
 		Font fallbackFont = monoMatch(bodyFont);
 
-		// Render with crisp-ish settings (legacy used AA OFF). Keep scoped to the lobby board.
+		// Render with crisp-ish settings (legacy used AA OFF). Keep scoped to the lobby
+		// board.
 		BufferedImage img = acquireRenderBuffer(w, h);
 		Graphics2D g = img.createGraphics();
 		try {
@@ -1222,7 +1465,8 @@ public final class LobbyBoardService {
 				g.setColor(new Color(0, 0, 0, 0));
 				g.fillRect(0, 0, w, h);
 				g.setComposite(java.awt.AlphaComposite.SrcOver);
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			UiRenderContext ctx = new UiRenderContext(g, bodyFont, fallbackFont, text);
 			ctx.applyDefaultHints();
@@ -1231,7 +1475,8 @@ public final class LobbyBoardService {
 			try {
 				g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_OFF);
 				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			// Compute font metrics using the REAL render Graphics2D.
 			// This avoids the per-render scratch BufferedImage(1x1) allocation.
@@ -1280,8 +1525,7 @@ public final class LobbyBoardService {
 						fmHeader,
 						fmBody,
 						fmSmall,
-						boardFontBase
-				);
+						boardFontBase);
 				uiCache = cache;
 			}
 
@@ -1303,8 +1547,7 @@ public final class LobbyBoardService {
 						fmHeader,
 						fmBody,
 						fmSmall,
-						boardFontBase
-				);
+						boardFontBase);
 				uiCache = cache;
 			}
 
@@ -1319,19 +1562,25 @@ public final class LobbyBoardService {
 					text,
 					textDim,
 					fmBody,
-					fmSmall
-			);
-			if (doPerf) tAfterUpdateFrame = System.nanoTime();
+					fmSmall);
+			if (doPerf)
+				tAfterUpdateFrame = System.nanoTime();
 
-			if (bodyFont != null) g.setFont(bodyFont);
+			if (bodyFont != null)
+				g.setFont(bodyFont);
 			if (cache.root != null) {
 				cache.root.layout(ctx, 0, 0, w, h);
-				if (doPerf) tAfterLayout = System.nanoTime();
+				if (doPerf)
+					tAfterLayout = System.nanoTime();
 				cache.root.render(ctx);
-				if (doPerf) tAfterRender = System.nanoTime();
+				if (doPerf)
+					tAfterRender = System.nanoTime();
 			}
 		} finally {
-			try { g.dispose(); } catch (Throwable ignored) {}
+			try {
+				g.dispose();
+			} catch (Throwable ignored) {
+			}
 		}
 		if (doPerf) {
 			tEnd = System.nanoTime();
@@ -1421,8 +1670,7 @@ public final class LobbyBoardService {
 				java.awt.FontMetrics fmHeader,
 				java.awt.FontMetrics fmBody,
 				java.awt.FontMetrics fmSmall,
-				Font baseFontRef
-		) {
+				Font baseFontRef) {
 			this.w = w;
 			this.h = h;
 			this.uiScale = uiScale;
@@ -1476,9 +1724,11 @@ public final class LobbyBoardService {
 			this.titleBar = titleBar;
 
 			GraphicsElement titleStripe = new GraphicsElement((ctx, rect) -> {
-				if (ctx == null || ctx.g == null) return;
+				if (ctx == null || ctx.g == null)
+					return;
 				Color a = accentRef.get();
-				if (a == null) return;
+				if (a == null)
+					return;
 				ctx.g.setColor(a);
 				ctx.g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
 			});
@@ -1527,9 +1777,11 @@ public final class LobbyBoardService {
 			headerBox.add(headerRow);
 
 			GraphicsElement headerStripe = new GraphicsElement((ctx, rect) -> {
-				if (ctx == null || ctx.g == null) return;
+				if (ctx == null || ctx.g == null)
+					return;
 				Color a = accentRef.get();
-				if (a == null) return;
+				if (a == null)
+					return;
 				ctx.g.setColor(a);
 				ctx.g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
 			});
@@ -1549,8 +1801,8 @@ public final class LobbyBoardService {
 					.justifyContent(UiJustify.START)
 					.gap(2 * pad);
 			mainRow.style().padding(UiInsets.symmetric(0, Math.max(0, pad - inset)));
-				// Fill the remaining mainPanel height (minimal flex-grow model).
-				mainRow.style().flexGrow(1);
+			// Fill the remaining mainPanel height (minimal flex-grow model).
+			mainRow.style().flexGrow(1);
 			this.mainRow = mainRow;
 
 			// Left column: cached track slots.
@@ -1610,7 +1862,8 @@ public final class LobbyBoardService {
 			leftCol.add(hint2);
 
 			// Right column: cached map + cached line slots.
-			ColumnContainer rightCol = new ColumnContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+			ColumnContainer rightCol = new ColumnContainer().alignItems(UiAlign.STRETCH)
+					.justifyContent(UiJustify.START);
 			rightCol.style().widthPx(colW);
 			rightCol.style().padding(UiInsets.all(Math.max(6, border))).border(null, Math.max(1, border - 1));
 			rightCol.gap(Math.max(4, fmSmall.getHeight() / 3));
@@ -1618,13 +1871,16 @@ public final class LobbyBoardService {
 
 			int mapH = clamp((int) Math.round(colW * 0.72), 72, Math.max(72, panelH / 2));
 
-			// Backing state for right-side map painter. Must be initialized BEFORE the lambda below.
-			// Otherwise Java treats it as reading an uninitialized final from inside a captured lambda.
+			// Backing state for right-side map painter. Must be initialized BEFORE the
+			// lambda below.
+			// Otherwise Java treats it as reading an uninitialized final from inside a
+			// captured lambda.
 			RightMapState rms = new RightMapState();
 			this.rightMapState = rms;
 
 			GraphicsElement rightMap = new GraphicsElement((ctx, rect) -> {
-				if (ctx == null || ctx.g == null) return;
+				if (ctx == null || ctx.g == null)
+					return;
 				rms.paint(ctx, rect);
 			});
 			rightMap.style().heightPx(mapH).display(false);
@@ -1650,7 +1906,8 @@ public final class LobbyBoardService {
 
 			// Footer (kept painter-based like legacy).
 			GraphicsElement footer = new GraphicsElement((ctx, rect) -> {
-				if (ctx == null || ctx.g == null) return;
+				if (ctx == null || ctx.g == null)
+					return;
 				Graphics2D gg = ctx.g;
 
 				gg.setFont(smallFont);
@@ -1697,8 +1954,7 @@ public final class LobbyBoardService {
 				Color text,
 				Color textDim,
 				java.awt.FontMetrics fmBody,
-				java.awt.FontMetrics fmSmall
-		) {
+				java.awt.FontMetrics fmSmall) {
 			accentRef.set(accent);
 			textRef.set(text);
 			textDimRef.set(textDim);
@@ -1732,9 +1988,9 @@ public final class LobbyBoardService {
 				java.awt.FontMetrics fmSmall,
 				Color text,
 				Color textDim,
-				Color borderC
-		) {
-			if (tracks == null) tracks = java.util.Collections.emptyList();
+				Color borderC) {
+			if (tracks == null)
+				tracks = java.util.Collections.emptyList();
 			boolean hasTracks = !tracks.isEmpty();
 
 			leftEmptyA.style().display(!hasTracks);
@@ -1743,7 +1999,8 @@ public final class LobbyBoardService {
 			leftEmptyB.color(textDim);
 
 			if (!hasTracks) {
-				for (TrackSlot s : trackSlots) s.hide();
+				for (TrackSlot s : trackSlots)
+					s.hide();
 				leftHint1.style().display(false);
 				leftHint2.style().display(false);
 				return;
@@ -1758,7 +2015,8 @@ public final class LobbyBoardService {
 			int hintLines = 2;
 			int hintH = hintLines * fmSmall.getHeight() + 10;
 			int contentH = Math.max(0, mainPanel.style().heightPx() == null ? 0 : mainPanel.style().heightPx()) - 12;
-			if (contentH < 0) contentH = 0;
+			if (contentH < 0)
+				contentH = 0;
 			int availableH = Math.max(0, contentH - hintH);
 			int perPage = Math.max(1, availableH / Math.max(1, blockHEst + blockGap));
 			int total = tracks.size();
@@ -1773,17 +2031,20 @@ public final class LobbyBoardService {
 			int slotIdx = 0;
 			for (int i = startIndex; i < endIndex && slotIdx < trackSlots.length; i++) {
 				TrackInfo ti = tracks.get(i);
-				if (ti == null) continue;
+				if (ti == null)
+					continue;
 
 				int smallLines = (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) ? 1 : 2;
 				int thisBlockH = rowH + (fmSmall.getHeight() * smallLines) + blockPadV;
-				if (usedH + thisBlockH > contentH) break;
+				if (usedH + thisBlockH > contentH)
+					break;
 
 				trackSlots[slotIdx].show(ti, thisBlockH, text, textDim, borderC);
 				slotIdx++;
 				usedH += thisBlockH + blockGap;
 			}
-			for (int i = slotIdx; i < trackSlots.length; i++) trackSlots[i].hide();
+			for (int i = slotIdx; i < trackSlots.length; i++)
+				trackSlots[i].hide();
 
 			// Hints (only if enough remaining height) - match legacy wording + paging math
 			if (contentH - usedH >= hintH) {
@@ -1816,8 +2077,7 @@ public final class LobbyBoardService {
 				java.awt.FontMetrics fmSmall,
 				Color text,
 				Color textDim,
-				Color borderC
-		) {
+				Color borderC) {
 			// If a race is fully completed, the right panel switches into a results view:
 			// - hide the minimap
 			// - show full standings until the track resets/stops
@@ -1826,7 +2086,8 @@ public final class LobbyBoardService {
 				if (raceService != null) {
 					if (focused != null && focused.trackName != null) {
 						RaceManager rm = raceService.get(focused.trackName);
-						if (isRaceFullyCompleted(rm)) completedRm = rm;
+						if (isRaceFullyCompleted(rm))
+							completedRm = rm;
 					}
 					if (completedRm == null) {
 						for (RaceManager rm : raceService.allRaces()) {
@@ -1837,30 +2098,36 @@ public final class LobbyBoardService {
 						}
 					}
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 			final boolean showCompletedResults = completedRm != null;
 
 			// Map selection logic matches legacy buildRightPanel.
 			TrackInfo mapTrack = focused;
 			RaceManager mapRm = null;
-			if (mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
+			if (mapTrack != null
+					&& (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
 				try {
 					if (plugin != null && plugin.getRaceService() != null) {
 						mapRm = plugin.getRaceService().get(mapTrack.trackName);
 					}
-				} catch (Throwable ignored) {}
+				} catch (Throwable ignored) {
+				}
 			}
-			if (mapTrack == null || !(mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
+			if (mapTrack == null
+					|| !(mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
 				if (tracks != null) {
 					for (TrackInfo ti : tracks) {
-						if (ti == null) continue;
+						if (ti == null)
+							continue;
 						if (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) {
 							mapTrack = ti;
 							try {
 								if (plugin != null && plugin.getRaceService() != null) {
 									mapRm = plugin.getRaceService().get(ti.trackName);
 								}
-							} catch (Throwable ignored) {}
+							} catch (Throwable ignored) {
+							}
 							break;
 						}
 					}
@@ -1868,7 +2135,8 @@ public final class LobbyBoardService {
 			}
 
 			boolean mapActive = !showCompletedResults
-					&& mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)
+					&& mapTrack != null
+					&& (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)
 					&& mapTrack.centerline != null && !mapTrack.centerline.isEmpty();
 
 			rightMap.style().display(mapActive);
@@ -1890,9 +2158,11 @@ public final class LobbyBoardService {
 
 			int idx = 0;
 			for (String s : lines) {
-				if (idx >= rightLineSlots.length) break;
+				if (idx >= rightLineSlots.length)
+					break;
 				RightLineSlot slot = rightLineSlots[idx];
-				if (s == null) continue;
+				if (s == null)
+					continue;
 
 				if (s.isBlank()) {
 					slot.setSpacer(spacerH);
@@ -1913,7 +2183,8 @@ public final class LobbyBoardService {
 				slot.setSmallText(s, smallH);
 				idx++;
 			}
-			for (int i = idx; i < rightLineSlots.length; i++) rightLineSlots[i].hide();
+			for (int i = idx; i < rightLineSlots.length; i++)
+				rightLineSlots[i].hide();
 		}
 	}
 
@@ -1948,24 +2219,33 @@ public final class LobbyBoardService {
 			int blockH;
 
 			void paint(UiRenderContext ctx, UiRect rect) {
-				if (ctx == null || ctx.g == null) return;
-				if (ti == null) return;
+				if (ctx == null || ctx.g == null)
+					return;
+				if (ti == null)
+					return;
 				Graphics2D g = ctx.g;
 
 				Font bodyFont = (uiCache != null ? uiCache.bodyFont : null);
-				if (bodyFont == null) bodyFont = ctx.defaultFont;
+				if (bodyFont == null)
+					bodyFont = ctx.defaultFont;
 				Font smallFont = (uiCache != null ? uiCache.smallFont : null);
-				if (smallFont == null) smallFont = ctx.defaultFont;
-				if (bodyFont == null || smallFont == null) return;
+				if (smallFont == null)
+					smallFont = ctx.defaultFont;
+				if (bodyFont == null || smallFont == null)
+					return;
 
 				Color globalAccent = uiCache != null ? uiCache.accentRef.get() : null;
 				Color text = uiCache != null ? uiCache.textRef.get() : null;
 				Color textDim = uiCache != null ? uiCache.textDimRef.get() : null;
 				Color borderC = uiCache != null ? uiCache.borderRef.get() : null;
-				if (text == null) text = new Color(0xEE, 0xEE, 0xEE);
-				if (textDim == null) textDim = new Color(0xA6, 0xA6, 0xA6);
-				if (borderC == null) borderC = new Color(0x3A, 0x3A, 0x3A);
-				if (globalAccent == null) globalAccent = accentForStatus(TrackStatus.READY);
+				if (text == null)
+					text = new Color(0xEE, 0xEE, 0xEE);
+				if (textDim == null)
+					textDim = new Color(0xA6, 0xA6, 0xA6);
+				if (borderC == null)
+					borderC = new Color(0x3A, 0x3A, 0x3A);
+				if (globalAccent == null)
+					globalAccent = accentForStatus(TrackStatus.READY);
 
 				Color rowAccent = accentForStatus(ti.status);
 				int stripeW = Math.max(4, uiCache.border + 2);
@@ -1985,7 +2265,6 @@ public final class LobbyBoardService {
 				int innerX = contentX + contentPadH;
 				int innerY = contentY + contentPadVHalf;
 				int innerW = Math.max(0, contentW - (contentPadH * 2));
-
 
 				boolean minimalRunningRow = (ti.status == TrackStatus.RUNNING);
 
@@ -2007,11 +2286,13 @@ public final class LobbyBoardService {
 				int textW = Math.max(0, innerW - (minimalRunningRow ? 0 : miniW) - 10);
 
 				// Line 1
-				String line1 = "● " + ti.trackName + "  [" + statusLabel(ti.status, ti.registered, ti.maxRacers, ti.countdownSeconds) + "]";
+				String line1 = "● " + ti.trackName + "  ["
+						+ statusLabel(ti.status, ti.registered, ti.maxRacers, ti.countdownSeconds) + "]";
 				g.setFont(bodyFont);
 				java.awt.FontMetrics fmB = g.getFontMetrics(bodyFont);
 				int y1 = innerY + fmB.getAscent();
-				drawTrackRow(g, line1, innerX, y1, Math.min(textW, innerW), trackInnerPad, bodyFont, globalAccent, text, textDim);
+				drawTrackRow(g, line1, innerX, y1, Math.min(textW, innerW), trackInnerPad, bodyFont, globalAccent, text,
+						textDim);
 
 				// Small lines
 				g.setFont(smallFont);
@@ -2033,11 +2314,13 @@ public final class LobbyBoardService {
 					String ln2;
 					if (ti.status == TrackStatus.REGISTERING) {
 						ln2 = (ti.countdownSeconds > 0)
-								? ("⌛ Còn lại: " + dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.countdownSeconds))
+								? ("⌛ Còn lại: "
+										+ dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.countdownSeconds))
 								: "⌛ Chờ người chơi...";
 					} else if (ti.status == TrackStatus.ENDING) {
 						ln2 = (ti.endingSeconds > 0)
-								? ("⌛ Kết thúc sau: " + dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.endingSeconds))
+								? ("⌛ Kết thúc sau: "
+										+ dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.endingSeconds))
 								: "⌛ Kết thúc...";
 					} else {
 						ln2 = "Tối đa: " + Math.max(0, ti.maxRacers) + " người";
@@ -2054,13 +2337,16 @@ public final class LobbyBoardService {
 				if (!minimalRunningRow && miniW > 0 && miniH > 0) {
 					int miniX = innerX + textW + 10;
 					int miniY = contentY + mapPad;
-					drawMiniMap(g, ti.centerline, miniX, miniY, miniW, miniH, rowAccent, borderC, textDim, smallFont, minimapStrokeFromBorder(uiCache.border));
+					drawMiniMap(g, ti.centerline, miniX, miniY, miniW, miniH, rowAccent, borderC, textDim, smallFont,
+							minimapStrokeFromBorder(uiCache.border));
 				}
 			}
 		}
 	}
 
-	private enum RightLineType { NONE, TRACK, RANK, SMALL, SPACER }
+	private enum RightLineType {
+		NONE, TRACK, RANK, SMALL, SPACER
+	}
 
 	private final class RightLineSlot {
 		final GraphicsElement row;
@@ -2071,45 +2357,79 @@ public final class LobbyBoardService {
 			this.row.style().heightPx(rowH);
 		}
 
-		void hide() { row.style().display(false); state.type = RightLineType.NONE; state.line = null; }
-		void setSpacer(int h) { state.type = RightLineType.SPACER; state.line = null; row.style().heightPx(Math.max(0, h)).display(true); }
-		void setTrackRow(String s, int h) { state.type = RightLineType.TRACK; state.line = s; row.style().heightPx(Math.max(0, h)).display(true); }
-		void setRankingRow(String s, int h) { state.type = RightLineType.RANK; state.line = s; row.style().heightPx(Math.max(0, h)).display(true); }
-		void setSmallText(String s, int h) { state.type = RightLineType.SMALL; state.line = s; row.style().heightPx(Math.max(0, h)).display(true); }
+		void hide() {
+			row.style().display(false);
+			state.type = RightLineType.NONE;
+			state.line = null;
+		}
+
+		void setSpacer(int h) {
+			state.type = RightLineType.SPACER;
+			state.line = null;
+			row.style().heightPx(Math.max(0, h)).display(true);
+		}
+
+		void setTrackRow(String s, int h) {
+			state.type = RightLineType.TRACK;
+			state.line = s;
+			row.style().heightPx(Math.max(0, h)).display(true);
+		}
+
+		void setRankingRow(String s, int h) {
+			state.type = RightLineType.RANK;
+			state.line = s;
+			row.style().heightPx(Math.max(0, h)).display(true);
+		}
+
+		void setSmallText(String s, int h) {
+			state.type = RightLineType.SMALL;
+			state.line = s;
+			row.style().heightPx(Math.max(0, h)).display(true);
+		}
 
 		private final class RightLineState {
 			RightLineType type = RightLineType.NONE;
 			String line;
 
 			void paint(UiRenderContext ctx, UiRect rect, int trackInnerPad) {
-				if (ctx == null || ctx.g == null) return;
-				if (type == RightLineType.NONE || type == RightLineType.SPACER) return;
+				if (ctx == null || ctx.g == null)
+					return;
+				if (type == RightLineType.NONE || type == RightLineType.SPACER)
+					return;
 				Graphics2D g = ctx.g;
 
 				Font bodyFont = (uiCache != null ? uiCache.bodyFont : null);
-				if (bodyFont == null) bodyFont = ctx.defaultFont;
+				if (bodyFont == null)
+					bodyFont = ctx.defaultFont;
 				Font smallFont = (uiCache != null ? uiCache.smallFont : null);
-				if (smallFont == null) smallFont = ctx.defaultFont;
-				if (bodyFont == null || smallFont == null) return;
+				if (smallFont == null)
+					smallFont = ctx.defaultFont;
+				if (bodyFont == null || smallFont == null)
+					return;
 
 				Color accent = uiCache != null ? uiCache.accentRef.get() : null;
 				Color text = uiCache != null ? uiCache.textRef.get() : null;
 				Color textDim = uiCache != null ? uiCache.textDimRef.get() : null;
-				if (accent == null) accent = new Color(0xFF, 0xD7, 0x00);
-				if (text == null) text = new Color(0xEE, 0xEE, 0xEE);
-				if (textDim == null) textDim = new Color(0xA6, 0xA6, 0xA6);
+				if (accent == null)
+					accent = new Color(0xFF, 0xD7, 0x00);
+				if (text == null)
+					text = new Color(0xEE, 0xEE, 0xEE);
+				if (textDim == null)
+					textDim = new Color(0xA6, 0xA6, 0xA6);
 
 				String s = line == null ? "" : line;
 				if (type == RightLineType.TRACK) {
 					g.setFont(bodyFont);
 					java.awt.FontMetrics fm = g.getFontMetrics(bodyFont);
-					drawTrackRow(g, s, rect.x(), rect.y() + fm.getAscent(), rect.w(), trackInnerPad, bodyFont, accent, text, textDim);
+					drawTrackRow(g, s, rect.x(), rect.y() + fm.getAscent(), rect.w(), trackInnerPad, bodyFont, accent,
+							text, textDim);
 				} else if (type == RightLineType.RANK) {
 					g.setFont(bodyFont);
 					java.awt.FontMetrics fm = g.getFontMetrics(bodyFont);
 					int pad = Math.max(0, trackInnerPad);
 					int baseline = rect.y() + (rect.h() + fm.getAscent() - fm.getDescent()) / 2;
-					drawRankingRow(g, s, rect.x() + pad, baseline, Math.max(0, rect.w() - pad), bodyFont, accent, text, textDim);
+					drawRankingRow(g, s, rect.x() + pad, baseline, Math.max(0, rect.w() - pad), bodyFont, accent, text,
+							textDim);
 				} else {
 					g.setFont(smallFont);
 					java.awt.FontMetrics fm = g.getFontMetrics(smallFont);
@@ -2136,29 +2456,39 @@ public final class LobbyBoardService {
 		}
 
 		void paint(UiRenderContext ctx, UiRect rect) {
-			if (ctx == null || ctx.g == null) return;
-			if (track == null || track.centerline == null || track.centerline.isEmpty()) return;
+			if (ctx == null || ctx.g == null)
+				return;
+			if (track == null || track.centerline == null || track.centerline.isEmpty())
+				return;
 
 			Font smallFont = (uiCache != null ? uiCache.smallFont : null);
-			if (smallFont == null) smallFont = ctx.defaultFont;
-			if (smallFont == null) return;
+			if (smallFont == null)
+				smallFont = ctx.defaultFont;
+			if (smallFont == null)
+				return;
 
 			java.util.List<MiniDot> dots = java.util.Collections.emptyList();
 			try {
 				if (rm != null) {
 					dots = collectRacerDots(rm);
 				}
-			} catch (Throwable ignored) { dots = java.util.Collections.emptyList(); }
+			} catch (Throwable ignored) {
+				dots = java.util.Collections.emptyList();
+			}
 
 			Color borderC = uiCache != null ? uiCache.borderRef.get() : null;
 			Color textDim = uiCache != null ? uiCache.textDimRef.get() : null;
-			if (borderC == null) borderC = new Color(0x3A, 0x3A, 0x3A);
-			if (textDim == null) textDim = new Color(0xA6, 0xA6, 0xA6);
+			if (borderC == null)
+				borderC = new Color(0x3A, 0x3A, 0x3A);
+			if (textDim == null)
+				textDim = new Color(0xA6, 0xA6, 0xA6);
 
 			// Only the live ranking minimap should have a thicker line.
 			float liveStroke = minimapStrokeFromBorder(border) * 1.28f;
-			if (liveStroke < 2.0f) liveStroke = 2.0f;
-			if (liveStroke > 7.5f) liveStroke = 7.5f;
+			if (liveStroke < 2.0f)
+				liveStroke = 2.0f;
+			if (liveStroke > 7.5f)
+				liveStroke = 7.5f;
 
 			drawMiniMapWithDots(
 					ctx.g,
@@ -2169,24 +2499,29 @@ public final class LobbyBoardService {
 					borderC,
 					textDim,
 					smallFont,
-					liveStroke
-			);
+					liveStroke);
 
 			if (track.status == TrackStatus.COUNTDOWN && track.countdownSeconds > 0) {
 				try {
-					drawCountdownOverlay(ctx.g, rect.x(), rect.y(), rect.w(), rect.h(), track.countdownSeconds, border, bodyFont, fallbackFont);
-				} catch (Throwable ignored) {}
+					drawCountdownOverlay(ctx.g, rect.x(), rect.y(), rect.w(), rect.h(), track.countdownSeconds, border,
+							bodyFont, fallbackFont);
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 	}
 
 	private static UiElement spacer(int heightPx) {
-		GraphicsElement e = new GraphicsElement((ctx, rect) -> {});
+		GraphicsElement e = new GraphicsElement((ctx, rect) -> {
+		});
 		e.style().heightPx(Math.max(0, heightPx));
 		return e;
 	}
-	private static void drawCountdownOverlay(Graphics2D g, int x, int y, int w, int h, int seconds, int border, Font bodyFont, Font fallbackFont) {
-		if (g == null) return;
+
+	private static void drawCountdownOverlay(Graphics2D g, int x, int y, int w, int h, int seconds, int border,
+			Font bodyFont, Font fallbackFont) {
+		if (g == null)
+			return;
 		String s = String.valueOf(Math.max(0, seconds));
 		int shadowOff = Math.max(1, border);
 
@@ -2208,24 +2543,28 @@ public final class LobbyBoardService {
 
 		g.setFont(f);
 		g.setColor(new Color(0, 0, 0, 180));
-		drawStringWithFallback(g, s, tx + shadowOff, ty + shadowOff, f, fallbackFont != null ? fallbackFont : monoMatch(f));
+		drawStringWithFallback(g, s, tx + shadowOff, ty + shadowOff, f,
+				fallbackFont != null ? fallbackFont : monoMatch(f));
 		g.setColor(new Color(255, 255, 255, 240));
 		drawStringWithFallback(g, s, tx, ty, f, fallbackFont != null ? fallbackFont : monoMatch(f));
 	}
 
 	private static void drawTrackRow(Graphics2D g, String line, int x, int y, int maxWidth, int innerPad, Font bodyFont,
-									 Color accent, Color text, Color textDim) {
-		if (g == null) return;
-		if (line == null) line = "";
+			Color accent, Color text, Color textDim) {
+		if (g == null)
+			return;
+		if (line == null)
+			line = "";
 
 		// Add a bit more breathing room from the left edge of the row background.
 		int pad = Math.max(0, innerPad);
 		x += pad;
 		maxWidth = Math.max(0, maxWidth - pad);
 
-		// Expected: "● <name>  [<state...>]"
+		// Expected: "● <name> [<state...>]"
 		String s = line;
-		if (s.startsWith("●")) s = s.substring(1).trim();
+		if (s.startsWith("●"))
+			s = s.substring(1).trim();
 
 		String name = s;
 		String bracket = null;
@@ -2244,7 +2583,8 @@ public final class LobbyBoardService {
 		String bullet = "●";
 		drawStringWithFallback(g, bullet, x, y, bodyFont, fallbackFont);
 		// drawStringWithFallback() leaves the Graphics font as the last used runFont.
-		// If the bullet can't be rendered by the board font, it will switch to the fallback font;
+		// If the bullet can't be rendered by the board font, it will switch to the
+		// fallback font;
 		// restore bodyFont so the track name keeps the Minecraft-like font.
 		g.setFont(bodyFont);
 		int bx = x + stringWidthWithFallback(g, bullet + " ", bodyFont, fallbackFont);
@@ -2273,15 +2613,19 @@ public final class LobbyBoardService {
 		// State color hint
 		Color stC = textDim;
 		String bl = bracket.toLowerCase(Locale.ROOT);
-		if (bl.contains("đang chạy")) stC = new Color(0x56, 0xF2, 0x7A); // green-ish
-		else if (bl.contains("đang kết thúc")) stC = new Color(0xFF, 0xB8, 0x4D);
-		else if (bl.contains("đang đăng ký")) stC = accent;
+		if (bl.contains("đang chạy"))
+			stC = new Color(0x56, 0xF2, 0x7A); // green-ish
+		else if (bl.contains("đang kết thúc"))
+			stC = new Color(0xFF, 0xB8, 0x4D);
+		else if (bl.contains("đang đăng ký"))
+			stC = accent;
 
 		// Draw bracket: '[' + state + ']'
 		g.setColor(textDim);
 		// Keep bracket within maxWidth
 		int maxBr = Math.max(0, maxWidth - (brX - x));
-		if (maxBr <= 0) return;
+		if (maxBr <= 0)
+			return;
 
 		// Try to color the inside of bracket
 		if (bracket.startsWith("[") && bracket.endsWith("]") && bracket.length() >= 2) {
@@ -2305,9 +2649,11 @@ public final class LobbyBoardService {
 	}
 
 	private static void drawRankingRow(Graphics2D g, String line, int x, int y, int maxWidth, Font bodyFont,
-									   Color accent, Color text, Color textDim) {
-		if (g == null) return;
-		if (line == null) line = "";
+			Color accent, Color text, Color textDim) {
+		if (g == null)
+			return;
+		if (line == null)
+			line = "";
 		g.setFont(bodyFont);
 		Font fallbackFont = monoMatch(bodyFont);
 
@@ -2322,23 +2668,31 @@ public final class LobbyBoardService {
 		String full = line.substring(close + 1).trim();
 
 		// Optional metadata suffix separated by a double-space.
-		// Example: "1) Racer  V1/3  CP2/5  47%"
+		// Example: "1) Racer V1/3 CP2/5 47%"
 		String name = full;
 		String meta = null;
 		int sep = full.indexOf("  ");
 		if (sep > 0) {
 			name = full.substring(0, sep).trim();
 			meta = full.substring(sep).trim();
-			if (meta != null && meta.isBlank()) meta = null;
+			if (meta != null && meta.isBlank())
+				meta = null;
 		}
 
 		int pos;
-		try { pos = Integer.parseInt(posStr); } catch (Throwable ignored) { pos = 0; }
+		try {
+			pos = Integer.parseInt(posStr);
+		} catch (Throwable ignored) {
+			pos = 0;
+		}
 
 		Color posC = textDim;
-		if (pos == 1) posC = accent;
-		else if (pos == 2) posC = new Color(0xD8, 0xD8, 0xD8);
-		else if (pos == 3) posC = new Color(0xD0, 0x95, 0x5A);
+		if (pos == 1)
+			posC = accent;
+		else if (pos == 2)
+			posC = new Color(0xD8, 0xD8, 0xD8);
+		else if (pos == 3)
+			posC = new Color(0xD0, 0x95, 0x5A);
 
 		String posDraw = (pos > 0 ? ("#" + pos) : "#?");
 		g.setColor(posC);
@@ -2354,7 +2708,8 @@ public final class LobbyBoardService {
 			return;
 		}
 
-		// Reserve a little room for the racer name so meta doesn't consume the whole row.
+		// Reserve a little room for the racer name so meta doesn't consume the whole
+		// row.
 		final int reserveNamePx = 40;
 		int metaMax = Math.max(0, available - reserveNamePx);
 		// Meta may contain legacy color codes to color icons (e.g. &e✔, &a🗘).
@@ -2374,13 +2729,16 @@ public final class LobbyBoardService {
 		drawLegacyStringWithFallback(g, metaTrim, metaX, y, bodyFont, textDim);
 	}
 
-	// ===================== Legacy color rendering (for lobby board ranking) =====================
+	// ===================== Legacy color rendering (for lobby board ranking)
+	// =====================
 	// Supports Minecraft legacy formatting codes using either '&' or '§'.
 	// We implement color + bold/italic and ignore other formatting codes.
 
 	private static int legacyRenderedWidthWithFallback(Graphics2D g, String s, Font baseFont, Font fallbackFont) {
-		if (g == null) return 0;
-		if (s == null || s.isEmpty()) return 0;
+		if (g == null)
+			return 0;
+		if (s == null || s.isEmpty())
+			return 0;
 		Font base = (baseFont != null ? baseFont : g.getFont());
 		int baseStyle = base.getStyle();
 
@@ -2414,28 +2772,42 @@ public final class LobbyBoardService {
 			int len = Character.charCount(cp);
 			int style = baseStyle | (bold ? Font.BOLD : 0) | (italic ? Font.ITALIC : 0);
 			Font useBase;
-			try { useBase = base.deriveFont(style); }
-			catch (Throwable ignored) { useBase = base; }
+			try {
+				useBase = base.deriveFont(style);
+			} catch (Throwable ignored) {
+				useBase = base;
+			}
 			Font useFallback = (fallbackFont != null ? fallbackFont : monoMatch(useBase));
 			// Ensure fallback matches style/size.
-			try { useFallback = useFallback.deriveFont(style, (float) useBase.getSize()); } catch (Throwable ignored) {}
+			try {
+				useFallback = useFallback.deriveFont(style, (float) useBase.getSize());
+			} catch (Throwable ignored) {
+			}
 
 			boolean canPrimary;
-			try { canPrimary = useBase.canDisplay(cp); }
-			catch (Throwable ignored) { canPrimary = true; }
+			try {
+				canPrimary = useBase.canDisplay(cp);
+			} catch (Throwable ignored) {
+				canPrimary = true;
+			}
 			Font use = canPrimary ? useBase : useFallback;
 			try {
 				w += g.getFontMetrics(use).stringWidth(new String(Character.toChars(cp)));
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 			i += len;
 		}
 		return w;
 	}
 
-	private static String trimLegacyToWidthWithFallback(Graphics2D g, String s, int maxWidth, Font baseFont, Font fallbackFont) {
-		if (g == null) return "";
-		if (s == null || s.isEmpty()) return "";
-		if (maxWidth <= 0) return "";
+	private static String trimLegacyToWidthWithFallback(Graphics2D g, String s, int maxWidth, Font baseFont,
+			Font fallbackFont) {
+		if (g == null)
+			return "";
+		if (s == null || s.isEmpty())
+			return "";
+		if (maxWidth <= 0)
+			return "";
 
 		Font base = (baseFont != null ? baseFont : g.getFont());
 		int baseStyle = base.getStyle();
@@ -2472,63 +2844,101 @@ public final class LobbyBoardService {
 			int len = Character.charCount(cp);
 			int style = baseStyle | (bold ? Font.BOLD : 0) | (italic ? Font.ITALIC : 0);
 			Font useBase;
-			try { useBase = base.deriveFont(style); }
-			catch (Throwable ignored) { useBase = base; }
+			try {
+				useBase = base.deriveFont(style);
+			} catch (Throwable ignored) {
+				useBase = base;
+			}
 			Font useFallback = (fallbackFont != null ? fallbackFont : monoMatch(useBase));
-			try { useFallback = useFallback.deriveFont(style, (float) useBase.getSize()); } catch (Throwable ignored) {}
+			try {
+				useFallback = useFallback.deriveFont(style, (float) useBase.getSize());
+			} catch (Throwable ignored) {
+			}
 
 			boolean canPrimary;
-			try { canPrimary = useBase.canDisplay(cp); }
-			catch (Throwable ignored) { canPrimary = true; }
+			try {
+				canPrimary = useBase.canDisplay(cp);
+			} catch (Throwable ignored) {
+				canPrimary = true;
+			}
 			Font use = canPrimary ? useBase : useFallback;
 			int cw = 0;
-			try { cw = g.getFontMetrics(use).stringWidth(new String(Character.toChars(cp))); }
-			catch (Throwable ignored) { cw = 0; }
+			try {
+				cw = g.getFontMetrics(use).stringWidth(new String(Character.toChars(cp)));
+			} catch (Throwable ignored) {
+				cw = 0;
+			}
 
-			if (w + cw > maxWidth) break;
+			if (w + cw > maxWidth)
+				break;
 			w += cw;
 			i += len;
 			cutIndex = i;
 		}
 
-		if (cutIndex <= 0) return "";
+		if (cutIndex <= 0)
+			return "";
 		return s.substring(0, Math.min(cutIndex, s.length()));
 	}
 
-	private static int drawLegacyRunWithFallback(Graphics2D g, String text, int x, int y, Font baseFont, Font fallbackBase, Color color, int style) {
-		if (g == null) return 0;
-		if (text == null || text.isEmpty()) return 0;
+	private static int drawLegacyRunWithFallback(Graphics2D g, String text, int x, int y, Font baseFont,
+			Font fallbackBase, Color color, int style) {
+		if (g == null)
+			return 0;
+		if (text == null || text.isEmpty())
+			return 0;
 
 		Font base = (baseFont != null ? baseFont : g.getFont());
 		Font fallback = (fallbackBase != null ? fallbackBase : monoMatch(base));
 
 		Font runFont;
-		try { runFont = base.deriveFont(style); }
-		catch (Throwable ignored) { runFont = base; }
+		try {
+			runFont = base.deriveFont(style);
+		} catch (Throwable ignored) {
+			runFont = base;
+		}
 
 		Font runFallback = fallback;
-		try { runFallback = runFallback.deriveFont(style, (float) runFont.getSize()); }
-		catch (Throwable ignored) {}
+		try {
+			runFallback = runFallback.deriveFont(style, (float) runFont.getSize());
+		} catch (Throwable ignored) {
+		}
 
-		try { g.setColor(color != null ? color : Color.WHITE); } catch (Throwable ignored) {}
+		try {
+			g.setColor(color != null ? color : Color.WHITE);
+		} catch (Throwable ignored) {
+		}
 
-		try { drawStringWithFallback(g, text, x, y, runFont, runFallback); }
-		catch (Throwable ignored) {}
+		try {
+			drawStringWithFallback(g, text, x, y, runFont, runFallback);
+		} catch (Throwable ignored) {
+		}
 
-		try { return stringWidthWithFallback(g, text, runFont, runFallback); }
-		catch (Throwable ignored) { return 0; }
+		try {
+			return stringWidthWithFallback(g, text, runFont, runFallback);
+		} catch (Throwable ignored) {
+			return 0;
+		}
 	}
 
-	private static int flushLegacyRunWithFallback(Graphics2D g, StringBuilder run, int x, int y, Font baseFont, Font fallbackBase, Color color, int style) {
-		if (run == null || run.isEmpty()) return 0;
+	private static int flushLegacyRunWithFallback(Graphics2D g, StringBuilder run, int x, int y, Font baseFont,
+			Font fallbackBase, Color color, int style) {
+		if (run == null || run.isEmpty())
+			return 0;
 		int w = drawLegacyRunWithFallback(g, run.toString(), x, y, baseFont, fallbackBase, color, style);
-		try { run.setLength(0); } catch (Throwable ignored) {}
+		try {
+			run.setLength(0);
+		} catch (Throwable ignored) {
+		}
 		return w;
 	}
 
-	private static void drawLegacyStringWithFallback(Graphics2D g, String s, int x, int y, Font baseFont, Color defaultColor) {
-		if (g == null) return;
-		if (s == null || s.isEmpty()) return;
+	private static void drawLegacyStringWithFallback(Graphics2D g, String s, int x, int y, Font baseFont,
+			Color defaultColor) {
+		if (g == null)
+			return;
+		if (s == null || s.isEmpty())
+			return;
 
 		Font base = (baseFont != null ? baseFont : g.getFont());
 		int baseStyle = base.getStyle();
@@ -2564,10 +2974,12 @@ public final class LobbyBoardService {
 					curColor = (defaultColor != null ? defaultColor : Color.WHITE);
 					styleChanged = true;
 				} else if (lc == 'l') {
-					if (!bold) styleChanged = true;
+					if (!bold)
+						styleChanged = true;
 					bold = true;
 				} else if (lc == 'o') {
-					if (!italic) styleChanged = true;
+					if (!italic)
+						styleChanged = true;
 					italic = true;
 				} else {
 					// Ignore other formats (k, n, m, etc.)
@@ -2610,13 +3022,16 @@ public final class LobbyBoardService {
 	}
 
 	private static Font monoMatch(Font f) {
-		if (f == null) return new Font(Font.MONOSPACED, Font.PLAIN, 12);
+		if (f == null)
+			return new Font(Font.MONOSPACED, Font.PLAIN, 12);
 		return new Font(Font.MONOSPACED, f.getStyle(), f.getSize());
 	}
 
 	private static int stringWidthWithFallback(Graphics2D g, String s, Font primary, Font fallback) {
-		if (g == null) return 0;
-		if (s == null || s.isEmpty()) return 0;
+		if (g == null)
+			return 0;
+		if (s == null || s.isEmpty())
+			return 0;
 		Font p = (primary != null ? primary : g.getFont());
 		Font f = (fallback != null ? fallback : monoMatch(p));
 
@@ -2625,8 +3040,11 @@ public final class LobbyBoardService {
 			int cp = s.codePointAt(i);
 			int len = Character.charCount(cp);
 			boolean canPrimary;
-			try { canPrimary = p != null && p.canDisplay(cp); }
-			catch (Throwable ignored) { canPrimary = true; }
+			try {
+				canPrimary = p != null && p.canDisplay(cp);
+			} catch (Throwable ignored) {
+				canPrimary = true;
+			}
 			Font use = canPrimary ? p : f;
 			try {
 				w += g.getFontMetrics(use).stringWidth(new String(Character.toChars(cp)));
@@ -2639,8 +3057,10 @@ public final class LobbyBoardService {
 	}
 
 	private static void drawStringWithFallback(Graphics2D g, String s, int x, int y, Font primary, Font fallback) {
-		if (g == null) return;
-		if (s == null || s.isEmpty()) return;
+		if (g == null)
+			return;
+		if (s == null || s.isEmpty())
+			return;
 		Font p = (primary != null ? primary : g.getFont());
 		Font f = (fallback != null ? fallback : monoMatch(p));
 
@@ -2653,11 +3073,15 @@ public final class LobbyBoardService {
 			int len = Character.charCount(cp);
 
 			boolean canPrimary;
-			try { canPrimary = p != null && p.canDisplay(cp); }
-			catch (Throwable ignored) { canPrimary = true; }
+			try {
+				canPrimary = p != null && p.canDisplay(cp);
+			} catch (Throwable ignored) {
+				canPrimary = true;
+			}
 
 			Font use = canPrimary ? p : f;
-			if (runFont == null) runFont = use;
+			if (runFont == null)
+				runFont = use;
 
 			if (use != runFont) {
 				if (!run.isEmpty()) {
@@ -2680,9 +3104,12 @@ public final class LobbyBoardService {
 	}
 
 	private static String trimToWidthWithFallback(Graphics2D g, String s, int maxWidth, Font primary, Font fallback) {
-		if (g == null) return "";
-		if (s == null || s.isEmpty()) return "";
-		if (maxWidth <= 0) return "";
+		if (g == null)
+			return "";
+		if (s == null || s.isEmpty())
+			return "";
+		if (maxWidth <= 0)
+			return "";
 
 		String out = s;
 		while (!out.isEmpty() && stringWidthWithFallback(g, out, primary, fallback) > maxWidth) {
@@ -2701,39 +3128,51 @@ public final class LobbyBoardService {
 		// Countdown tracks are shown as summaries (no live ranking yet).
 		List<String> countdownLines = new ArrayList<>();
 
-		record Entry(String track, int pos, UUID id, String name, String meta) {}
+		record Entry(String track, int pos, UUID id, String name, String meta) {
+		}
 		List<Entry> entries = new ArrayList<>();
 
 		try {
 			for (RaceManager rm : raceService.allRaces()) {
-				if (rm == null) continue;
+				if (rm == null)
+					continue;
 				String track = "(không rõ)";
 				try {
 					String n = rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null;
-					if (n != null && !n.isBlank()) track = n;
-				} catch (Throwable ignored) {}
+					if (n != null && !n.isBlank())
+						track = n;
+				} catch (Throwable ignored) {
+				}
 
 				// Countdown (non-running) summary
 				try {
 					if (!rm.isRunning() && rm.isAnyCountdownActive()) {
 						int racers = 0;
-						try { racers = rm.getInvolved().size(); } catch (Throwable ignored2) { racers = 0; }
+						try {
+							racers = rm.getInvolved().size();
+						} catch (Throwable ignored2) {
+							racers = 0;
+						}
 
 						countdownLines.add("● " + track + "  [Đếm ngược]");
 						countdownLines.add("Người chơi: " + racers);
 						countdownLines.add("");
 					}
-				} catch (Throwable ignored) {}
+				} catch (Throwable ignored) {
+				}
 
-				if (!rm.isRunning()) continue;
+				if (!rm.isRunning())
+					continue;
 
 				List<UUID> order = rm.getLiveOrder();
 				int limit = Math.min(5, order.size());
 				for (int i = 0; i < limit; i++) {
 					UUID id = order.get(i);
-					if (id == null) continue;
+					if (id == null)
+						continue;
 					var st = rm.getParticipantState(id);
-					if (st != null && st.finished) continue;
+					if (st != null && st.finished)
+						continue;
 					String name = nameOf(id);
 
 					// Live telemetry: lap / checkpoint / total progress.
@@ -2752,42 +3191,57 @@ public final class LobbyBoardService {
 							totalCp = (rm.getTrackConfig() != null && rm.getTrackConfig().getCheckpoints() != null)
 									? rm.getTrackConfig().getCheckpoints().size()
 									: 0;
-						} catch (Throwable ignored2) { totalCp = 0; }
+						} catch (Throwable ignored2) {
+							totalCp = 0;
+						}
 
 						// Requested UX: use ✔ for checkpoint (yellow) and 🗘 for lap (green).
-						// Use &r to reset back to the default meta color (textDim) after each colored segment.
+						// Use &r to reset back to the default meta color (textDim) after each colored
+						// segment.
 						String lapPart = "&a🗘 " + lapCurrent + "/" + lapTotal + "&r";
 						String cpPart = (totalCp > 0)
-							? ("&e✔ " + Math.min(passedCp, totalCp) + "/" + totalCp + "&r")
-							: ("&e✔ -&r");
+								? ("&e✔ " + Math.min(passedCp, totalCp) + "/" + totalCp + "&r")
+								: ("&e✔ -&r");
 
 						double lapRatio = 0.0;
-						try { lapRatio = rm.getLapProgressRatio(id); } catch (Throwable ignored2) { lapRatio = 0.0; }
-						if (!Double.isFinite(lapRatio)) lapRatio = 0.0;
+						try {
+							lapRatio = rm.getLapProgressRatio(id);
+						} catch (Throwable ignored2) {
+							lapRatio = 0.0;
+						}
+						if (!Double.isFinite(lapRatio))
+							lapRatio = 0.0;
 						lapRatio = Math.max(0.0, Math.min(1.0, lapRatio));
 
-						double overall = ((st == null ? 0.0 : (double) Math.max(0, st.currentLap)) + lapRatio) / (double) lapTotal;
+						double overall = ((st == null ? 0.0 : (double) Math.max(0, st.currentLap)) + lapRatio)
+								/ (double) lapTotal;
 						overall = Math.max(0.0, Math.min(1.0, overall));
 						int pct = (int) Math.round(overall * 100.0);
 
 						meta = lapPart + "  " + cpPart + "  " + pct + "%";
-					} catch (Throwable ignored2) { meta = ""; }
+					} catch (Throwable ignored2) {
+						meta = "";
+					}
 
 					entries.add(new Entry(track, i + 1, id, name, meta));
 				}
 			}
-		} catch (Throwable ignored) {}
+		} catch (Throwable ignored) {
+		}
 
 		if (!countdownLines.isEmpty()) {
 			// Trim possible trailing blank
-			while (!countdownLines.isEmpty() && countdownLines.get(countdownLines.size() - 1).isBlank()) countdownLines.remove(countdownLines.size() - 1);
+			while (!countdownLines.isEmpty() && countdownLines.get(countdownLines.size() - 1).isBlank())
+				countdownLines.remove(countdownLines.size() - 1);
 			out.addAll(countdownLines);
 			// If there are also running races, we'll append them below.
-			if (!entries.isEmpty()) out.add("");
+			if (!entries.isEmpty())
+				out.add("");
 		}
 
 		if (entries.isEmpty()) {
-			if (out.isEmpty()) out.add("(Chưa có cuộc đua nào đang chạy)");
+			if (out.isEmpty())
+				out.add("(Chưa có cuộc đua nào đang chạy)");
 			return out;
 		}
 
@@ -2797,30 +3251,37 @@ public final class LobbyBoardService {
 		String currentTrack = null;
 		int lines = 0;
 		for (Entry e : entries) {
-			if (lines >= 18) break;
+			if (lines >= 18)
+				break;
 
 			if (currentTrack == null || !currentTrack.equalsIgnoreCase(e.track)) {
 				currentTrack = e.track;
 				if (!out.isEmpty()) {
 					out.add("");
 					lines++;
-					if (lines >= 18) break;
+					if (lines >= 18)
+						break;
 				}
 				out.add("● " + currentTrack.toUpperCase(Locale.ROOT));
 				lines++;
-				if (lines >= 18) break;
+				if (lines >= 18)
+					break;
 			}
 
 			String racer = e.name;
 			try {
 				if (profileManager != null) {
-					// Keep legacy color codes so the ranking renderer can show colored racer display.
+					// Keep legacy color codes so the ranking renderer can show colored racer
+					// display.
 					racer = profileManager.formatRacerLegacy(e.id, e.name);
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 			String meta = e.meta;
-			if (meta != null && !meta.isBlank()) out.add(e.pos + ") " + racer + "  " + meta);
-			else out.add(e.pos + ") " + racer);
+			if (meta != null && !meta.isBlank())
+				out.add(e.pos + ") " + racer + "  " + meta);
+			else
+				out.add(e.pos + ") " + racer);
 			lines++;
 		}
 
@@ -2828,20 +3289,30 @@ public final class LobbyBoardService {
 	}
 
 	private static boolean isRaceFullyCompleted(RaceManager rm) {
-		if (rm == null) return false;
+		if (rm == null)
+			return false;
 		// Only treat as completed when it's in an idle (post-race) state.
 		try {
-			if (rm.isRunning()) return false;
-			if (rm.isAnyCountdownActive()) return false;
-			if (rm.isRegistering()) return false;
-		} catch (Throwable ignored) {}
+			if (rm.isRunning())
+				return false;
+			if (rm.isAnyCountdownActive())
+				return false;
+			if (rm.isRegistering())
+				return false;
+		} catch (Throwable ignored) {
+		}
 
 		java.util.List<RaceManager.ParticipantState> standings;
-		try { standings = rm.getStandings(); }
-		catch (Throwable t) { standings = java.util.Collections.emptyList(); }
-		if (standings == null || standings.isEmpty()) return false;
+		try {
+			standings = rm.getStandings();
+		} catch (Throwable t) {
+			standings = java.util.Collections.emptyList();
+		}
+		if (standings == null || standings.isEmpty())
+			return false;
 		for (RaceManager.ParticipantState s : standings) {
-			if (s == null || !s.finished) return false;
+			if (s == null || !s.finished)
+				return false;
 		}
 		return true;
 	}
@@ -2856,15 +3327,20 @@ public final class LobbyBoardService {
 		String track = "(không rõ)";
 		try {
 			String n = rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null;
-			if (n != null && !n.isBlank()) track = n;
-		} catch (Throwable ignored) {}
+			if (n != null && !n.isBlank())
+				track = n;
+		} catch (Throwable ignored) {
+		}
 
 		// Use a track header row style, then emit full standings (one row per racer).
 		out.add("● " + track.toUpperCase(java.util.Locale.ROOT));
 
 		java.util.List<RaceManager.ParticipantState> standings;
-		try { standings = rm.getStandings(); }
-		catch (Throwable t) { standings = java.util.Collections.emptyList(); }
+		try {
+			standings = rm.getStandings();
+		} catch (Throwable t) {
+			standings = java.util.Collections.emptyList();
+		}
 
 		if (standings == null || standings.isEmpty()) {
 			out.add("(Chưa có kết quả)");
@@ -2873,9 +3349,11 @@ public final class LobbyBoardService {
 
 		for (int i = 0; i < standings.size(); i++) {
 			RaceManager.ParticipantState s = standings.get(i);
-			if (s == null) continue;
+			if (s == null)
+				continue;
 			UUID id = s.id;
-			if (id == null) continue;
+			if (id == null)
+				continue;
 
 			String name = nameOf(id);
 			String racer = name;
@@ -2883,24 +3361,34 @@ public final class LobbyBoardService {
 				if (profileManager != null) {
 					racer = profileManager.formatRacerLegacy(id, name);
 				}
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			long finishMs = 0L;
 			try {
-				finishMs = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + (long) Math.max(0, s.penaltySeconds) * 1000L;
-			} catch (Throwable ignored) { finishMs = 0L; }
+				finishMs = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis())
+						+ (long) Math.max(0, s.penaltySeconds) * 1000L;
+			} catch (Throwable ignored) {
+				finishMs = 0L;
+			}
 
 			String meta = "";
 			try {
 				meta = "&e⌚ " + dev.belikhun.boatracing.util.Time.formatStopwatchMillis(finishMs) + "&r";
 				if (s.penaltySeconds > 0) {
-					meta += "  &c(+" + dev.belikhun.boatracing.util.Time.formatStopwatchMillis((long) s.penaltySeconds * 1000L) + ")&r";
+					meta += "  &c(+"
+							+ dev.belikhun.boatracing.util.Time.formatStopwatchMillis((long) s.penaltySeconds * 1000L)
+							+ ")&r";
 				}
-			} catch (Throwable ignored) { meta = ""; }
+			} catch (Throwable ignored) {
+				meta = "";
+			}
 
 			int pos = i + 1;
-			if (meta != null && !meta.isBlank()) out.add(pos + ") " + racer + "  " + meta);
-			else out.add(pos + ") " + racer);
+			if (meta != null && !meta.isBlank())
+				out.add(pos + ") " + racer + "  " + meta);
+			else
+				out.add(pos + ") " + racer);
 		}
 
 		return out;
@@ -2909,18 +3397,23 @@ public final class LobbyBoardService {
 	private static String nameOf(UUID id) {
 		try {
 			var op = Bukkit.getOfflinePlayer(id);
-			if (op != null && op.getName() != null) return op.getName();
-		} catch (Throwable ignored) {}
+			if (op != null && op.getName() != null)
+				return op.getName();
+		} catch (Throwable ignored) {
+		}
 		return id.toString().substring(0, 8);
 	}
 
 	private static void drawTrimmed(Graphics2D g, String line, int x, int y, int maxWidth) {
-		if (g == null) return;
-		if (line == null) line = "";
+		if (g == null)
+			return;
+		if (line == null)
+			line = "";
 		String s = line;
 		Font primary = g.getFont();
 		Font fallback = monoMatch(primary);
-		if (maxWidth <= 0) return;
+		if (maxWidth <= 0)
+			return;
 
 		// Fast path
 		if (stringWidthWithFallback(g, s, primary, fallback) <= maxWidth) {
@@ -2941,7 +3434,8 @@ public final class LobbyBoardService {
 	}
 
 	private static BlockFace normalizeCardinal(BlockFace face) {
-		if (face == null) return null;
+		if (face == null)
+			return null;
 		return switch (face) {
 			case NORTH, SOUTH, EAST, WEST -> face;
 			default -> null;
@@ -2949,9 +3443,11 @@ public final class LobbyBoardService {
 	}
 
 	private static boolean isWithinRadiusChunks(Player p, BoardPlacement pl, int radiusChunks) {
-		if (p == null || pl == null || !pl.isValid()) return false;
+		if (p == null || pl == null || !pl.isValid())
+			return false;
 		World w = p.getWorld();
-		if (w == null || pl.world == null || !w.getName().equals(pl.world)) return false;
+		if (w == null || pl.world == null || !w.getName().equals(pl.world))
+			return false;
 
 		int pcx = p.getLocation().getBlockX() >> 4;
 		int pcz = p.getLocation().getBlockZ() >> 4;
@@ -2963,26 +3459,32 @@ public final class LobbyBoardService {
 	}
 
 	private static void tryInvoke(Object target, String method, Object... args) {
-		if (target == null || method == null) return;
+		if (target == null || method == null)
+			return;
 		try {
 			Class<?>[] sig = new Class<?>[args.length];
-			for (int i = 0; i < args.length; i++) sig[i] = args[i].getClass();
+			for (int i = 0; i < args.length; i++)
+				sig[i] = args[i].getClass();
 
 			// Try exact match first
 			try {
 				var m = target.getClass().getMethod(method, sig);
 				m.invoke(target, args);
 				return;
-			} catch (Throwable ignored) {}
+			} catch (Throwable ignored) {
+			}
 
 			// Fallback: match by name + arg count
 			for (var m : target.getClass().getMethods()) {
-				if (!m.getName().equals(method)) continue;
-				if (m.getParameterCount() != args.length) continue;
+				if (!m.getName().equals(method))
+					continue;
+				if (m.getParameterCount() != args.length)
+					continue;
 				m.invoke(target, args);
 				return;
 			}
-		} catch (Throwable ignored) {}
+		} catch (Throwable ignored) {
+		}
 	}
 
 	public static final class BoardPlacement {
@@ -2994,7 +3496,8 @@ public final class LobbyBoardService {
 		private final int mapsWide;
 		private final int mapsHigh;
 
-		private BoardPlacement(String world, BlockVector a, BlockVector b, BlockFace facing, int mapsWide, int mapsHigh) {
+		private BoardPlacement(String world, BlockVector a, BlockVector b, BlockFace facing, int mapsWide,
+				int mapsHigh) {
 			this.world = world;
 			this.a = a;
 			this.b = b;
@@ -3004,11 +3507,17 @@ public final class LobbyBoardService {
 		}
 
 		public boolean isValid() {
-			return world != null && !world.isBlank() && a != null && b != null && facing != null && mapsWide > 0 && mapsHigh > 0;
+			return world != null && !world.isBlank() && a != null && b != null && facing != null && mapsWide > 0
+					&& mapsHigh > 0;
 		}
 
-		public int pixelWidth() { return mapsWide * 128; }
-		public int pixelHeight() { return mapsHigh * 128; }
+		public int pixelWidth() {
+			return mapsWide * 128;
+		}
+
+		public int pixelHeight() {
+			return mapsHigh * 128;
+		}
 
 		public int centerBlockX() {
 			return (a.getBlockX() + b.getBlockX()) / 2;
@@ -3019,15 +3528,20 @@ public final class LobbyBoardService {
 		}
 
 		public static BoardPlacement load(ConfigurationSection sec) {
-			if (sec == null) return null;
+			if (sec == null)
+				return null;
 			ConfigurationSection p = sec.getConfigurationSection("placement");
-			if (p == null) return null;
+			if (p == null)
+				return null;
 			try {
 				String world = p.getString("world");
 				String facingRaw = p.getString("facing", "NORTH");
 				BlockFace facing;
-				try { facing = BlockFace.valueOf(facingRaw.toUpperCase(Locale.ROOT)); }
-				catch (Throwable ignored) { facing = BlockFace.NORTH; }
+				try {
+					facing = BlockFace.valueOf(facingRaw.toUpperCase(Locale.ROOT));
+				} catch (Throwable ignored) {
+					facing = BlockFace.NORTH;
+				}
 
 				int ax = p.getInt("a.x");
 				int ay = p.getInt("a.y");
@@ -3055,7 +3569,8 @@ public final class LobbyBoardService {
 		}
 
 		public void save(ConfigurationSection sec) {
-			if (sec == null) return;
+			if (sec == null)
+				return;
 			sec.set("world", world);
 			sec.set("facing", facing.name());
 
@@ -3072,10 +3587,12 @@ public final class LobbyBoardService {
 		}
 
 		public static BoardPlacement fromSelection(World w, org.bukkit.util.BoundingBox box, BlockFace facing) {
-			if (w == null || box == null || facing == null) return null;
+			if (w == null || box == null || facing == null)
+				return null;
 
 			BlockFace dir = normalizeCardinal(facing);
-			if (dir == null) return null;
+			if (dir == null)
+				return null;
 
 			int minX = (int) Math.floor(Math.min(box.getMinX(), box.getMaxX()));
 			int maxX = (int) Math.floor(Math.max(box.getMinX(), box.getMaxX()));
@@ -3091,33 +3608,57 @@ public final class LobbyBoardService {
 			int ax, ay, az, bx, by, bz;
 			if (dir == BlockFace.NORTH) {
 				int z = minZ;
-				ax = minX; ay = minY; az = z;
-				bx = maxX; by = maxY; bz = z;
+				ax = minX;
+				ay = minY;
+				az = z;
+				bx = maxX;
+				by = maxY;
+				bz = z;
 			} else if (dir == BlockFace.SOUTH) {
 				int z = maxZ;
-				ax = minX; ay = minY; az = z;
-				bx = maxX; by = maxY; bz = z;
+				ax = minX;
+				ay = minY;
+				az = z;
+				bx = maxX;
+				by = maxY;
+				bz = z;
 			} else if (dir == BlockFace.WEST) {
 				int x = minX;
-				ax = x; ay = minY; az = minZ;
-				bx = x; by = maxY; bz = maxZ;
+				ax = x;
+				ay = minY;
+				az = minZ;
+				bx = x;
+				by = maxY;
+				bz = maxZ;
 			} else { // EAST
 				int x = maxX;
-				ax = x; ay = minY; az = minZ;
-				bx = x; by = maxY; bz = maxZ;
+				ax = x;
+				ay = minY;
+				az = minZ;
+				bx = x;
+				by = maxY;
+				bz = maxZ;
 			}
 
-			// IMPORTANT: If the selection is filled with blocks (e.g., black concrete screen),
+			// IMPORTANT: If the selection is filled with blocks (e.g., black concrete
+			// screen),
 			// placing the display ON the plane will embed it inside the blocks.
-			// Push the plane 1 block outward in the facing direction so it sits in front of the surface.
+			// Push the plane 1 block outward in the facing direction so it sits in front of
+			// the surface.
 			int offX = 0;
 			int offZ = 0;
-			if (dir == BlockFace.NORTH) offZ = -1;
-			else if (dir == BlockFace.SOUTH) offZ = 1;
-			else if (dir == BlockFace.WEST) offX = -1;
-			else if (dir == BlockFace.EAST) offX = 1;
-			ax += offX; bx += offX;
-			az += offZ; bz += offZ;
+			if (dir == BlockFace.NORTH)
+				offZ = -1;
+			else if (dir == BlockFace.SOUTH)
+				offZ = 1;
+			else if (dir == BlockFace.WEST)
+				offX = -1;
+			else if (dir == BlockFace.EAST)
+				offX = 1;
+			ax += offX;
+			bx += offX;
+			az += offZ;
+			bz += offZ;
 
 			BlockVector a = new BlockVector(ax, ay, az);
 			BlockVector b = new BlockVector(bx, by, bz);
@@ -3138,7 +3679,8 @@ public final class LobbyBoardService {
 			}
 
 			// Do not enforce an arbitrary size cap here.
-			// The placement selection determines the board size; MapEngine will be the practical limit.
+			// The placement selection determines the board size; MapEngine will be the
+			// practical limit.
 			wide = Math.max(1, wide);
 			high = Math.max(1, high);
 			return new int[] { wide, high };
