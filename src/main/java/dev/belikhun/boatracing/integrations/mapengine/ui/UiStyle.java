@@ -6,6 +6,8 @@ import java.awt.Color;
  * Small CSS-like style bag. All lengths are pixels.
  */
 public final class UiStyle {
+	// When false, the element is removed from both rendering and layout (takes no space).
+	private boolean display = true;
 	private UiInsets margin = UiInsets.none();
 	private UiInsets padding = UiInsets.none();
 	private Integer widthPx;
@@ -14,6 +16,7 @@ public final class UiStyle {
 	private Color borderColor;
 	private int borderWidthPx = 0;
 
+	public boolean display() { return display; }
 	public UiInsets margin() { return margin; }
 	public UiInsets padding() { return padding; }
 	public Integer widthPx() { return widthPx; }
@@ -22,6 +25,7 @@ public final class UiStyle {
 	public Color borderColor() { return borderColor; }
 	public int borderWidthPx() { return borderWidthPx; }
 
+	public UiStyle display(boolean v) { this.display = v; return this; }
 	public UiStyle margin(UiInsets v) { this.margin = v == null ? UiInsets.none() : v; return this; }
 	public UiStyle padding(UiInsets v) { this.padding = v == null ? UiInsets.none() : v; return this; }
 	public UiStyle widthPx(Integer v) { this.widthPx = v; return this; }

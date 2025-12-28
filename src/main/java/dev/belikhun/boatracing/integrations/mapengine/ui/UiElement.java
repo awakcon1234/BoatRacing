@@ -12,6 +12,9 @@ public abstract class UiElement {
 	public UiRect rect() { return layoutRect; }
 
 	public final UiMeasure measure(UiRenderContext ctx, int maxWidth, int maxHeight) {
+		if (!style.display()) {
+			return UiMeasure.of(0, 0);
+		}
 		UiMeasure m = onMeasure(ctx, Math.max(0, maxWidth), Math.max(0, maxHeight));
 		Integer forcedW = style.widthPx();
 		Integer forcedH = style.heightPx();
@@ -23,6 +26,10 @@ public abstract class UiElement {
 	protected abstract UiMeasure onMeasure(UiRenderContext ctx, int maxWidth, int maxHeight);
 
 	public final void layout(UiRenderContext ctx, int x, int y, int w, int h) {
+		if (!style.display()) {
+			layoutRect = new UiRect(x, y, 0, 0);
+			return;
+		}
 		layoutRect = new UiRect(x, y, Math.max(0, w), Math.max(0, h));
 		onLayout(ctx, layoutRect);
 	}
@@ -32,6 +39,9 @@ public abstract class UiElement {
 	}
 
 	public final void render(UiRenderContext ctx) {
+		if (!style.display()) {
+			return;
+		}
 		paintBackgroundAndBorder(ctx);
 		onRender(ctx);
 	}

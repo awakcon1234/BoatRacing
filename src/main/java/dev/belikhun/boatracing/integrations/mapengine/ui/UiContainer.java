@@ -15,4 +15,8 @@ public abstract class UiContainer extends UiElement {
 		if (child != null) children.add(child);
 		return child;
 	}
+
+	public void clear() {
+		children.clear();
+	}
 }

@@ -21,6 +21,7 @@ import dev.belikhun.boatracing.integrations.mapengine.ui.UiElement;
 import dev.belikhun.boatracing.integrations.mapengine.ui.UiInsets;
 import dev.belikhun.boatracing.integrations.mapengine.ui.UiJustify;
 import dev.belikhun.boatracing.integrations.mapengine.ui.UiRenderContext;
+import dev.belikhun.boatracing.integrations.mapengine.ui.UiRect;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -59,6 +60,28 @@ public final class LobbyBoardService {
 	// Icons used on the lobby board UI (Unicode). These are rendered with font fallback.
     private static final String ICON_INFO = "ⓘ";
 	private static final String ICON_CLOCK = "⏰";
+
+    // ===================== Render backbuffer reuse =====================
+    // Creating a full-size BufferedImage every tick is extremely allocation-heavy and causes GC/memory spikes.
+    // We keep 2 reusable backbuffers and alternate between them to avoid downstream code retaining the same
+    // image reference across ticks.
+    private final BufferedImage[] renderBuffers = new BufferedImage[2];
+    private int renderBufferW = -1;
+    private int renderBufferH = -1;
+    private int renderBufferCursor = 0;
+
+    private BufferedImage acquireRenderBuffer(int w, int h) {
+        int ww = Math.max(1, w);
+        int hh = Math.max(1, h);
+        if (ww != renderBufferW || hh != renderBufferH || renderBuffers[0] == null || renderBuffers[1] == null) {
+            renderBufferW = ww;
+            renderBufferH = hh;
+            renderBuffers[0] = new BufferedImage(ww, hh, BufferedImage.TYPE_INT_ARGB);
+            renderBuffers[1] = new BufferedImage(ww, hh, BufferedImage.TYPE_INT_ARGB);
+        }
+        renderBufferCursor = (renderBufferCursor + 1) & 1;
+        return renderBuffers[renderBufferCursor];
+    }
 
     // Inner padding for left track rows (moves the leading status dot away from the border)
     private static final int TRACK_ROW_INNER_PAD = 8;
@@ -104,9 +127,17 @@ public final class LobbyBoardService {
     private String fontFile;
     private volatile Font boardFontBase;
 
+    // Cached, DOM-like UI tree to avoid rebuilding UI elements every tick.
+    // Rebuilt only when board size or font sizing changes.
+    private UiCache uiCache;
+
     private long lastDebugTickLogMillis = 0L;
 
     private final Set<UUID> spawnedTo = new HashSet<>();
+
+    private void invalidateUiCache() {
+        uiCache = null;
+    }
 
     public LobbyBoardService(BoatRacingPlugin plugin) {
         this.plugin = plugin;
@@ -140,6 +171,9 @@ public final class LobbyBoardService {
         this.fontFile = ff;
         this.boardFontBase = null;
         tryLoadBoardFont();
+
+        // Config or font changes can affect layout; rebuild cached UI next render.
+        invalidateUiCache();
     }
 
     public void start() {
@@ -192,6 +226,9 @@ public final class LobbyBoardService {
             display = null;
         }
         drawing = null;
+
+        // Drop cached UI tree so it can be rebuilt with a clean state next start.
+        invalidateUiCache();
 
         dbg("stop(): stopped");
     }
@@ -1064,34 +1101,18 @@ public final class LobbyBoardService {
         Font smallFont = boardPlain(footerSize);
         Font fallbackFont = monoMatch(bodyFont);
 
-        UiElement root = buildLobbyUiTree(
-                w,
-                h,
-                tracks,
-                focused,
-                uiScale,
-                bodySize,
-                pad,
-                border,
-                inset,
-                bg0,
-                panel,
-                panel2,
-                borderC,
-                accent,
-                text,
-                textDim,
-                titleFont,
-                headerFont,
-                bodyFont,
-                smallFont,
-                fallbackFont
-        );
-
         // Render with crisp-ish settings (legacy used AA OFF). Keep scoped to the lobby board.
-        BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage img = acquireRenderBuffer(w, h);
         Graphics2D g = img.createGraphics();
         try {
+            // Clear previous frame (required when reusing a backbuffer).
+            try {
+                g.setComposite(java.awt.AlphaComposite.Src);
+                g.setColor(new Color(0, 0, 0, 0));
+                g.fillRect(0, 0, w, h);
+                g.setComposite(java.awt.AlphaComposite.SrcOver);
+            } catch (Throwable ignored) {}
+
             UiRenderContext ctx = new UiRenderContext(g, bodyFont, fallbackFont, text);
             ctx.applyDefaultHints();
 
@@ -1101,10 +1122,76 @@ public final class LobbyBoardService {
                 g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_OFF);
             } catch (Throwable ignored) {}
 
+            // Compute font metrics using the REAL render Graphics2D.
+            // This avoids the per-render scratch BufferedImage(1x1) allocation.
+            java.awt.FontMetrics fmTitle;
+            java.awt.FontMetrics fmHeader;
+            java.awt.FontMetrics fmBody;
+            java.awt.FontMetrics fmSmall;
+            try {
+                fmTitle = g.getFontMetrics(titleFont != null ? titleFont : g.getFont());
+                fmHeader = g.getFontMetrics(headerFont != null ? headerFont : g.getFont());
+                fmBody = g.getFontMetrics(bodyFont != null ? bodyFont : g.getFont());
+                fmSmall = g.getFontMetrics(smallFont != null ? smallFont : g.getFont());
+            } catch (Throwable t) {
+                fmTitle = g.getFontMetrics();
+                fmHeader = g.getFontMetrics();
+                fmBody = g.getFontMetrics();
+                fmSmall = g.getFontMetrics();
+            }
+
+            // Cached UI tree: rebuild only when geometry/fonts change.
+            UiCache cache = uiCache;
+            boolean needsRebuild = cache == null
+                    || cache.w != w
+                    || cache.h != h
+                    || cache.bodySize != bodySize
+                    || cache.pad != pad
+                    || cache.border != border
+                    || cache.inset != inset
+                    || cache.baseFontRef != boardFontBase;
+
+            if (needsRebuild) {
+                cache = new UiCache(
+                        w,
+                        h,
+                        uiScale,
+                        bodySize,
+                        pad,
+                        border,
+                        inset,
+                        titleFont,
+                        headerFont,
+                        bodyFont,
+                        smallFont,
+                        fallbackFont,
+                        fmTitle,
+                        fmHeader,
+                        fmBody,
+                        fmSmall,
+                        boardFontBase
+                );
+                uiCache = cache;
+            }
+
+            cache.updateFrame(
+                    tracks,
+                    focused,
+                    bg0,
+                    panel,
+                    panel2,
+                    borderC,
+                    accent,
+                    text,
+                    textDim,
+                    fmBody,
+                    fmSmall
+            );
+
             if (bodyFont != null) g.setFont(bodyFont);
-            if (root != null) {
-                root.layout(ctx, 0, 0, w, h);
-                root.render(ctx);
+            if (cache.root != null) {
+                cache.root.layout(ctx, 0, 0, w, h);
+                cache.root.render(ctx);
             }
         } finally {
             try { g.dispose(); } catch (Throwable ignored) {}
@@ -1112,230 +1199,800 @@ public final class LobbyBoardService {
         return img;
     }
 
-    private UiElement buildLobbyUiTree(
-            int w,
-            int h,
-            List<TrackInfo> tracks,
-            TrackInfo focused,
-            double uiScale,
-            int bodySize,
-            int pad,
-            int border,
-            int inset,
-            Color bg0,
-            Color panel,
-            Color panel2,
-            Color borderC,
-            Color accent,
-            Color text,
-            Color textDim,
-            Font titleFont,
-            Font headerFont,
-            Font bodyFont,
-            Font smallFont,
-            Font fallbackFont
-    ) {
-        // Pre-compute font metrics using a scratch Graphics2D.
-        BufferedImage tmp = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g = tmp.createGraphics();
-        java.awt.FontMetrics fmTitle;
-        java.awt.FontMetrics fmHeader;
-        java.awt.FontMetrics fmBody;
-        java.awt.FontMetrics fmSmall;
-        try {
-            if (titleFont != null) g.setFont(titleFont);
-            fmTitle = g.getFontMetrics();
-            if (headerFont != null) g.setFont(headerFont);
-            fmHeader = g.getFontMetrics();
-            if (bodyFont != null) g.setFont(bodyFont);
-            fmBody = g.getFontMetrics();
-            if (smallFont != null) g.setFont(smallFont);
-            fmSmall = g.getFontMetrics();
-        } finally {
-            try { g.dispose(); } catch (Throwable ignored) {}
+    /**
+     * Cached UI tree + dynamic element bindings.
+     * The tree is built once and then only updated with changing values per tick.
+     */
+    private final class UiCache {
+        final int w;
+        final int h;
+        final double uiScale;
+        final int bodySize;
+        final int pad;
+        final int border;
+        final int inset;
+
+        final Font titleFont;
+        final Font headerFont;
+        final Font bodyFont;
+        final Font smallFont;
+        final Font fallbackFont;
+
+        final java.awt.FontMetrics fmTitle;
+        final java.awt.FontMetrics fmHeader;
+        final java.awt.FontMetrics fmBody;
+        final java.awt.FontMetrics fmSmall;
+
+        final Font baseFontRef;
+
+        final ColumnContainer root;
+
+        final ColumnContainer titleBar;
+        final GraphicsElement titleStripe;
+        final TextElement titleText;
+
+        final ColumnContainer headerBox;
+        final RowContainer headerRow;
+        final TextElement leftHeader;
+        final TextElement rightHeader;
+        final GraphicsElement headerStripe;
+
+        final ColumnContainer mainPanel;
+        final RowContainer mainRow;
+
+        final ColumnContainer leftCol;
+        final TextElement leftEmptyA;
+        final TextElement leftEmptyB;
+        final TrackSlot[] trackSlots;
+        final TextElement leftHint1;
+        final TextElement leftHint2;
+
+        final ColumnContainer rightCol;
+        final GraphicsElement rightMap;
+        final RightLineSlot[] rightLineSlots;
+
+        final GraphicsElement footer;
+
+        final java.util.concurrent.atomic.AtomicReference<Color> accentRef = new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.atomic.AtomicReference<Color> textRef = new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.atomic.AtomicReference<Color> textDimRef = new java.util.concurrent.atomic.AtomicReference<>();
+        final java.util.concurrent.atomic.AtomicReference<Color> borderRef = new java.util.concurrent.atomic.AtomicReference<>();
+
+        UiCache(
+                int w,
+                int h,
+                double uiScale,
+                int bodySize,
+                int pad,
+                int border,
+                int inset,
+                Font titleFont,
+                Font headerFont,
+                Font bodyFont,
+                Font smallFont,
+                Font fallbackFont,
+                java.awt.FontMetrics fmTitle,
+                java.awt.FontMetrics fmHeader,
+                java.awt.FontMetrics fmBody,
+                java.awt.FontMetrics fmSmall,
+                Font baseFontRef
+        ) {
+            this.w = w;
+            this.h = h;
+            this.uiScale = uiScale;
+            this.bodySize = bodySize;
+            this.pad = pad;
+            this.border = border;
+            this.inset = inset;
+            this.titleFont = titleFont;
+            this.headerFont = headerFont;
+            this.bodyFont = bodyFont;
+            this.smallFont = smallFont;
+            this.fallbackFont = fallbackFont;
+            this.fmTitle = fmTitle;
+            this.fmHeader = fmHeader;
+            this.fmBody = fmBody;
+            this.fmSmall = fmSmall;
+            this.baseFontRef = baseFontRef;
+
+            // Precompute shared sizing.
+            int rowH = fmBody.getHeight() + Math.max(2, (int) Math.round(bodySize * 0.12));
+            int trackInnerPad = trackRowInnerPad(bodyFont);
+
+            int titleBarH = Math.max(fmTitle.getHeight() + Math.max(8, border * 3), (int) Math.round(bodySize * 2.2));
+            int headerRowH = Math.max(rowH, fmHeader.getHeight() + Math.max(6, border * 2));
+            int headerStripeH = Math.min(headerRowH, Math.max(3, border + 1));
+            int titleStripeH = Math.max(3, border + 1);
+
+            int footerPadV = Math.max(6, (int) Math.round(bodySize * 0.35));
+            int footerBoxH = fmSmall.getHeight() + footerPadV;
+
+            int gapAfterTitle = Math.max(10, (int) Math.round(bodySize * 0.9));
+            int gapAfterHeader = Math.max(10, (int) Math.round(bodySize * 0.6));
+            int gapBeforeFooter = Math.max(8, (int) Math.round(bodySize * 0.50));
+
+            int innerH = Math.max(0, h - (inset * 2));
+            int used = titleBarH + gapAfterTitle + headerRowH + gapAfterHeader + gapBeforeFooter + footerBoxH;
+            int panelH = Math.max(0, innerH - used);
+
+            int colW = (w / 2) - (pad * 2);
+
+            // Root column.
+            ColumnContainer root = new ColumnContainer()
+                    .alignItems(UiAlign.STRETCH)
+                    .justifyContent(UiJustify.START);
+            root.style().padding(UiInsets.all(inset));
+            this.root = root;
+
+            // Title bar.
+            ColumnContainer titleBar = new ColumnContainer().alignItems(UiAlign.STRETCH);
+            titleBar.style().heightPx(titleBarH);
+            this.titleBar = titleBar;
+
+            GraphicsElement titleStripe = new GraphicsElement((ctx, rect) -> {
+                if (ctx == null || ctx.g == null) return;
+                Color a = accentRef.get();
+                if (a == null) return;
+                ctx.g.setColor(a);
+                ctx.g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
+            });
+            titleStripe.style().heightPx(titleStripeH);
+            this.titleStripe = titleStripe;
+            titleBar.add(titleStripe);
+
+            TextElement titleText = new TextElement("BẢNG THÔNG TIN SẢNH")
+                    .font(titleFont)
+                    .align(TextElement.Align.CENTER)
+                    .ellipsis(false);
+            titleText.style().padding(UiInsets.symmetric(0, pad));
+            this.titleText = titleText;
+            titleBar.add(titleText);
+            root.add(titleBar);
+            root.add(spacer(gapAfterTitle));
+
+            // Header.
+            ColumnContainer headerBox = new ColumnContainer().alignItems(UiAlign.STRETCH);
+            headerBox.style().heightPx(headerRowH);
+            this.headerBox = headerBox;
+
+            RowContainer headerRow = new RowContainer()
+                    .alignItems(UiAlign.CENTER)
+                    .justifyContent(UiJustify.START)
+                    .gap(2 * pad);
+            headerRow.style().padding(UiInsets.symmetric(0, Math.max(0, pad - inset)));
+            this.headerRow = headerRow;
+
+            TextElement leftHeader = new TextElement("ĐƯỜNG ĐUA")
+                    .font(headerFont)
+                    .align(TextElement.Align.LEFT)
+                    .ellipsis(false);
+            leftHeader.style().widthPx(colW);
+            this.leftHeader = leftHeader;
+
+            TextElement rightHeader = new TextElement("BẢNG XẾP HẠNG")
+                    .font(headerFont)
+                    .align(TextElement.Align.LEFT)
+                    .ellipsis(false);
+            rightHeader.style().widthPx(colW);
+            this.rightHeader = rightHeader;
+
+            headerRow.add(leftHeader);
+            headerRow.add(rightHeader);
+            headerBox.add(headerRow);
+
+            GraphicsElement headerStripe = new GraphicsElement((ctx, rect) -> {
+                if (ctx == null || ctx.g == null) return;
+                Color a = accentRef.get();
+                if (a == null) return;
+                ctx.g.setColor(a);
+                ctx.g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
+            });
+            headerStripe.style().heightPx(headerStripeH);
+            this.headerStripe = headerStripe;
+            headerBox.add(headerStripe);
+            root.add(headerBox);
+            root.add(spacer(gapAfterHeader));
+
+            // Main panel.
+            ColumnContainer mainPanel = new ColumnContainer().alignItems(UiAlign.STRETCH);
+            mainPanel.style().heightPx(panelH).padding(UiInsets.symmetric(6, 0));
+            this.mainPanel = mainPanel;
+
+            RowContainer mainRow = new RowContainer()
+                    .alignItems(UiAlign.STRETCH)
+                    .justifyContent(UiJustify.START)
+                    .gap(2 * pad);
+            mainRow.style().padding(UiInsets.symmetric(0, Math.max(0, pad - inset)));
+            this.mainRow = mainRow;
+
+            // Left column: cached track slots.
+            ColumnContainer leftCol = new ColumnContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+            int blockGap = Math.max(6, rowH / 3);
+            leftCol.gap(blockGap);
+            leftCol.style().widthPx(colW);
+            this.leftCol = leftCol;
+
+            TextElement emptyA = new TextElement("(Chưa có đường đua)")
+                    .font(bodyFont)
+                    .align(TextElement.Align.LEFT)
+                    .ellipsis(true);
+            TextElement emptyB = new TextElement("Dùng /boatracing setup để tạo.")
+                    .font(smallFont)
+                    .align(TextElement.Align.LEFT)
+                    .ellipsis(true);
+            emptyA.style().display(false);
+            emptyB.style().display(false);
+            this.leftEmptyA = emptyA;
+            this.leftEmptyB = emptyB;
+            leftCol.add(emptyA);
+            leftCol.add(emptyB);
+
+            // Compute a safe maximum number of track slots for this panel size.
+            int blockPadV = Math.max(4, (int) Math.round(bodyFont.getSize() * 0.22));
+            int minSmallLines = 1;
+            int minBlockH = rowH + (fmSmall.getHeight() * minSmallLines) + blockPadV;
+            int hintLines = 2;
+            int hintH = hintLines * fmSmall.getHeight() + 10;
+            int contentH = Math.max(0, panelH - 12);
+            int availableH = Math.max(0, contentH - hintH);
+            int maxSlots = Math.max(1, availableH / Math.max(1, minBlockH + blockGap));
+            maxSlots = clamp(maxSlots + 1, 1, 32);
+
+            TrackSlot[] slots = new TrackSlot[maxSlots];
+            for (int i = 0; i < maxSlots; i++) {
+                slots[i] = new TrackSlot(colW, rowH, trackInnerPad);
+                slots[i].block.style().display(false);
+                leftCol.add(slots[i].block);
+            }
+            this.trackSlots = slots;
+
+            TextElement hint1 = new TextElement("Dùng: /boatracing race join <tên>")
+                    .font(smallFont)
+                    .align(TextElement.Align.LEFT)
+                    .ellipsis(true);
+            TextElement hint2 = new TextElement("")
+                    .font(smallFont)
+                    .align(TextElement.Align.LEFT)
+                    .ellipsis(true);
+            hint1.style().display(false);
+            hint2.style().display(false);
+            this.leftHint1 = hint1;
+            this.leftHint2 = hint2;
+            leftCol.add(hint1);
+            leftCol.add(hint2);
+
+            // Right column: cached map + cached line slots.
+            ColumnContainer rightCol = new ColumnContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+            rightCol.style().widthPx(colW);
+            rightCol.style().padding(UiInsets.all(Math.max(6, border))).border(null, Math.max(1, border - 1));
+            rightCol.gap(Math.max(4, fmSmall.getHeight() / 3));
+            this.rightCol = rightCol;
+
+            int mapH = clamp((int) Math.round(colW * 0.72), 72, Math.max(72, panelH / 2));
+
+            // Backing state for right-side map painter. Must be initialized BEFORE the lambda below.
+            // Otherwise Java treats it as reading an uninitialized final from inside a captured lambda.
+            RightMapState rms = new RightMapState();
+            this.rightMapState = rms;
+
+            GraphicsElement rightMap = new GraphicsElement((ctx, rect) -> {
+                if (ctx == null || ctx.g == null) return;
+                rms.paint(ctx, rect);
+            });
+            rightMap.style().heightPx(mapH).display(false);
+            this.rightMap = rightMap;
+            rightCol.add(rightMap);
+
+            // Preallocate right-side lines (limit to avoid overflow).
+            int maxRightLines = 24;
+            RightLineSlot[] rslots = new RightLineSlot[maxRightLines];
+            for (int i = 0; i < maxRightLines; i++) {
+                rslots[i] = new RightLineSlot(rowH, trackInnerPad);
+                rslots[i].row.style().display(false);
+                rightCol.add(rslots[i].row);
+            }
+            this.rightLineSlots = rslots;
+
+            // Main row wiring.
+            mainRow.add(leftCol);
+            mainRow.add(rightCol);
+            mainPanel.add(mainRow);
+            root.add(mainPanel);
+            root.add(spacer(gapBeforeFooter));
+
+            // Footer (kept painter-based like legacy).
+            GraphicsElement footer = new GraphicsElement((ctx, rect) -> {
+                if (ctx == null || ctx.g == null) return;
+                Graphics2D gg = ctx.g;
+
+                gg.setFont(smallFont);
+                java.awt.FontMetrics fm = gg.getFontMetrics();
+                Color dim = textDimRef.get();
+                gg.setColor(dim != null ? dim : new Color(0xA6, 0xA6, 0xA6));
+
+                String left = ICON_INFO + " Chỉ hiển thị khi bạn ở sảnh và gần bảng.";
+                String right;
+                try {
+                    java.time.LocalTime now = java.time.LocalTime.now();
+                    right = ICON_CLOCK + " " + now.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
+                } catch (Throwable t) {
+                    right = ICON_CLOCK;
+                }
+
+                int xLeft = rect.x() + pad;
+                int y = rect.y() + (rect.h() + fm.getAscent() - fm.getDescent()) / 2;
+                drawTrimmed(gg, left, xLeft, y, Math.max(0, rect.w() - (pad * 2)));
+
+                Font rightFallback = monoMatch(smallFont);
+                int rightW = stringWidthWithFallback(gg, right, smallFont, rightFallback);
+                int xRight = rect.x() + rect.w() - pad - rightW;
+                if (xRight > xLeft + 20) {
+                    drawStringWithFallback(gg, right, xRight, y, smallFont, rightFallback);
+                }
+            });
+            footer.style().heightPx(footerBoxH);
+            this.footer = footer;
+            root.add(footer);
         }
 
-        int rowH = fmBody.getHeight() + Math.max(2, (int) Math.round(bodySize * 0.12));
-        int trackInnerPad = trackRowInnerPad(bodyFont);
+        // Backing state is held as a field only so the map painter can access it.
+        final RightMapState rightMapState;
 
-        int titleBarH = Math.max(fmTitle.getHeight() + Math.max(8, border * 3), (int) Math.round(bodySize * 2.2));
-        int headerRowH = Math.max(rowH, fmHeader.getHeight() + Math.max(6, border * 2));
-        int headerStripeH = Math.min(headerRowH, Math.max(3, border + 1));
-        int titleStripeH = Math.max(3, border + 1);
+        void updateFrame(
+                List<TrackInfo> tracks,
+                TrackInfo focused,
+                Color bg0,
+                Color panel,
+                Color panel2,
+                Color borderC,
+                Color accent,
+                Color text,
+                Color textDim,
+                java.awt.FontMetrics fmBody,
+                java.awt.FontMetrics fmSmall
+        ) {
+            accentRef.set(accent);
+            textRef.set(text);
+            textDimRef.set(textDim);
+            borderRef.set(borderC);
 
-        int footerPadV = Math.max(6, (int) Math.round(bodySize * 0.35));
-        int footerBoxH = fmSmall.getHeight() + footerPadV;
+            // Theme updates.
+            root.style().background(bg0);
+            titleBar.style().background(panel);
+            headerBox.style().background(panel);
+            mainPanel.style().background(panel);
+            footer.style().background(panel);
 
-        int gapAfterTitle = Math.max(10, (int) Math.round(bodySize * 0.9));
-        int gapAfterHeader = Math.max(10, (int) Math.round(bodySize * 0.6));
-        int gapBeforeFooter = Math.max(8, (int) Math.round(bodySize * 0.50));
+            leftHeader.color(accent);
+            rightHeader.color(accent);
+            titleText.color(text);
 
-        // Root: full canvas background.
-        ColumnContainer root = new ColumnContainer()
-                .alignItems(UiAlign.STRETCH)
-                .justifyContent(UiJustify.START);
-        root.style().background(bg0).padding(UiInsets.all(inset));
+            // Right panel styling depends on panel2.
+            rightCol.style().background(panel2).border(borderC, Math.max(1, border - 1));
 
-        // Title bar (panel + accent stripe + centered title)
-        ColumnContainer titleBar = new ColumnContainer().alignItems(UiAlign.STRETCH);
-        titleBar.style().background(panel).heightPx(titleBarH);
-        // Accent stripe
-        GraphicsElement titleStripe = new GraphicsElement((ctx, rect) -> {
+            // Left: tracks.
+            updateLeftTracks(tracks, focused, fmBody, fmSmall, text, textDim, borderC);
+
+            // Right: map + lines.
+            updateRightPanel(tracks, focused, fmBody, fmSmall, text, textDim, borderC);
+        }
+
+        private void updateLeftTracks(
+                List<TrackInfo> tracks,
+                TrackInfo focused,
+                java.awt.FontMetrics fmBody,
+                java.awt.FontMetrics fmSmall,
+                Color text,
+                Color textDim,
+                Color borderC
+        ) {
+            boolean hasTracks = tracks != null && !tracks.isEmpty();
+
+            leftEmptyA.style().display(!hasTracks);
+            leftEmptyB.style().display(!hasTracks);
+            leftEmptyA.color(text);
+            leftEmptyB.color(textDim);
+
+            if (!hasTracks) {
+                for (TrackSlot s : trackSlots) s.hide();
+                leftHint1.style().display(false);
+                leftHint2.style().display(false);
+                return;
+            }
+
+            // Airport-board paging (same math as legacy buildLeftTrackColumn)
+            int rowH = fmBody.getHeight() + Math.max(2, (int) Math.round(bodySize * 0.12));
+            int blockGap = Math.max(6, rowH / 3);
+            int blockPadV = Math.max(4, (int) Math.round(bodyFont.getSize() * 0.22));
+            int estSmallLines = 2;
+            int blockHEst = rowH + (fmSmall.getHeight() * estSmallLines) + blockPadV;
+            int hintLines = 2;
+            int hintH = hintLines * fmSmall.getHeight() + 10;
+            int contentH = Math.max(0, mainPanel.style().heightPx() == null ? 0 : mainPanel.style().heightPx()) - 12;
+            if (contentH < 0) contentH = 0;
+            int availableH = Math.max(0, contentH - hintH);
+            int perPage = Math.max(1, availableH / Math.max(1, blockHEst + blockGap));
+            int total = tracks.size();
+            int totalPages = Math.max(1, (int) Math.ceil(total / (double) perPage));
+            long now = System.currentTimeMillis();
+            long pageMs = getTrackPageSeconds() * 1000L;
+            int pageIndex = (totalPages <= 1) ? 0 : (int) ((now / Math.max(1L, pageMs)) % totalPages);
+            int startIndex = pageIndex * perPage;
+            int endIndex = Math.min(total, startIndex + perPage);
+
+            int usedH = 0;
+            int slotIdx = 0;
+            for (int i = startIndex; i < endIndex && slotIdx < trackSlots.length; i++) {
+                TrackInfo ti = tracks.get(i);
+                if (ti == null) continue;
+
+                int smallLines = (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) ? 1 : 2;
+                int thisBlockH = rowH + (fmSmall.getHeight() * smallLines) + blockPadV;
+                if (usedH + thisBlockH > contentH) break;
+
+                trackSlots[slotIdx].show(ti, thisBlockH, text, textDim, borderC);
+                slotIdx++;
+                usedH += thisBlockH + blockGap;
+            }
+            for (int i = slotIdx; i < trackSlots.length; i++) trackSlots[i].hide();
+
+            // Hints (only if enough remaining height) - match legacy wording + paging math
+            if (contentH - usedH >= hintH) {
+                leftHint1.text("Dùng: /boatracing race join <tên>").color(textDim);
+
+                // Legacy recomputes paging using a fixed 2-small-line block estimate.
+                int blockH2 = rowH + (fmSmall.getHeight() * 2) + blockPadV;
+                int hintH2 = 2 * fmSmall.getHeight() + 10;
+                int availableH2 = Math.max(0, contentH - hintH2);
+                int perPage2 = Math.max(1, availableH2 / Math.max(1, blockH2 + blockGap));
+                int totalPages2 = Math.max(1, (int) Math.ceil(total / (double) perPage2));
+                long now2 = System.currentTimeMillis();
+                long pageMs2 = getTrackPageSeconds() * 1000L;
+                int pageIndex2 = (totalPages2 <= 1) ? 0 : (int) ((now2 / Math.max(1L, pageMs2)) % totalPages2);
+                String pageLabel = "Trang " + (pageIndex2 + 1) + "/" + totalPages2;
+
+                leftHint2.text(pageLabel).color(textDim);
+                leftHint1.style().display(true);
+                leftHint2.style().display(true);
+            } else {
+                leftHint1.style().display(false);
+                leftHint2.style().display(false);
+            }
+        }
+
+        private void updateRightPanel(
+                List<TrackInfo> tracks,
+                TrackInfo focused,
+                java.awt.FontMetrics fmBody,
+                java.awt.FontMetrics fmSmall,
+                Color text,
+                Color textDim,
+                Color borderC
+        ) {
+            // Map selection logic matches legacy buildRightPanel.
+            TrackInfo mapTrack = focused;
+            RaceManager mapRm = null;
+            if (mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
+                try {
+                    if (plugin != null && plugin.getRaceService() != null) {
+                        mapRm = plugin.getRaceService().get(mapTrack.trackName);
+                    }
+                } catch (Throwable ignored) {}
+            }
+            if (mapTrack == null || !(mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
+                if (tracks != null) {
+                    for (TrackInfo ti : tracks) {
+                        if (ti == null) continue;
+                        if (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) {
+                            mapTrack = ti;
+                            try {
+                                if (plugin != null && plugin.getRaceService() != null) {
+                                    mapRm = plugin.getRaceService().get(ti.trackName);
+                                }
+                            } catch (Throwable ignored) {}
+                            break;
+                        }
+                    }
+                }
+            }
+
+            boolean mapActive = mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)
+                    && mapTrack.centerline != null && !mapTrack.centerline.isEmpty();
+
+            rightMap.style().display(mapActive);
+            rightMapState.set(mapActive ? mapTrack : null, mapRm, border, bodyFont, fallbackFont);
+
+            // Right lines list.
+            java.util.List<String> lines;
+            try { lines = buildRightLines(); }
+            catch (Throwable t) { lines = java.util.List.of("(Không thể tải dữ liệu)"); }
+
+            int rowH = fmBody.getHeight() + Math.max(2, (int) Math.round(bodySize * 0.12));
+            int smallH = fmSmall.getAscent() + fmSmall.getDescent();
+            int spacerH = Math.max(6, fmSmall.getHeight() / 2);
+
+            int idx = 0;
+            for (String s : lines) {
+                if (idx >= rightLineSlots.length) break;
+                RightLineSlot slot = rightLineSlots[idx];
+                if (s == null) continue;
+
+                if (s.isBlank()) {
+                    slot.setSpacer(spacerH);
+                    idx++;
+                    continue;
+                }
+                if (s.startsWith("●")) {
+                    slot.setTrackRow(s, rowH);
+                    idx++;
+                    continue;
+                }
+                if (isRankingLine(s)) {
+                    slot.setRankingRow(s, rowH);
+                    idx++;
+                    continue;
+                }
+
+                slot.setSmallText(s, smallH);
+                idx++;
+            }
+            for (int i = idx; i < rightLineSlots.length; i++) rightLineSlots[i].hide();
+        }
+    }
+
+    private final class TrackSlot {
+        final GraphicsElement block;
+        final TrackSlotState state;
+        final int colW;
+        final int baseRowH;
+        final int trackInnerPad;
+
+        TrackSlot(int colW, int baseRowH, int trackInnerPad) {
+            this.colW = colW;
+            this.baseRowH = baseRowH;
+            this.trackInnerPad = trackInnerPad;
+            this.state = new TrackSlotState();
+            this.block = new GraphicsElement((ctx, rect) -> state.paint(ctx, rect));
+        }
+
+        void hide() {
+            block.style().display(false);
+            state.ti = null;
+        }
+
+        void show(TrackInfo ti, int blockH, Color text, Color textDim, Color borderC) {
+            state.ti = ti;
+            state.blockH = Math.max(0, blockH);
+            block.style().heightPx(state.blockH).display(true);
+            // Outer background/border are driven by style for free.
+            Color rowAccent = accentForStatus(ti.status);
+            Color rowTint = mix(new Color(0x10, 0x11, 0x13), rowAccent, 0.22);
+            block.style().background(rowTint).border(mix(borderC, rowAccent, 0.10), Math.max(1, uiCache.border - 1));
+        }
+
+        private final class TrackSlotState {
+            TrackInfo ti;
+            int blockH;
+
+            void paint(UiRenderContext ctx, UiRect rect) {
+                if (ctx == null || ctx.g == null) return;
+                if (ti == null) return;
+                Graphics2D g = ctx.g;
+
+                Font bodyFont = (uiCache != null ? uiCache.bodyFont : null);
+                if (bodyFont == null) bodyFont = ctx.defaultFont;
+                Font smallFont = (uiCache != null ? uiCache.smallFont : null);
+                if (smallFont == null) smallFont = ctx.defaultFont;
+                if (bodyFont == null || smallFont == null) return;
+
+                Color globalAccent = uiCache != null ? uiCache.accentRef.get() : null;
+                Color text = uiCache != null ? uiCache.textRef.get() : null;
+                Color textDim = uiCache != null ? uiCache.textDimRef.get() : null;
+                Color borderC = uiCache != null ? uiCache.borderRef.get() : null;
+                if (text == null) text = new Color(0xEE, 0xEE, 0xEE);
+                if (textDim == null) textDim = new Color(0xA6, 0xA6, 0xA6);
+                if (borderC == null) borderC = new Color(0x3A, 0x3A, 0x3A);
+                if (globalAccent == null) globalAccent = accentForStatus(TrackStatus.READY);
+
+                Color rowAccent = accentForStatus(ti.status);
+                int stripeW = Math.max(4, uiCache.border + 2);
+                int gap = 10;
+
+                // Left accent stripe.
+                g.setColor(rowAccent);
+                g.fillRect(rect.x(), rect.y(), stripeW, rect.h());
+
+                int contentX = rect.x() + stripeW + gap;
+                int contentY = rect.y();
+                int contentW = Math.max(0, rect.w() - stripeW - gap);
+                int contentH = rect.h();
+
+                int contentPadVHalf = Math.max(4, (int) Math.round(bodyFont.getSize() * 0.22)) / 2;
+                int contentPadH = 6;
+                int innerX = contentX + contentPadH;
+                int innerY = contentY + contentPadVHalf;
+                int innerW = Math.max(0, contentW - (contentPadH * 2));
+                int innerH = Math.max(0, contentH - (contentPadVHalf * 2));
+
+                boolean minimalRunningRow = (ti.status == TrackStatus.RUNNING);
+
+                int miniW = 0;
+                int miniH = 0;
+                int mapPad = Math.max(3, uiCache.border + 1);
+                if (!minimalRunningRow) {
+                    int availH = contentH - (mapPad * 2);
+                    if (availH < 24) {
+                        availH = Math.max(24, contentH - 2);
+                        mapPad = Math.max(1, (contentH - availH) / 2);
+                    }
+                    int maxMiniW = clamp((int) Math.round(colW * 0.40), 72, Math.max(72, colW - 140));
+                    miniH = Math.max(24, availH);
+                    int desiredW = (int) Math.round(miniH * 4.0 / 3.0);
+                    miniW = Math.min(maxMiniW, Math.max(24, desiredW));
+                }
+                int textW = Math.max(0, colW - (minimalRunningRow ? 0 : miniW) - 10);
+
+                // Line 1
+                String line1 = "● " + ti.trackName + "  [" + statusLabel(ti.status, ti.registered, ti.maxRacers, ti.countdownSeconds) + "]";
+                g.setFont(bodyFont);
+                java.awt.FontMetrics fmB = g.getFontMetrics(bodyFont);
+                int y1 = innerY + fmB.getAscent();
+                drawTrackRow(g, line1, innerX, y1, Math.min(textW, innerW), trackInnerPad, bodyFont, globalAccent, text, textDim);
+
+                // Small lines
+                g.setFont(smallFont);
+                java.awt.FontMetrics fmS = g.getFontMetrics(smallFont);
+                int bodyH = (uiCache != null && uiCache.fmBody != null) ? uiCache.fmBody.getHeight() : fmB.getHeight();
+                int y = innerY + bodyH;
+                int smallX = innerX + (18 + trackInnerPad);
+                int smallMaxW = Math.max(0, Math.min(textW, innerW) - (18 + trackInnerPad));
+
+                if (ti.status == TrackStatus.RUNNING) {
+                    String ln = "Đang đua: " + Math.max(0, ti.registered) + " người";
+                    g.setColor(textDim);
+                    drawTrimmed(g, ln, smallX, y + fmS.getAscent(), smallMaxW);
+                } else if (ti.status == TrackStatus.COUNTDOWN) {
+                    String ln = "Người chơi: " + Math.max(0, ti.registered) + " người";
+                    g.setColor(textDim);
+                    drawTrimmed(g, ln, smallX, y + fmS.getAscent(), smallMaxW);
+                } else {
+                    String ln2;
+                    if (ti.status == TrackStatus.REGISTERING) {
+                        ln2 = (ti.countdownSeconds > 0)
+                                ? ("⌛ Còn lại: " + dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.countdownSeconds))
+                                : "⌛ Chờ người chơi...";
+                    } else {
+                        ln2 = "Tối đa: " + Math.max(0, ti.maxRacers) + " người";
+                    }
+                    g.setColor(textDim);
+                    drawTrimmed(g, ln2, smallX, y + fmS.getAscent(), smallMaxW);
+
+                    String ln3 = recordLabel(ti.recordMillis, ti.recordHolderName);
+                    int y3 = y + fmS.getHeight();
+                    drawTrimmed(g, ln3, smallX, y3 + fmS.getAscent(), smallMaxW);
+                }
+
+                // Optional minimap thumb.
+                if (!minimalRunningRow && miniW > 0 && miniH > 0) {
+                    int miniX = innerX + textW + 10;
+                    int miniY = contentY + mapPad;
+                    drawMiniMap(g, ti.centerline, miniX, miniY, miniW, miniH, rowAccent, borderC, textDim, smallFont, minimapStrokeFromBorder(uiCache.border));
+                }
+            }
+        }
+    }
+
+    private enum RightLineType { NONE, TRACK, RANK, SMALL, SPACER }
+
+    private final class RightLineSlot {
+        final GraphicsElement row;
+        final RightLineState state = new RightLineState();
+
+        RightLineSlot(int rowH, int trackInnerPad) {
+            this.row = new GraphicsElement((ctx, rect) -> state.paint(ctx, rect, trackInnerPad));
+            this.row.style().heightPx(rowH);
+        }
+
+        void hide() { row.style().display(false); state.type = RightLineType.NONE; state.line = null; }
+        void setSpacer(int h) { state.type = RightLineType.SPACER; state.line = null; row.style().heightPx(Math.max(0, h)).display(true); }
+        void setTrackRow(String s, int h) { state.type = RightLineType.TRACK; state.line = s; row.style().heightPx(Math.max(0, h)).display(true); }
+        void setRankingRow(String s, int h) { state.type = RightLineType.RANK; state.line = s; row.style().heightPx(Math.max(0, h)).display(true); }
+        void setSmallText(String s, int h) { state.type = RightLineType.SMALL; state.line = s; row.style().heightPx(Math.max(0, h)).display(true); }
+
+        private final class RightLineState {
+            RightLineType type = RightLineType.NONE;
+            String line;
+
+            void paint(UiRenderContext ctx, UiRect rect, int trackInnerPad) {
+                if (ctx == null || ctx.g == null) return;
+                if (type == RightLineType.NONE || type == RightLineType.SPACER) return;
+                Graphics2D g = ctx.g;
+
+                Font bodyFont = (uiCache != null ? uiCache.bodyFont : null);
+                if (bodyFont == null) bodyFont = ctx.defaultFont;
+                Font smallFont = (uiCache != null ? uiCache.smallFont : null);
+                if (smallFont == null) smallFont = ctx.defaultFont;
+                if (bodyFont == null || smallFont == null) return;
+
+                Color accent = uiCache != null ? uiCache.accentRef.get() : null;
+                Color text = uiCache != null ? uiCache.textRef.get() : null;
+                Color textDim = uiCache != null ? uiCache.textDimRef.get() : null;
+                if (accent == null) accent = new Color(0xFF, 0xD7, 0x00);
+                if (text == null) text = new Color(0xEE, 0xEE, 0xEE);
+                if (textDim == null) textDim = new Color(0xA6, 0xA6, 0xA6);
+
+                String s = line == null ? "" : line;
+                if (type == RightLineType.TRACK) {
+                    g.setFont(bodyFont);
+                    java.awt.FontMetrics fm = g.getFontMetrics(bodyFont);
+                    drawTrackRow(g, s, rect.x(), rect.y() + fm.getAscent(), rect.w(), trackInnerPad, bodyFont, accent, text, textDim);
+                } else if (type == RightLineType.RANK) {
+                    g.setFont(bodyFont);
+                    java.awt.FontMetrics fm = g.getFontMetrics(bodyFont);
+                    drawRankingRow(g, s, rect.x(), rect.y() + fm.getAscent(), rect.w(), bodyFont, accent, text, textDim);
+                } else {
+                    g.setFont(smallFont);
+                    java.awt.FontMetrics fm = g.getFontMetrics(smallFont);
+                    g.setColor(textDim);
+                    drawTrimmed(g, s, rect.x(), rect.y() + fm.getAscent(), rect.w());
+                }
+            }
+        }
+    }
+
+    private final class RightMapState {
+        private TrackInfo track;
+        private RaceManager rm;
+        private int border;
+        private Font bodyFont;
+        private Font fallbackFont;
+
+        void set(TrackInfo track, RaceManager rm, int border, Font bodyFont, Font fallbackFont) {
+            this.track = track;
+            this.rm = rm;
+            this.border = border;
+            this.bodyFont = bodyFont;
+            this.fallbackFont = fallbackFont;
+        }
+
+        void paint(UiRenderContext ctx, UiRect rect) {
             if (ctx == null || ctx.g == null) return;
-            ctx.g.setColor(accent);
-            ctx.g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
-        });
-        titleStripe.style().background(accent).heightPx(titleStripeH);
-        titleBar.add(titleStripe);
-        // Title text area
-        TextElement titleText = new TextElement("BẢNG THÔNG TIN SẢNH")
-                .font(titleFont)
-                .color(text)
-                .align(TextElement.Align.CENTER)
-                .ellipsis(false);
-        // Give the title some breathing room like legacy (pad).
-        titleText.style().padding(UiInsets.symmetric(0, pad));
-        titleBar.add(titleText);
-        root.add(titleBar);
+            if (track == null || track.centerline == null || track.centerline.isEmpty()) return;
 
-        root.add(spacer(gapAfterTitle));
+            Font smallFont = (uiCache != null ? uiCache.smallFont : null);
+            if (smallFont == null) smallFont = ctx.defaultFont;
+            if (smallFont == null) return;
 
-        // Header row (panel + bottom accent stripe)
-        ColumnContainer headerBox = new ColumnContainer().alignItems(UiAlign.STRETCH);
-        headerBox.style().background(panel).heightPx(headerRowH);
-
-        RowContainer headerRow = new RowContainer()
-                .alignItems(UiAlign.CENTER)
-                .justifyContent(UiJustify.START)
-                .gap(2 * pad);
-        headerRow.style().padding(UiInsets.symmetric(0, Math.max(0, pad - inset)));
-        int colW = (w / 2) - (pad * 2);
-        TextElement leftHeader = new TextElement("ĐƯỜNG ĐUA")
-                .font(headerFont)
-                .color(accent)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(false);
-        leftHeader.style().widthPx(colW);
-        TextElement rightHeader = new TextElement("BẢNG XẾP HẠNG")
-                .font(headerFont)
-                .color(accent)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(false);
-        rightHeader.style().widthPx(colW);
-        headerRow.add(leftHeader);
-        headerRow.add(rightHeader);
-        headerBox.add(headerRow);
-
-        GraphicsElement headerStripe = new GraphicsElement((ctx, rect) -> {
-            if (ctx == null || ctx.g == null) return;
-            ctx.g.setColor(accent);
-            ctx.g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
-        });
-        headerStripe.style().background(accent).heightPx(headerStripeH);
-        headerBox.add(headerStripe);
-
-        root.add(headerBox);
-        root.add(spacer(gapAfterHeader));
-
-        // Main panel height: fill remaining space in the inner rect.
-        int innerH = Math.max(0, h - (inset * 2));
-        int used = titleBarH + gapAfterTitle + headerRowH + gapAfterHeader + gapBeforeFooter + footerBoxH;
-        int panelH = Math.max(0, innerH - used);
-
-        ColumnContainer mainPanel = new ColumnContainer().alignItems(UiAlign.STRETCH);
-        mainPanel.style().background(panel).heightPx(panelH).padding(UiInsets.symmetric(6, 0));
-
-        RowContainer mainRow = new RowContainer()
-                .alignItems(UiAlign.STRETCH)
-                .justifyContent(UiJustify.START)
-                .gap(2 * pad);
-        mainRow.style().padding(UiInsets.symmetric(0, Math.max(0, pad - inset)));
-
-        // Left column: track list
-        ColumnContainer leftCol = buildLeftTrackColumn(
-                w,
-                panelH,
-                tracks,
-                colW,
-                rowH,
-                pad,
-                border,
-                text,
-                textDim,
-                accent,
-                borderC,
-                bodyFont,
-                smallFont,
-                fmBody,
-                fmSmall,
-                trackInnerPad
-        );
-        leftCol.style().widthPx(colW);
-
-        // Right panel: focused minimap + standings
-        ColumnContainer rightCol = buildRightPanel(
-                w,
-                panelH,
-                tracks,
-                focused,
-                colW,
-            rowH,
-                pad,
-                border,
-                panel2,
-                borderC,
-                accent,
-                text,
-                textDim,
-                bodyFont,
-                smallFont,
-            fallbackFont,
-                fmBody,
-                fmSmall,
-                trackInnerPad
-        );
-        rightCol.style().widthPx(colW);
-
-        mainRow.add(leftCol);
-        mainRow.add(rightCol);
-        mainPanel.add(mainRow);
-        root.add(mainPanel);
-
-        root.add(spacer(gapBeforeFooter));
-
-        // Footer row (hint + clock)
-        GraphicsElement footer = new GraphicsElement((ctx, rect) -> {
-            if (ctx == null || ctx.g == null) return;
-            Graphics2D gg = ctx.g;
-
-            gg.setFont(smallFont);
-            java.awt.FontMetrics fm = gg.getFontMetrics();
-            gg.setColor(textDim);
-
-            String left = ICON_INFO + " Chỉ hiển thị khi bạn ở sảnh và gần bảng.";
-            String right;
+            java.util.List<MiniDot> dots = java.util.Collections.emptyList();
             try {
-                java.time.LocalTime now = java.time.LocalTime.now();
-                right = ICON_CLOCK + " " + now.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss"));
-            } catch (Throwable t) {
-                right = ICON_CLOCK;
+                if (rm != null) {
+                    dots = collectRacerDots(rm);
+                }
+            } catch (Throwable ignored) { dots = java.util.Collections.emptyList(); }
+
+            Color borderC = uiCache != null ? uiCache.borderRef.get() : null;
+            Color textDim = uiCache != null ? uiCache.textDimRef.get() : null;
+            if (borderC == null) borderC = new Color(0x3A, 0x3A, 0x3A);
+            if (textDim == null) textDim = new Color(0xA6, 0xA6, 0xA6);
+
+            drawMiniMapWithDots(
+                    ctx.g,
+                    track.centerline,
+                    dots,
+                    rect.x(), rect.y(), rect.w(), rect.h(),
+                    accentForStatus(track.status),
+                    borderC,
+                    textDim,
+                    smallFont,
+                    minimapStrokeFromBorder(border)
+            );
+
+            if (track.status == TrackStatus.COUNTDOWN && track.countdownSeconds > 0) {
+                try {
+                    drawCountdownOverlay(ctx.g, rect.x(), rect.y(), rect.w(), rect.h(), track.countdownSeconds, border, bodyFont, fallbackFont);
+                } catch (Throwable ignored) {}
             }
-
-            int xLeft = rect.x() + pad;
-            int y = rect.y() + (rect.h() + fm.getAscent() - fm.getDescent()) / 2;
-            drawTrimmed(gg, left, xLeft, y, Math.max(0, rect.w() - (pad * 2)));
-
-            Font rightFallback = monoMatch(smallFont);
-            int rightW = stringWidthWithFallback(gg, right, smallFont, rightFallback);
-            int xRight = rect.x() + rect.w() - pad - rightW;
-            if (xRight > xLeft + 20) {
-                drawStringWithFallback(gg, right, xRight, y, smallFont, rightFallback);
-            }
-        });
-        footer.style().background(panel).heightPx(footerBoxH);
-        root.add(footer);
-
-        return root;
+        }
     }
 
     private static UiElement spacer(int heightPx) {
@@ -1343,414 +2000,6 @@ public final class LobbyBoardService {
         e.style().heightPx(Math.max(0, heightPx));
         return e;
     }
-
-    private ColumnContainer buildLeftTrackColumn(
-            int w,
-            int panelH,
-            List<TrackInfo> tracks,
-            int colW,
-            int rowH,
-            int pad,
-            int border,
-            Color text,
-            Color textDim,
-            Color accent,
-            Color borderC,
-            Font bodyFont,
-            Font smallFont,
-            java.awt.FontMetrics fmBody,
-            java.awt.FontMetrics fmSmall,
-            int trackInnerPad
-    ) {
-        ColumnContainer col = new ColumnContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
-
-        int blockGap = Math.max(6, rowH / 3);
-        col.gap(blockGap);
-
-        if (tracks == null || tracks.isEmpty()) {
-            TextElement a = new TextElement("(Chưa có đường đua)")
-                    .font(bodyFont)
-                    .color(text)
-                    .align(TextElement.Align.LEFT)
-                    .ellipsis(true);
-            TextElement b = new TextElement("Dùng /boatracing setup để tạo.")
-                    .font(smallFont)
-                    .color(textDim)
-                    .align(TextElement.Align.LEFT)
-                    .ellipsis(true);
-            col.add(a);
-            col.add(b);
-            return col;
-        }
-
-        // Airport-board paging (same math as legacy)
-        int blockPadV = Math.max(4, (int) Math.round(bodyFont.getSize() * 0.22));
-        int estSmallLines = 2;
-        int blockH = rowH + (fmSmall.getHeight() * estSmallLines) + blockPadV;
-        int hintLines = 2;
-        int hintH = hintLines * fmSmall.getHeight() + 10;
-        int contentH = Math.max(0, panelH - 12); // panel padding top/bottom=6
-        int availableH = Math.max(0, contentH - hintH);
-        int perPage = Math.max(1, availableH / Math.max(1, blockH + blockGap));
-        int total = tracks.size();
-        int totalPages = Math.max(1, (int) Math.ceil(total / (double) perPage));
-        long now = System.currentTimeMillis();
-        long pageMs = getTrackPageSeconds() * 1000L;
-        int pageIndex = (totalPages <= 1) ? 0 : (int) ((now / Math.max(1L, pageMs)) % totalPages);
-        int startIndex = pageIndex * perPage;
-        int endIndex = Math.min(total, startIndex + perPage);
-
-        // Estimate if hint fits (same idea as legacy: keep hints only when possible)
-        int usedH = 0;
-
-        for (int i = startIndex; i < endIndex; i++) {
-            TrackInfo ti = tracks.get(i);
-            if (ti == null) continue;
-
-            int smallLines = (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) ? 1 : 2;
-            int thisBlockH = rowH + (fmSmall.getHeight() * smallLines) + blockPadV;
-            if (usedH + thisBlockH > contentH) break;
-
-            col.add(buildTrackBlock(
-                    ti,
-                    colW,
-                    thisBlockH,
-                    rowH,
-                    pad,
-                    border,
-                    bodyFont,
-                    smallFont,
-                    fmBody,
-                    fmSmall,
-                    text,
-                    textDim,
-                    accent,
-                    borderC,
-                    trackInnerPad
-            ));
-            usedH += thisBlockH + blockGap;
-        }
-
-        // Hints (only if enough remaining height) - match legacy wording + paging math
-        if (contentH - usedH >= hintH) {
-            TextElement hint1 = new TextElement("Dùng: /boatracing race join <tên>")
-                .font(smallFont)
-                .color(textDim)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(true);
-
-            // Legacy recomputes paging using a fixed 2-small-line block estimate.
-            int blockH2 = rowH + (fmSmall.getHeight() * 2) + blockPadV;
-            int hintLines2 = 2;
-            int hintH2 = hintLines2 * fmSmall.getHeight() + 10;
-            int availableH2 = Math.max(0, contentH - hintH2);
-            int perPage2 = Math.max(1, availableH2 / Math.max(1, blockH2 + blockGap));
-            int total2 = tracks.size();
-            int totalPages2 = Math.max(1, (int) Math.ceil(total2 / (double) perPage2));
-            long now2 = System.currentTimeMillis();
-            long pageMs2 = getTrackPageSeconds() * 1000L;
-            int pageIndex2 = (totalPages2 <= 1) ? 0 : (int) ((now2 / Math.max(1L, pageMs2)) % totalPages2);
-            String pageLabel = "Trang " + (pageIndex2 + 1) + "/" + totalPages2;
-
-            TextElement hint2 = new TextElement(pageLabel)
-                .font(smallFont)
-                .color(textDim)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(true);
-
-            col.add(hint1);
-            col.add(hint2);
-        }
-
-        return col;
-    }
-
-    private UiElement buildTrackBlock(
-            TrackInfo ti,
-            int colW,
-            int blockH,
-            int rowH,
-            int pad,
-            int border,
-            Font bodyFont,
-            Font smallFont,
-            java.awt.FontMetrics fmBody,
-            java.awt.FontMetrics fmSmall,
-            Color text,
-            Color textDim,
-            Color accent,
-            Color borderC,
-            int trackInnerPad
-    ) {
-        Color rowAccent = accentForStatus(ti.status);
-        Color rowTint = mix(new Color(0x10, 0x11, 0x13), rowAccent, 0.22);
-
-        // Outer: background + border
-        RowContainer outer = new RowContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START).gap(10);
-        outer.style().background(rowTint).heightPx(blockH).padding(UiInsets.symmetric(0, 0));
-        outer.style().border(mix(borderC, rowAccent, 0.10), Math.max(1, border - 1));
-
-        // Accent stripe on the left
-        GraphicsElement stripe = new GraphicsElement((ctx, rect) -> {
-            if (ctx == null || ctx.g == null) return;
-            ctx.g.setColor(rowAccent);
-            ctx.g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
-        });
-        stripe.style().background(rowAccent).widthPx(Math.max(4, border + 2));
-        outer.add(stripe);
-
-        // Content row: text area + optional minimap thumb
-        RowContainer content = new RowContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START).gap(10);
-        content.style().padding(UiInsets.symmetric(Math.max(4, (int) Math.round(bodyFont.getSize() * 0.22)) / 2, 6));
-
-        boolean minimalRunningRow = (ti.status == TrackStatus.RUNNING);
-
-        // Text column
-        ColumnContainer textCol = new ColumnContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
-        textCol.gap(1);
-
-        int miniW = 0;
-        int miniH = 0;
-        int mapPad = Math.max(3, border + 1);
-        if (!minimalRunningRow) {
-            int availH = blockH - (mapPad * 2);
-            if (availH < 24) {
-                availH = Math.max(24, blockH - 2);
-                mapPad = Math.max(1, (blockH - availH) / 2);
-            }
-            int maxMiniW = clamp((int) Math.round(colW * 0.40), 72, Math.max(72, colW - 140));
-            miniH = Math.max(24, availH);
-            int desiredW = (int) Math.round(miniH * 4.0 / 3.0);
-            miniW = Math.min(maxMiniW, Math.max(24, desiredW));
-        }
-
-        int textW = Math.max(0, colW - (minimalRunningRow ? 0 : miniW) - 10);
-
-        // Line 1: name + status (use legacy painter so bracket colors match)
-        String line1 = "● " + ti.trackName + "  [" + statusLabel(ti.status, ti.registered, ti.maxRacers, ti.countdownSeconds) + "]";
-        GraphicsElement l1 = new GraphicsElement((ctx, rect) -> {
-            if (ctx == null || ctx.g == null) return;
-            Graphics2D gg = ctx.g;
-            gg.setFont(bodyFont);
-            drawTrackRow(gg, line1, rect.x(), rect.y() + fmBody.getAscent(), Math.max(0, textW), trackInnerPad, bodyFont, accent, text, textDim);
-        });
-        l1.style().heightPx(rowH);
-        textCol.add(l1);
-
-        // Line 2/3: compact info
-        if (ti.status == TrackStatus.RUNNING) {
-            // Legacy: RUNNING shows "Đang đua: X người"
-            TextElement ln = new TextElement("Đang đua: " + Math.max(0, ti.registered) + " người")
-                .font(smallFont)
-                .color(textDim)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(true);
-            ln.style().padding(UiInsets.symmetric(0, 18 + trackInnerPad));
-            textCol.add(ln);
-        } else if (ti.status == TrackStatus.COUNTDOWN) {
-            // Legacy: COUNTDOWN shows "Người chơi: X người" (no countdown timer line here)
-            TextElement ln = new TextElement("Người chơi: " + Math.max(0, ti.registered) + " người")
-                .font(smallFont)
-                .color(textDim)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(true);
-            ln.style().padding(UiInsets.symmetric(0, 18 + trackInnerPad));
-            textCol.add(ln);
-        } else {
-            // Legacy: REGISTERING shows remaining waiting time; IDLE shows max racers.
-            if (ti.status == TrackStatus.REGISTERING) {
-            String remain = (ti.countdownSeconds > 0)
-                ? ("⌛ Còn lại: " + dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.countdownSeconds))
-                : "⌛ Chờ người chơi...";
-            TextElement ln2 = new TextElement(remain)
-                .font(smallFont)
-                .color(textDim)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(true);
-            ln2.style().padding(UiInsets.symmetric(0, 18 + trackInnerPad));
-            textCol.add(ln2);
-            } else {
-            TextElement ln2 = new TextElement("Tối đa: " + Math.max(0, ti.maxRacers) + " người")
-                .font(smallFont)
-                .color(textDim)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(true);
-            ln2.style().padding(UiInsets.symmetric(0, 18 + trackInnerPad));
-            textCol.add(ln2);
-            }
-
-            TextElement ln3 = new TextElement(recordLabel(ti.recordMillis, ti.recordHolderName))
-                .font(smallFont)
-                .color(textDim)
-                .align(TextElement.Align.LEFT)
-                .ellipsis(true);
-            ln3.style().padding(UiInsets.symmetric(0, 18 + trackInnerPad));
-            textCol.add(ln3);
-        }
-
-        // Ensure text column consumes only the needed width.
-        textCol.style().widthPx(Math.max(0, textW));
-        content.add(textCol);
-
-        // Optional minimap thumb
-        if (!minimalRunningRow && miniW > 0 && miniH > 0) {
-            int finalMiniW = miniW;
-            int finalMiniH = miniH;
-            int finalMapStrokeBorder = border;
-            GraphicsElement mini = new GraphicsElement((ctx, rect) -> {
-                if (ctx == null || ctx.g == null) return;
-                drawMiniMap(ctx.g, ti.centerline, rect.x(), rect.y(), rect.w(), rect.h(), rowAccent, borderC, textDim, smallFont, minimapStrokeFromBorder(finalMapStrokeBorder));
-            });
-            mini.style().widthPx(finalMiniW).heightPx(finalMiniH).margin(UiInsets.symmetric(mapPad, 0));
-            content.add(mini);
-        }
-
-        outer.add(content);
-        return outer;
-    }
-
-    private ColumnContainer buildRightPanel(
-            int w,
-            int panelH,
-            List<TrackInfo> tracks,
-            TrackInfo focused,
-            int colW,
-            int rowH,
-            int pad,
-            int border,
-            Color panel2,
-            Color borderC,
-            Color accent,
-            Color text,
-            Color textDim,
-            Font bodyFont,
-            Font smallFont,
-            Font fallbackFont,
-            java.awt.FontMetrics fmBody,
-            java.awt.FontMetrics fmSmall,
-            int trackInnerPad
-    ) {
-        ColumnContainer panel = new ColumnContainer().alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
-        panel.style().background(panel2).border(borderC, Math.max(1, border - 1)).padding(UiInsets.all(Math.max(6, border)));
-        panel.gap(Math.max(4, fmSmall.getHeight() / 3));
-
-        // Focused minimap selection (same fallback logic as legacy)
-        TrackInfo mapTrack = focused;
-        RaceManager mapRm = null;
-        if (mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
-            try {
-                if (plugin != null && plugin.getRaceService() != null) {
-                    mapRm = plugin.getRaceService().get(mapTrack.trackName);
-                }
-            } catch (Throwable ignored) {}
-        }
-
-        if (mapTrack == null || !(mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
-            if (tracks != null) {
-                for (TrackInfo ti : tracks) {
-                    if (ti == null) continue;
-                    if (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) {
-                        mapTrack = ti;
-                        try {
-                            if (plugin != null && plugin.getRaceService() != null) {
-                                mapRm = plugin.getRaceService().get(ti.trackName);
-                            }
-                        } catch (Throwable ignored) {}
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Legacy behavior: only show the large right-side minimap when a race is active
-        // (RUNNING or COUNTDOWN). When idle, show only the placeholder/right text box.
-        boolean mapActive = mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN);
-
-        if (mapActive && mapTrack.centerline != null && !mapTrack.centerline.isEmpty()) {
-            TrackInfo finalMapTrack = mapTrack;
-            RaceManager finalMapRm = mapRm;
-            int mapH = clamp((int) Math.round(colW * 0.72), 72, Math.max(72, panelH / 2));
-            GraphicsElement map = new GraphicsElement((ctx, rect) -> {
-                if (ctx == null || ctx.g == null) return;
-
-                java.util.List<MiniDot> dots = java.util.Collections.emptyList();
-                try {
-                    if (finalMapRm != null) {
-                        dots = collectRacerDots(finalMapRm);
-                    }
-                } catch (Throwable ignored) { dots = java.util.Collections.emptyList(); }
-
-                drawMiniMapWithDots(
-                        ctx.g,
-                        finalMapTrack.centerline,
-                        dots,
-                        rect.x(), rect.y(), rect.w(), rect.h(),
-                        accentForStatus(finalMapTrack.status),
-                        borderC,
-                        textDim,
-                        smallFont,
-                        minimapStrokeFromBorder(border)
-                );
-
-                // Countdown overlay (if the focused/running track is in COUNTDOWN)
-                if (finalMapTrack.status == TrackStatus.COUNTDOWN && finalMapTrack.countdownSeconds > 0) {
-                    try {
-                        drawCountdownOverlay(ctx.g, rect.x(), rect.y(), rect.w(), rect.h(), finalMapTrack.countdownSeconds, border, bodyFont, fallbackFont);
-                    } catch (Throwable ignored) {}
-                }
-            });
-            map.style().heightPx(mapH);
-            panel.add(map);
-        }
-
-        // Right lines list from existing helper.
-        java.util.List<String> lines;
-        try { lines = buildRightLines(); }
-        catch (Throwable t) { lines = java.util.List.of("(Không thể tải dữ liệu)"); }
-
-        for (String s : lines) {
-            if (s == null) continue;
-            if (s.isBlank()) {
-                panel.add(spacer(Math.max(6, fmSmall.getHeight() / 2)));
-                continue;
-            }
-
-            if (s.startsWith("●")) {
-                String line = s;
-                GraphicsElement row = new GraphicsElement((ctx, rect) -> {
-                    if (ctx == null || ctx.g == null) return;
-                    Graphics2D gg = ctx.g;
-                    gg.setFont(bodyFont);
-                    drawTrackRow(gg, line, rect.x(), rect.y() + fmBody.getAscent(), rect.w(), trackInnerPad, bodyFont, accent, text, textDim);
-                });
-                row.style().heightPx(rowH);
-                panel.add(row);
-                continue;
-            }
-            if (isRankingLine(s)) {
-                String line = s;
-                GraphicsElement row = new GraphicsElement((ctx, rect) -> {
-                    if (ctx == null || ctx.g == null) return;
-                    Graphics2D gg = ctx.g;
-                    gg.setFont(bodyFont);
-                    drawRankingRow(gg, line, rect.x(), rect.y() + fmBody.getAscent(), rect.w(), bodyFont, accent, text, textDim);
-                });
-                row.style().heightPx(rowH);
-                panel.add(row);
-                continue;
-            }
-
-            TextElement small = new TextElement(s)
-                    .font(smallFont)
-                    .color(textDim)
-                    .align(TextElement.Align.LEFT)
-                    .ellipsis(true);
-            panel.add(small);
-        }
-
-        return panel;
-    }
-
     private static void drawCountdownOverlay(Graphics2D g, int x, int y, int w, int h, int seconds, int border, Font bodyFont, Font fallbackFont) {
         if (g == null) return;
         String s = String.valueOf(Math.max(0, seconds));

@@ -19,7 +19,7 @@ public final class RowContainer extends UiContainer {
 		int maxChildH = 0;
 		int count = 0;
 		for (UiElement ch : children) {
-			if (ch == null) continue;
+			if (ch == null || !ch.style().display()) continue;
 			UiInsets m = ch.style().margin();
 			UiMeasure cm = ch.measure(ctx, Integer.MAX_VALUE, Math.max(0, usableH - m.vertical()));
 			maxChildH = Math.max(maxChildH, cm.h() + m.vertical());
@@ -38,7 +38,7 @@ public final class RowContainer extends UiContainer {
 		int count = 0;
 		int totalW = 0;
 		for (UiElement ch : children) {
-			if (ch == null) continue;
+			if (ch == null || !ch.style().display()) continue;
 			UiInsets m = ch.style().margin();
 			UiMeasure cm = ch.measure(ctx, Integer.MAX_VALUE, Math.max(0, content.h() - m.vertical()));
 			totalW += cm.w() + m.horizontal();
@@ -50,8 +50,9 @@ public final class RowContainer extends UiContainer {
 		if (justifyContent == UiJustify.CENTER) x += Math.max(0, (content.w() - totalW) / 2);
 		else if (justifyContent == UiJustify.END) x += Math.max(0, (content.w() - totalW));
 
+		int laidOut = 0;
 		for (UiElement ch : children) {
-			if (ch == null) continue;
+			if (ch == null || !ch.style().display()) continue;
 			UiInsets m = ch.style().margin();
 			UiMeasure cm = ch.measure(ctx, Integer.MAX_VALUE, Math.max(0, content.h() - m.vertical()));
 
@@ -69,14 +70,16 @@ public final class RowContainer extends UiContainer {
 
 			int cx = x + m.left();
 			ch.layout(ctx, cx, y, childW, childH);
-			x += m.left() + childW + m.right() + gapPx;
+			x += m.left() + childW + m.right();
+			laidOut++;
+			if (laidOut < count) x += gapPx;
 		}
 	}
 
 	@Override
 	protected void onRender(UiRenderContext ctx) {
 		for (UiElement ch : children) {
-			if (ch != null) ch.render(ctx);
+			if (ch != null && ch.style().display()) ch.render(ctx);
 		}
 	}
 }
