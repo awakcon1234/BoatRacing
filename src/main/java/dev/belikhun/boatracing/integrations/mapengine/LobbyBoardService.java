@@ -488,12 +488,13 @@ public final class LobbyBoardService {
 
 		// Despawn players that are no longer eligible.
 		for (UUID id : new HashSet<>(spawnedTo)) {
-			if (eligible.contains(id)) continue;
-			Player p = Bukkit.getPlayer(id);
-			if (p != null && p.isOnline()) {
-				try { despawnFor(p); } catch (Throwable ignored) {}
+			if (!eligible.contains(id)) {
+				Player p = Bukkit.getPlayer(id);
+				if (p != null && p.isOnline()) {
+					try { despawnFor(p); } catch (Throwable ignored) {}
+				}
+				spawnedTo.remove(id);
 			}
-			spawnedTo.remove(id);
 		}
 
 		// Spawn to new eligible viewers.
@@ -966,13 +967,22 @@ public final class LobbyBoardService {
 		int innerW = Math.max(1, w - margin * 2);
 		int innerH = Math.max(1, h - margin * 2);
 
+		// Optional rotation (90deg) to better match the available panel aspect.
+		// If the track is taller but the panel is wider (or vice versa), rotate the map so it fills more.
+		boolean mapWide = dx >= dz;
+		boolean panelWide = innerW >= innerH;
+		final boolean rotate = (mapWide != panelWide);
+
+		double srcW = rotate ? dz : dx;
+		double srcH = rotate ? dx : dz;
+
 		// Maintain aspect ratio
-		double sx = innerW / dx;
-		double sz = innerH / dz;
+		double sx = innerW / srcW;
+		double sz = innerH / srcH;
 		double s = Math.min(sx, sz);
 
-		int drawW = Math.max(1, (int) Math.round(dx * s));
-		int drawH = Math.max(1, (int) Math.round(dz * s));
+		int drawW = Math.max(1, (int) Math.round(srcW * s));
+		int drawH = Math.max(1, (int) Math.round(srcH * s));
 		int ox = x + margin + (innerW - drawW) / 2;
 		int oy = y + margin + (innerH - drawH) / 2;
 
@@ -984,8 +994,20 @@ public final class LobbyBoardService {
 			if (p == null) continue;
 			double px = p.getX();
 			double pz = p.getZ();
-			int ix = (int) Math.round((px - minX) * s);
-			int iz = (int) Math.round((pz - minZ) * s);
+
+			double u;
+			double v;
+			if (!rotate) {
+				u = (px - minX);
+				v = (pz - minZ);
+			} else {
+				// 90° clockwise rotation around the map bounding box.
+				u = (pz - minZ);
+				v = (maxX - px);
+			}
+
+			int ix = (int) Math.round(u * s);
+			int iz = (int) Math.round(v * s);
 			int rx = ox + clamp(ix, 0, drawW);
 			int ry = oy + clamp(iz, 0, drawH);
 			if (rx == lastPx && ry == lastPy) continue;
@@ -1033,8 +1055,19 @@ public final class LobbyBoardService {
 				double px = d.x;
 				double pz = d.z;
 				if (!Double.isFinite(px) || !Double.isFinite(pz)) continue;
-				int ix = (int) Math.round((px - minX) * s);
-				int iz = (int) Math.round((pz - minZ) * s);
+
+				double u;
+				double v;
+				if (!rotate) {
+					u = (px - minX);
+					v = (pz - minZ);
+				} else {
+					u = (pz - minZ);
+					v = (maxX - px);
+				}
+
+				int ix = (int) Math.round(u * s);
+				int iz = (int) Math.round(v * s);
 				int rx = ox + clamp(ix, 0, drawW);
 				int ry = oy + clamp(iz, 0, drawH);
 				rx = clamp(rx, minPx, maxPx);
@@ -1933,7 +1966,8 @@ public final class LobbyBoardService {
 					g.setFont(bodyFont);
 					java.awt.FontMetrics fm = g.getFontMetrics(bodyFont);
 					int pad = Math.max(0, trackInnerPad);
-					drawRankingRow(g, s, rect.x() + pad, rect.y() + fm.getAscent(), Math.max(0, rect.w() - pad), bodyFont, accent, text, textDim);
+					int baseline = rect.y() + (rect.h() + fm.getAscent() - fm.getDescent()) / 2;
+					drawRankingRow(g, s, rect.x() + pad, baseline, Math.max(0, rect.w() - pad), bodyFont, accent, text, textDim);
 				} else {
 					g.setFont(smallFont);
 					java.awt.FontMetrics fm = g.getFontMetrics(smallFont);
