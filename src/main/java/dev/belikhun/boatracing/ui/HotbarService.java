@@ -232,14 +232,17 @@ public class HotbarService {
 
 				setSlot(p, 4, null);
 
-				setSlot(p, 7, playerHeadItem(p, "&b&l👤 Hồ sơ", Action.PROFILE,
-					"&7Tùy chỉnh màu, số đua, biểu tượng và thuyền."));
-
+				// UX: Keep the rightmost hotbar slot filled.
+				// If the admin panel is not available, shift the profile item to slot 9.
 				if (p.hasPermission("boatracing.admin")) {
+					setSlot(p, 7, playerHeadItem(p, "&b&l👤 Hồ sơ", Action.PROFILE,
+						"&7Tùy chỉnh màu, số đua, biểu tượng và thuyền."));
 					setSlot(p, 8, item(Material.REDSTONE, "&c&l🛠 Bảng quản trị", Action.ADMIN_PANEL,
 						"&7Mở menu quản trị."));
 				} else {
-					setSlot(p, 8, null);
+					setSlot(p, 7, null);
+					setSlot(p, 8, playerHeadItem(p, "&b&l👤 Hồ sơ", Action.PROFILE,
+						"&7Tùy chỉnh màu, số đua, biểu tượng và thuyền."));
 				}
 			}
 			case WAITING -> {

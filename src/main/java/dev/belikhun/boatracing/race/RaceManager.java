@@ -2195,8 +2195,8 @@ public class RaceManager {
 			if (s.awaitingFinish && gateIndex != null && gateIndex.length > 0) {
 				seed = gateIndex[gateIndex.length - 1];
 			} else if (s.nextCheckpointIndex == 0 && s.currentLap > 0) {
-				// After wrapping a lap, bias toward the start of the centerline.
-				seed = 0;
+				// After wrapping a lap, bias toward the finish gate (lap start).
+				seed = finishGateIndex();
 			}
 			s.lastPathIndex = nearestPathIndex(to, seed, 80);
 		}
@@ -2283,10 +2283,11 @@ public class RaceManager {
 
 		// Reseed path index to avoid progress getting stuck after lap wrap.
 		if (pathReady) {
+			int seed = finishGateIndex();
 			if (pos != null)
-				s.lastPathIndex = nearestPathIndex(pos, 0, Math.max(200, path.size()));
+				s.lastPathIndex = nearestPathIndex(pos, seed, Math.max(200, path.size()));
 			else
-				s.lastPathIndex = 0;
+				s.lastPathIndex = seed;
 		}
 	}
 
@@ -4447,36 +4448,94 @@ public class RaceManager {
 		return bestIdx;
 	}
 
-	private double normalizedIndexClamped(ParticipantState s) {
+	private static int forwardDistance(int from, int to, int n) {
+		int size = Math.max(1, n);
+		int a = ((from % size) + size) % size;
+		int b = ((to % size) + size) % size;
+		if (b >= a)
+			return b - a;
+		return (size - a) + b;
+	}
+
+	private int finishGateIndex() {
+		if (gateIndex != null && gateIndex.length > 0)
+			return Math.max(0, Math.min(gateIndex[gateIndex.length - 1], path.size() - 1));
+		return 0;
+	}
+
+	private int totalCheckpointsForProgress() {
+		if (testCheckpointCount >= 0)
+			return Math.max(0, testCheckpointCount);
+		try {
+			return trackConfig != null && trackConfig.getCheckpoints() != null ? Math.max(0, trackConfig.getCheckpoints().size()) : 0;
+		} catch (Throwable ignored) {
+			return 0;
+		}
+	}
+
+	private double lapProgressRatioInternal(ParticipantState s) {
+		if (s == null)
+			return 0.0;
 		if (!pathReady || path.isEmpty())
 			return 0.0;
-		int idx = Math.max(0, Math.min(s.lastPathIndex, path.size() - 1));
-		// Clamp upper bound to next gate to avoid showing progress beyond next
-		// checkpoint.
-		// IMPORTANT: Handle wrap-around (e.g. finish near start) where nextGate index
-		// may be < prevGate.
-		int nextGate = (gateIndex == null || gateIndex.length == 0) ? (path.size() - 1)
-				: (s.nextCheckpointIndex < gateIndex.length ? gateIndex[s.nextCheckpointIndex] : path.size() - 1);
-		int prevGate = 0;
-		if (gateIndex != null && gateIndex.length > 0 && s.nextCheckpointIndex > 0) {
-			int pi = Math.min(s.nextCheckpointIndex - 1, gateIndex.length - 1);
+		if (gateIndex == null || gateIndex.length == 0)
+			return 0.0;
+
+		int n = path.size();
+		int idx = Math.max(0, Math.min(s.lastPathIndex, n - 1));
+
+		int totalCp = totalCheckpointsForProgress();
+		int totalSegments = Math.max(1, totalCp + 1);
+
+		// Segment index is the next expected checkpoint (0..totalCp). When totalCp is
+		// reached, we are in the final segment leading to finish.
+		int seg = s.nextCheckpointIndex;
+		if (seg < 0)
+			seg = 0;
+		if (seg > totalCp)
+			seg = totalCp;
+
+		int finishIdx = finishGateIndex();
+
+		// Gate ordering for progress within a lap:
+		// start (= finish line) -> cp1 -> ... -> last cp -> finish
+		int prevGate;
+		if (seg == 0) {
+			prevGate = finishIdx;
+		} else {
+			int pi = Math.min(seg - 1, gateIndex.length - 1);
 			prevGate = gateIndex[pi];
 		}
 
-		if (prevGate <= nextGate) {
-			if (idx > nextGate)
-				idx = nextGate;
+		int nextGate;
+		if (seg < totalCp) {
+			int ni = Math.min(seg, gateIndex.length - 1);
+			nextGate = gateIndex[ni];
 		} else {
-			// Segment wraps around end->start. Valid indices are [prevGate..end] U
-			// [0..nextGate].
-			// If we are in the "gap" (nextGate..prevGate), clamp to nearest boundary.
-			if (idx > nextGate && idx < prevGate) {
-				int dToNext = idx - nextGate;
-				int dToPrev = prevGate - idx;
-				idx = (dToNext <= dToPrev) ? nextGate : prevGate;
-			}
+			nextGate = finishIdx;
 		}
-		return (path.size() <= 1) ? 0.0 : ((double) idx) / (double) (path.size() - 1);
+
+		prevGate = Math.max(0, Math.min(prevGate, n - 1));
+		nextGate = Math.max(0, Math.min(nextGate, n - 1));
+
+		int segLen = forwardDistance(prevGate, nextGate, n);
+		if (segLen <= 0) {
+			// Degenerate segment; still keep monotonic behavior.
+			double base = (double) seg / (double) totalSegments;
+			return Math.max(0.0, Math.min(1.0, base));
+		}
+
+		int posInSeg = forwardDistance(prevGate, idx, n);
+		if (posInSeg < 0)
+			posInSeg = 0;
+		if (posInSeg > segLen)
+			posInSeg = segLen;
+
+		double segRatio = (double) posInSeg / (double) segLen;
+		double out = ((double) seg + segRatio) / (double) totalSegments;
+		if (!Double.isFinite(out))
+			out = 0.0;
+		return Math.max(0.0, Math.min(1.0, out));
 	}
 
 	private double liveProgressValue(UUID id) {
@@ -4485,7 +4544,7 @@ public class RaceManager {
 			return 0.0;
 		if (s.finished)
 			return getTotalLaps();
-		double intra = normalizedIndexClamped(s);
+		double intra = lapProgressRatioInternal(s);
 		return (double) s.currentLap + intra;
 	}
 
@@ -4493,7 +4552,7 @@ public class RaceManager {
 		ParticipantState s = participants.get(id);
 		if (s == null)
 			return 0.0;
-		return normalizedIndexClamped(s);
+		return lapProgressRatioInternal(s);
 	}
 
 	public long getRaceElapsedMillis() {
