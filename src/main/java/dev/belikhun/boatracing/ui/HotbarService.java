@@ -4,7 +4,6 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
 import dev.belikhun.boatracing.util.Text;
-import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -14,8 +13,6 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
-
-import java.util.Locale;
 import java.util.UUID;
 
 public class HotbarService {

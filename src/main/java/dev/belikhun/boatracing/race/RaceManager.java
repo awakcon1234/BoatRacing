@@ -524,12 +524,6 @@ public class RaceManager {
 		try { dashboardDebugLastLog.remove(playerId); } catch (Throwable ignored) {}
 	}
 
-	private static org.bukkit.util.Vector forwardFromYaw(float yaw) {
-		// Minecraft yaw: 0=south(+Z), 90=west(-X), 180=north(-Z), 270=east(+X)
-		double rad = Math.toRadians(yaw);
-		return new org.bukkit.util.Vector(-Math.sin(rad), 0.0, Math.cos(rad));
-	}
-
 	private static void trySetTeleportDuration(org.bukkit.entity.Display d, int ticks) {
 		if (d == null) return;
 		int t = Math.max(0, ticks);

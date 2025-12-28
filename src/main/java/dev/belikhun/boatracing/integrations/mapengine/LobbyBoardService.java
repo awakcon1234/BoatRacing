@@ -1207,6 +1207,29 @@ public final class LobbyBoardService {
 				uiCache = cache;
 			}
 
+			if (cache == null) {
+				cache = new UiCache(
+						w,
+						h,
+						uiScale,
+						bodySize,
+						pad,
+						border,
+						inset,
+						titleFont,
+						headerFont,
+						bodyFont,
+						smallFont,
+						fallbackFont,
+						fmTitle,
+						fmHeader,
+						fmBody,
+						fmSmall,
+						boardFontBase
+				);
+				uiCache = cache;
+			}
+
 			cache.updateFrame(
 					tracks,
 					focused,
@@ -1236,6 +1259,7 @@ public final class LobbyBoardService {
 	 * Cached UI tree + dynamic element bindings.
 	 * The tree is built once and then only updated with changing values per tick.
 	 */
+	@SuppressWarnings("unused")
 	private final class UiCache {
 		final int w;
 		final int h;
@@ -1475,7 +1499,7 @@ public final class LobbyBoardService {
 
 			TrackSlot[] slots = new TrackSlot[maxSlots];
 			for (int i = 0; i < maxSlots; i++) {
-				slots[i] = new TrackSlot(colW, rowH, trackInnerPad);
+				slots[i] = new TrackSlot(trackInnerPad);
 				slots[i].block.style().display(false);
 				leftCol.add(slots[i].block);
 			}
@@ -1621,7 +1645,8 @@ public final class LobbyBoardService {
 				Color textDim,
 				Color borderC
 		) {
-			boolean hasTracks = tracks != null && !tracks.isEmpty();
+			if (tracks == null) tracks = java.util.Collections.emptyList();
+			boolean hasTracks = !tracks.isEmpty();
 
 			leftEmptyA.style().display(!hasTracks);
 			leftEmptyB.style().display(!hasTracks);
@@ -1778,13 +1803,9 @@ public final class LobbyBoardService {
 	private final class TrackSlot {
 		final GraphicsElement block;
 		final TrackSlotState state;
-		final int colW;
-		final int baseRowH;
 		final int trackInnerPad;
 
-		TrackSlot(int colW, int baseRowH, int trackInnerPad) {
-			this.colW = colW;
-			this.baseRowH = baseRowH;
+		TrackSlot(int trackInnerPad) {
 			this.trackInnerPad = trackInnerPad;
 			this.state = new TrackSlotState();
 			this.block = new GraphicsElement((ctx, rect) -> state.paint(ctx, rect));
@@ -1847,7 +1868,7 @@ public final class LobbyBoardService {
 				int innerX = contentX + contentPadH;
 				int innerY = contentY + contentPadVHalf;
 				int innerW = Math.max(0, contentW - (contentPadH * 2));
-				int innerH = Math.max(0, contentH - (contentPadVHalf * 2));
+
 
 				boolean minimalRunningRow = (ti.status == TrackStatus.RUNNING);
 

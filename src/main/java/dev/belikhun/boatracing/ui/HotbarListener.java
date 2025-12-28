@@ -17,11 +17,9 @@ import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 
 public class HotbarListener implements Listener {
-	private final BoatRacingPlugin plugin;
 	private final HotbarService hotbar;
 
 	public HotbarListener(BoatRacingPlugin plugin, HotbarService hotbar) {
-		this.plugin = plugin;
 		this.hotbar = hotbar;
 	}
 

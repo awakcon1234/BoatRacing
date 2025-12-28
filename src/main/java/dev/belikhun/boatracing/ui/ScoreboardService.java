@@ -417,6 +417,10 @@ public class ScoreboardService {
 	}
 
 	private void applyCompletedBoard(Player p, RaceManager rm, TickContext ctx) {
+		if (rm == null) {
+			applyLobbyBoard(p);
+			return;
+		}
 		Sidebar sb = ensureSidebar(p);
 		if (ctx == null) ctx = new TickContext();
 		boolean ended = ctx.allFinished;
