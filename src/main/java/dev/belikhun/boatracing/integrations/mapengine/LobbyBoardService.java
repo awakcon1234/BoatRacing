@@ -117,6 +117,16 @@ public final class LobbyBoardService {
 	private int updateTicks = 20;
 	private boolean debug = false;
 
+	// Perf debug (rate-limited, only when debug=true)
+	private long lastPerfLogMillis = 0L;
+	private long lastPerfCollectNs = 0L;
+	private long lastPerfUpdateFrameNs = 0L;
+	private long lastPerfLayoutNs = 0L;
+	private long lastPerfRenderNs = 0L;
+	private long lastPerfTotalNs = 0L;
+	private int lastPerfW = 0;
+	private int lastPerfH = 0;
+
 	// MapEngine drawing pipeline toggles
 	private boolean mapBuffering = true;
 	private boolean mapBundling = false;
@@ -155,6 +165,15 @@ public final class LobbyBoardService {
 		visibleRadiusChunks = clamp(plugin.getConfig().getInt("mapengine.lobby-board.visible-radius-chunks", 12), 1, 64);
 		updateTicks = clamp(plugin.getConfig().getInt("mapengine.lobby-board.update-ticks", 20), 1, 200);
 		debug = plugin.getConfig().getBoolean("mapengine.lobby-board.debug", false);
+
+		// UiComposer perf logging (global/static): gate behind the same debug toggle.
+		try {
+			dev.belikhun.boatracing.integrations.mapengine.ui.UiComposer.setPerfDebug(debug,
+					debug ? (m) -> {
+						try { plugin.getLogger().info("[LobbyBoard] " + m); } catch (Throwable ignored) {}
+					} : null
+			);
+		} catch (Throwable ignored) {}
 
 		// MapEngine pipeline options
 		mapBuffering = plugin.getConfig().getBoolean("mapengine.lobby-board.pipeline.buffering", true);
@@ -508,9 +527,32 @@ public final class LobbyBoardService {
 
 		// Render content and flush to receivers.
 		try {
+			final boolean doPerf = debug;
+			final long t0 = doPerf ? System.nanoTime() : 0L;
 			BufferedImage img = renderImage(placement.pixelWidth(), placement.pixelHeight());
+			final long t1 = doPerf ? System.nanoTime() : 0L;
 			drawing.image(img, 0, 0);
+			final long t2 = doPerf ? System.nanoTime() : 0L;
 			drawing.flush();
+			final long t3 = doPerf ? System.nanoTime() : 0L;
+
+			if (doPerf) {
+				long tickTotalNs = t3 - t0;
+				long renderNs = t1 - t0;
+				long pushNs = t2 - t1;
+				long flushNs = t3 - t2;
+				dbgPerf("perf: px=" + lastPerfW + "x" + lastPerfH
+						+ " render=" + fmtMs(renderNs)
+						+ " (collect=" + fmtMs(lastPerfCollectNs)
+						+ " frame=" + fmtMs(lastPerfUpdateFrameNs)
+						+ " layout=" + fmtMs(lastPerfLayoutNs)
+						+ " ui=" + fmtMs(lastPerfRenderNs)
+						+ " total=" + fmtMs(lastPerfTotalNs) + ")"
+						+ " push=" + fmtMs(pushNs)
+						+ " flush=" + fmtMs(flushNs)
+						+ " tick=" + fmtMs(tickTotalNs)
+						+ " viewers=" + spawnedTo.size());
+			}
 		} catch (Throwable t) {
 			dbg("tick(): render/flush failed: " + t.getClass().getSimpleName() + ": " + t.getMessage());
 		}
@@ -615,6 +657,21 @@ public final class LobbyBoardService {
 		try { plugin.getLogger().info("[LobbyBoard] " + msg); } catch (Throwable ignored) {}
 	}
 
+	private void dbgPerf(String msg) {
+		if (!debug || plugin == null) return;
+		long now = System.currentTimeMillis();
+		// Rate limit noisy perf logs.
+		if (lastPerfLogMillis != 0L && (now - lastPerfLogMillis) < 1000L) return;
+		lastPerfLogMillis = now;
+		try { plugin.getLogger().info("[LobbyBoard] " + msg); } catch (Throwable ignored) {}
+	}
+
+	private static String fmtMs(long ns) {
+		double ms = (double) ns / 1_000_000.0;
+		if (!Double.isFinite(ms)) ms = 0.0;
+		return String.format(java.util.Locale.ROOT, "%.2fms", ms);
+	}
+
 	private void dbgTick(String msg) {
 		if (!debug || plugin == null) return;
 		long now = System.currentTimeMillis();
@@ -628,6 +685,7 @@ public final class LobbyBoardService {
 		RUNNING,
 		COUNTDOWN,
 		REGISTERING,
+		ENDING,
 		READY,
 		OFF
 	}
@@ -640,11 +698,15 @@ public final class LobbyBoardService {
 			long recordMillis,
 			String recordHolderName,
 			List<Location> centerline,
-			int countdownSeconds
+			int countdownSeconds,
+			int endingSeconds
 	) {}
 
 	private static TrackStatus statusOf(RaceManager rm) {
 		if (rm == null) return TrackStatus.OFF;
+		try {
+			if (isRaceFullyCompleted(rm) && rm.getPostFinishCleanupRemainingSeconds() > 0) return TrackStatus.ENDING;
+		} catch (Throwable ignored) {}
 		if (rm.isRunning()) return TrackStatus.RUNNING;
 		if (rm.isAnyCountdownActive()) return TrackStatus.COUNTDOWN;
 		if (rm.isRegistering()) return TrackStatus.REGISTERING;
@@ -657,6 +719,7 @@ public final class LobbyBoardService {
 			case RUNNING -> new Color(0x56, 0xF2, 0x7A);
 			case COUNTDOWN -> new Color(0xFF, 0xB8, 0x4D);
 			case REGISTERING -> new Color(0xFF, 0xD7, 0x5E);
+			case ENDING -> new Color(0xFF, 0xB8, 0x4D);
 			case READY -> new Color(0x5E, 0xA8, 0xFF);
 			case OFF -> new Color(0x8A, 0x8A, 0x8A);
 		};
@@ -694,12 +757,14 @@ public final class LobbyBoardService {
 			int involved = 0;
 			int max = 0;
 			int countdownSec = 0;
+			int endingSec = 0;
 			try {
 				if (rm != null) {
 					regs = rm.getRegistered().size();
 					involved = rm.getInvolved().size();
 					max = rm.getTrackConfig() != null ? rm.getTrackConfig().getStarts().size() : 0;
 					countdownSec = Math.max(0, rm.getCountdownRemainingSeconds());
+					endingSec = Math.max(0, rm.getPostFinishCleanupRemainingSeconds());
 				}
 			} catch (Throwable ignored) {}
 
@@ -709,7 +774,7 @@ public final class LobbyBoardService {
 			// - READY/OFF: 0
 			int displayCount = switch (status) {
 				case REGISTERING -> regs;
-				case RUNNING, COUNTDOWN -> involved;
+				case RUNNING, COUNTDOWN, ENDING -> involved;
 				default -> 0;
 			};
 
@@ -731,7 +796,7 @@ public final class LobbyBoardService {
 				}
 			} catch (Throwable ignored) {}
 
-			out.add(new TrackInfo(tn, status, displayCount, max, bestMs, holder, cl, countdownSec));
+			out.add(new TrackInfo(tn, status, displayCount, max, bestMs, holder, cl, countdownSec, endingSec));
 		}
 		return out;
 	}
@@ -740,6 +805,7 @@ public final class LobbyBoardService {
 		if (infos == null || infos.isEmpty()) return null;
 		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.RUNNING) return i;
 		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.COUNTDOWN) return i;
+		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.ENDING) return i;
 		for (TrackInfo i : infos) if (i != null && i.status == TrackStatus.REGISTERING) return i;
 		for (TrackInfo i : infos) if (i != null) return i;
 		return null;
@@ -752,6 +818,7 @@ public final class LobbyBoardService {
 			// Countdown seconds are shown only as the large centered overlay on the focused minimap.
 			case COUNTDOWN -> "Đếm ngược";
 			case REGISTERING -> "Đang đăng ký " + regs + "/" + max;
+			case ENDING -> "Đang kết thúc";
 			case READY -> "Sẵn sàng";
 			case OFF -> "Tắt";
 		};
@@ -1094,8 +1161,20 @@ public final class LobbyBoardService {
 	}
 
 	private BufferedImage renderImage(int widthPx, int heightPx) {
+		final boolean doPerf = debug;
+		final long tStart = doPerf ? System.nanoTime() : 0L;
+		long tAfterCollect = 0L;
+		long tAfterUpdateFrame = 0L;
+		long tAfterLayout = 0L;
+		long tAfterRender = 0L;
+		long tEnd = 0L;
+
 		int w = Math.max(128, widthPx);
 		int h = Math.max(128, heightPx);
+		if (doPerf) {
+			lastPerfW = w;
+			lastPerfH = h;
+		}
 
 		// Ensure we tried loading the board font before we select default fonts for the context.
 		try { tryLoadBoardFont(); } catch (Throwable ignored) {}
@@ -1113,6 +1192,7 @@ public final class LobbyBoardService {
 
 		// Data (used for theming + minimap)
 		List<TrackInfo> tracks = collectTrackInfos();
+		if (doPerf) tAfterCollect = System.nanoTime();
 		TrackInfo focused = pickFocusedTrack(tracks);
 		TrackStatus focusedStatus = focused != null ? focused.status : TrackStatus.OFF;
 		Color statusAccent = accentForStatus(focusedStatus);
@@ -1241,14 +1321,25 @@ public final class LobbyBoardService {
 					fmBody,
 					fmSmall
 			);
+			if (doPerf) tAfterUpdateFrame = System.nanoTime();
 
 			if (bodyFont != null) g.setFont(bodyFont);
 			if (cache.root != null) {
 				cache.root.layout(ctx, 0, 0, w, h);
+				if (doPerf) tAfterLayout = System.nanoTime();
 				cache.root.render(ctx);
+				if (doPerf) tAfterRender = System.nanoTime();
 			}
 		} finally {
 			try { g.dispose(); } catch (Throwable ignored) {}
+		}
+		if (doPerf) {
+			tEnd = System.nanoTime();
+			lastPerfCollectNs = Math.max(0L, tAfterCollect - tStart);
+			lastPerfUpdateFrameNs = Math.max(0L, tAfterUpdateFrame - tAfterCollect);
+			lastPerfLayoutNs = Math.max(0L, tAfterLayout - tAfterUpdateFrame);
+			lastPerfRenderNs = Math.max(0L, tAfterRender - tAfterLayout);
+			lastPerfTotalNs = Math.max(0L, tEnd - tStart);
 		}
 		return img;
 	}
@@ -1727,6 +1818,28 @@ public final class LobbyBoardService {
 				Color textDim,
 				Color borderC
 		) {
+			// If a race is fully completed, the right panel switches into a results view:
+			// - hide the minimap
+			// - show full standings until the track resets/stops
+			RaceManager completedRm = null;
+			try {
+				if (raceService != null) {
+					if (focused != null && focused.trackName != null) {
+						RaceManager rm = raceService.get(focused.trackName);
+						if (isRaceFullyCompleted(rm)) completedRm = rm;
+					}
+					if (completedRm == null) {
+						for (RaceManager rm : raceService.allRaces()) {
+							if (isRaceFullyCompleted(rm)) {
+								completedRm = rm;
+								break;
+							}
+						}
+					}
+				}
+			} catch (Throwable ignored) {}
+			final boolean showCompletedResults = completedRm != null;
+
 			// Map selection logic matches legacy buildRightPanel.
 			TrackInfo mapTrack = focused;
 			RaceManager mapRm = null;
@@ -1754,7 +1867,8 @@ public final class LobbyBoardService {
 				}
 			}
 
-			boolean mapActive = mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)
+			boolean mapActive = !showCompletedResults
+					&& mapTrack != null && (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)
 					&& mapTrack.centerline != null && !mapTrack.centerline.isEmpty();
 
 			rightMap.style().display(mapActive);
@@ -1762,8 +1876,13 @@ public final class LobbyBoardService {
 
 			// Right lines list.
 			java.util.List<String> lines;
-			try { lines = buildRightLines(); }
-			catch (Throwable t) { lines = java.util.List.of("(Không thể tải dữ liệu)"); }
+			try {
+				lines = showCompletedResults
+						? buildCompletedRightLines(completedRm)
+						: buildRightLines();
+			} catch (Throwable t) {
+				lines = java.util.List.of("(Không thể tải dữ liệu)");
+			}
 
 			int rowH = fmBody.getHeight() + Math.max(2, (int) Math.round(bodySize * 0.12));
 			int smallH = fmSmall.getAscent() + fmSmall.getDescent();
@@ -1916,6 +2035,10 @@ public final class LobbyBoardService {
 						ln2 = (ti.countdownSeconds > 0)
 								? ("⌛ Còn lại: " + dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.countdownSeconds))
 								: "⌛ Chờ người chơi...";
+					} else if (ti.status == TrackStatus.ENDING) {
+						ln2 = (ti.endingSeconds > 0)
+								? ("⌛ Kết thúc sau: " + dev.belikhun.boatracing.util.Time.formatCountdownSeconds(ti.endingSeconds))
+								: "⌛ Kết thúc...";
 					} else {
 						ln2 = "Tối đa: " + Math.max(0, ti.maxRacers) + " người";
 					}
@@ -2151,6 +2274,7 @@ public final class LobbyBoardService {
 		Color stC = textDim;
 		String bl = bracket.toLowerCase(Locale.ROOT);
 		if (bl.contains("đang chạy")) stC = new Color(0x56, 0xF2, 0x7A); // green-ish
+		else if (bl.contains("đang kết thúc")) stC = new Color(0xFF, 0xB8, 0x4D);
 		else if (bl.contains("đang đăng ký")) stC = accent;
 
 		// Draw bracket: '[' + state + ']'
@@ -2698,6 +2822,85 @@ public final class LobbyBoardService {
 			if (meta != null && !meta.isBlank()) out.add(e.pos + ") " + racer + "  " + meta);
 			else out.add(e.pos + ") " + racer);
 			lines++;
+		}
+
+		return out;
+	}
+
+	private static boolean isRaceFullyCompleted(RaceManager rm) {
+		if (rm == null) return false;
+		// Only treat as completed when it's in an idle (post-race) state.
+		try {
+			if (rm.isRunning()) return false;
+			if (rm.isAnyCountdownActive()) return false;
+			if (rm.isRegistering()) return false;
+		} catch (Throwable ignored) {}
+
+		java.util.List<RaceManager.ParticipantState> standings;
+		try { standings = rm.getStandings(); }
+		catch (Throwable t) { standings = java.util.Collections.emptyList(); }
+		if (standings == null || standings.isEmpty()) return false;
+		for (RaceManager.ParticipantState s : standings) {
+			if (s == null || !s.finished) return false;
+		}
+		return true;
+	}
+
+	private List<String> buildCompletedRightLines(RaceManager rm) {
+		List<String> out = new java.util.ArrayList<>();
+		if (rm == null) {
+			out.add("(Không có dữ liệu)");
+			return out;
+		}
+
+		String track = "(không rõ)";
+		try {
+			String n = rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null;
+			if (n != null && !n.isBlank()) track = n;
+		} catch (Throwable ignored) {}
+
+		// Use a track header row style, then emit full standings (one row per racer).
+		out.add("● " + track.toUpperCase(java.util.Locale.ROOT));
+
+		java.util.List<RaceManager.ParticipantState> standings;
+		try { standings = rm.getStandings(); }
+		catch (Throwable t) { standings = java.util.Collections.emptyList(); }
+
+		if (standings == null || standings.isEmpty()) {
+			out.add("(Chưa có kết quả)");
+			return out;
+		}
+
+		for (int i = 0; i < standings.size(); i++) {
+			RaceManager.ParticipantState s = standings.get(i);
+			if (s == null) continue;
+			UUID id = s.id;
+			if (id == null) continue;
+
+			String name = nameOf(id);
+			String racer = name;
+			try {
+				if (profileManager != null) {
+					racer = profileManager.formatRacerLegacy(id, name);
+				}
+			} catch (Throwable ignored) {}
+
+			long finishMs = 0L;
+			try {
+				finishMs = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + (long) Math.max(0, s.penaltySeconds) * 1000L;
+			} catch (Throwable ignored) { finishMs = 0L; }
+
+			String meta = "";
+			try {
+				meta = "&e⌚ " + dev.belikhun.boatracing.util.Time.formatStopwatchMillis(finishMs) + "&r";
+				if (s.penaltySeconds > 0) {
+					meta += "  &c(+" + dev.belikhun.boatracing.util.Time.formatStopwatchMillis((long) s.penaltySeconds * 1000L) + ")&r";
+				}
+			} catch (Throwable ignored) { meta = ""; }
+
+			int pos = i + 1;
+			if (meta != null && !meta.isBlank()) out.add(pos + ") " + racer + "  " + meta);
+			else out.add(pos + ") " + racer);
 		}
 
 		return out;

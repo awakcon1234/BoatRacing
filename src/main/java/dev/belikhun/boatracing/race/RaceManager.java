@@ -59,6 +59,8 @@ public class RaceManager {
 	private volatile long countdownEndMillis = 0L;
 	// Waiting end (millis) for registration waiting phase; 0 if none
 	private volatile long waitingEndMillis = 0L;
+	// Post-finish cleanup end (millis) after everyone finished; 0 if not in ending window
+	private volatile long postFinishCleanupEndMillis = 0L;
 
 	// Centerline-based live position
 	private java.util.List<org.bukkit.Location> path = java.util.Collections.emptyList();
@@ -1797,12 +1799,14 @@ public class RaceManager {
 						try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
 						postFinishCleanupTask = null;
 					}
+						postFinishCleanupEndMillis = (sec > 0) ? (System.currentTimeMillis() + (sec * 1000L)) : 0L;
 
 					if (sec <= 0) {
 						try { stop(false); } catch (Throwable ignored) {}
 					} else {
 						postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
 							try { stop(false); } catch (Throwable ignored) {}
+								postFinishCleanupEndMillis = 0L;
 							postFinishCleanupTask = null;
 						}, sec * 20L);
 					}
@@ -2333,6 +2337,7 @@ public class RaceManager {
 			try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
 			postFinishCleanupTask = null;
 		}
+		postFinishCleanupEndMillis = 0L;
 
 		// Stop the "all finished" firework show if it was running.
 		stopAllFinishedFireworks();
@@ -2733,6 +2738,7 @@ public class RaceManager {
 			try { postFinishCleanupTask.cancel(); } catch (Throwable ignored) {}
 			postFinishCleanupTask = null;
 		}
+		postFinishCleanupEndMillis = 0L;
 
 		// Snapshot players to clean up before wiping state.
 		java.util.Set<UUID> toCleanup = new java.util.HashSet<>();
@@ -2767,6 +2773,7 @@ public class RaceManager {
 		registering = false;
 		countdownEndMillis = 0L;
 		waitingEndMillis = 0L;
+		postFinishCleanupEndMillis = 0L;
 		raceStartMillis = 0L;
 
 		// Clean up entities/players.
@@ -3169,6 +3176,17 @@ public class RaceManager {
 		long end = 0L;
 		if (registering && waitingEndMillis > now) end = waitingEndMillis;
 		else if (countdownEndMillis > now) end = countdownEndMillis;
+		if (end <= now) return 0;
+		return (int) ((end - now + 999L) / 1000L);
+	}
+
+	/**
+	 * Remaining seconds until this race instance auto-cleans up after everyone finished.
+	 * Returns 0 when not in the post-finish ending window.
+	 */
+	public int getPostFinishCleanupRemainingSeconds() {
+		long now = System.currentTimeMillis();
+		long end = postFinishCleanupEndMillis;
 		if (end <= now) return 0;
 		return (int) ((end - now + 999L) / 1000L);
 	}

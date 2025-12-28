@@ -26,8 +26,15 @@ public final class CenterlineBuilder {
 	public static List<Location> build(TrackConfig cfg, int corridorMargin, Logger logger, boolean verbose) {
 		Location start = cfg.getStartCenter();
 		Region finish = cfg.getFinish();
-		if (start == null || finish == null) {
-			warn(logger, "Centerline build aborted: missing startCenter or finish (track=" + safe(cfg.getCurrentName()) + ")");
+		if (finish == null) {
+			warn(logger, "Centerline build aborted: missing finish (track=" + safe(cfg.getCurrentName()) + ")");
+			return null;
+		}
+
+		Location finishCenter = null;
+		try { finishCenter = centerOf(finish); } catch (Throwable ignored) { finishCenter = null; }
+		if (finishCenter == null) {
+			warn(logger, "Centerline build aborted: invalid finish region (track=" + safe(cfg.getCurrentName()) + ")");
 			return null;
 		}
 
@@ -39,16 +46,35 @@ public final class CenterlineBuilder {
 					" allowed=" + ALLOWED);
 		}
 		List<Location> waypoints = new ArrayList<>();
-		waypoints.add(start);
-		for (Region cp : cfg.getCheckpoints()) {
-			waypoints.add(centerOf(cp));
+		// Build a loop that starts/ends at the finish line (start line):
+		// finish -> checkpoints -> finish
+		// If there are no checkpoints, fall back to: finish -> startCenter -> finish
+		// This avoids anchoring the polyline at startCenter (which is typically behind the finish line).
+		waypoints.add(finishCenter);
+		if (cfg.getCheckpoints() != null && !cfg.getCheckpoints().isEmpty()) {
+			for (Region cp : cfg.getCheckpoints()) {
+				waypoints.add(centerOf(cp));
+			}
+		} else {
+			if (start == null) {
+				warn(logger, "Centerline build aborted: missing startCenter and checkpoints (track=" + safe(cfg.getCurrentName()) + ")");
+				return null;
+			}
+			waypoints.add(start);
 		}
-		waypoints.add(centerOf(finish));
+		waypoints.add(finishCenter);
 
 		// Normalize Y for waypoints by snapping to nearest allowed surface
 		for (int i = 0; i < waypoints.size(); i++) {
 			Location l = waypoints.get(i);
-			String label = (i == 0) ? "start" : (i == waypoints.size() - 1) ? "finish" : ("checkpoint#" + i);
+			String label;
+			if (i == 0) {
+				label = "finish(start)";
+			} else if (i == waypoints.size() - 1) {
+				label = "finish(close)";
+			} else {
+				label = (cfg.getCheckpoints() != null && !cfg.getCheckpoints().isEmpty()) ? ("checkpoint#" + i) : "startCenter";
+			}
 			int y = findSurfaceY(l.getWorld(), l.getBlockX(), l.getBlockZ(), l.getBlockY(), logger, label, verbose);
 			if (y == Integer.MIN_VALUE) {
 				warn(logger, "Centerline build failed: no allowed surface near waypoint " + label +
@@ -95,8 +121,8 @@ public final class CenterlineBuilder {
 			if (verbose) info(logger, "Segment " + i + " ok: nodes=" + segment.size() + " (after decimation total=" + centerline.size() + ")");
 		}
 
-		// If the finish is very close to the start (typical circuit), close the loop for a continuous centerline.
-		// This avoids the visualizer showing two separate ends at the finish line.
+		// Legacy fallback: if the finish is very close to the first point, close the loop for a continuous centerline.
+		// NOTE: With finish->...->finish waypoints above, the polyline is already a loop.
 		try {
 			if (!centerline.isEmpty()) {
 				Location a = centerline.get(centerline.size() - 1); // last
@@ -107,6 +133,9 @@ public final class CenterlineBuilder {
 				double dx = a.getX() - b.getX();
 				double dz = a.getZ() - b.getZ();
 				double distSqXZ = dx * dx + dz * dz;
+				// Already closed (or effectively closed) -> do nothing.
+				double eps = 0.25; // 0.5 block
+				if (distSqXZ <= eps * eps) throw new IllegalStateException("already closed");
 				double closeDist = 32.0; // blocks
 				if (distSqXZ <= closeDist * closeDist) {
 					// Prefer a deterministic stitch along the surface. This avoids A* sometimes choosing a nearby parallel lane.
@@ -138,8 +167,147 @@ public final class CenterlineBuilder {
 			}
 		} catch (Throwable ignored) {}
 
+
+		// Rotate the loop to start at the finish line and ensure explicit closure at the same node.
+		try { ensureStartEndAtFinish(centerline, finish, finishCenter, logger, verbose); } catch (Throwable ignored) {}
+
 		if (verbose) info(logger, "Centerline build complete: totalNodes=" + centerline.size());
 		return centerline;
+	}
+
+	private static void ensureStartEndAtFinish(List<Location> centerline, Region finish, Location finishCenter, Logger logger, boolean verbose) {
+		if (centerline == null || centerline.isEmpty() || finish == null) return;
+		if (finishCenter == null) {
+			try { finishCenter = centerOf(finish); } catch (Throwable ignored) { finishCenter = null; }
+		}
+		if (finishCenter == null) return;
+		World w = finishCenter.getWorld();
+		if (w == null) return;
+
+		// Prefer an anchor node that is actually inside the finish region (so we don't create fake straight segments).
+		int bestIdx = -1;
+		double bestD = Double.POSITIVE_INFINITY;
+		for (int i = 0; i < centerline.size(); i++) {
+			Location p = centerline.get(i);
+			if (p == null || p.getWorld() == null || !p.getWorld().equals(w)) continue;
+			boolean in = false;
+			try { in = finish.containsXZ(p); } catch (Throwable ignored) { in = false; }
+			if (!in) continue;
+			double dx = p.getX() - finishCenter.getX();
+			double dz = p.getZ() - finishCenter.getZ();
+			double d = dx * dx + dz * dz;
+			if (d < bestD) {
+				bestD = d;
+				bestIdx = i;
+			}
+		}
+
+		// Fallback: closest to finish center (if path doesn't enter the finish region for some reason).
+		if (bestIdx < 0) {
+			bestIdx = 0;
+			bestD = Double.POSITIVE_INFINITY;
+			for (int i = 0; i < centerline.size(); i++) {
+				Location p = centerline.get(i);
+				if (p == null || p.getWorld() == null || !p.getWorld().equals(w)) continue;
+				double dx = p.getX() - finishCenter.getX();
+				double dz = p.getZ() - finishCenter.getZ();
+				double d = dx * dx + dz * dz;
+				if (d < bestD) {
+					bestD = d;
+					bestIdx = i;
+				}
+			}
+		}
+
+		if (bestIdx != 0) {
+			java.util.ArrayList<Location> rotated = new java.util.ArrayList<>(centerline.size());
+			rotated.addAll(centerline.subList(bestIdx, centerline.size()));
+			rotated.addAll(centerline.subList(0, bestIdx));
+			centerline.clear();
+			centerline.addAll(rotated);
+		}
+
+		// Ensure explicit closure at the exact same coordinate as the first node.
+		// IMPORTANT: Do NOT blindly append/replace the last node with the first node, because that can
+		// create a huge closing segment (rendered as a diagonal "jump" on the minimap).
+		Location first = centerline.get(0);
+		if (first == null || first.getWorld() == null) return;
+		Location last = centerline.get(centerline.size() - 1);
+		if (last == null || last.getWorld() == null || !last.getWorld().equals(first.getWorld())) return;
+
+		double dx = last.getX() - first.getX();
+		double dy = last.getY() - first.getY();
+		double dz = last.getZ() - first.getZ();
+		double distSq3 = dx * dx + dy * dy + dz * dz;
+		double distSqXZ = dx * dx + dz * dz;
+
+		// Already exactly closed -> normalize the last node to be a clone of the first.
+		if (distSq3 <= 1.0e-9) {
+			centerline.set(centerline.size() - 1, first.clone());
+			return;
+		}
+
+		// If the seam is small, just snap it (avoids tiny gaps from surface snapping).
+		// Use a small threshold so we never introduce an artificial long connector.
+		final double snapSq = 0.35 * 0.35;
+		if (distSqXZ <= snapSq) {
+			centerline.add(first.clone());
+			return;
+		}
+
+		// Seam is non-trivial: try closing on-surface.
+		boolean closed = false;
+		try {
+			closed = tryStitchLoopOnSurface(centerline, last, first, logger, verbose);
+		} catch (Throwable ignored) { closed = false; }
+
+		if (!closed) {
+			// Run A* to close the loop on allowed surface instead of creating a fake straight segment.
+			// Compute a conservative global bounds from the current centerline nodes.
+			int minX = Integer.MAX_VALUE;
+			int maxX = Integer.MIN_VALUE;
+			int minZ = Integer.MAX_VALUE;
+			int maxZ = Integer.MIN_VALUE;
+			for (Location p : centerline) {
+				if (p == null || p.getWorld() == null || !p.getWorld().equals(first.getWorld())) continue;
+				int px = p.getBlockX();
+				int pz = p.getBlockZ();
+				if (px < minX) minX = px;
+				if (px > maxX) maxX = px;
+				if (pz < minZ) minZ = pz;
+				if (pz > maxZ) maxZ = pz;
+			}
+			if (minX != Integer.MAX_VALUE && maxX != Integer.MIN_VALUE && minZ != Integer.MAX_VALUE && maxZ != Integer.MIN_VALUE) {
+				int pad = 32;
+				minX -= pad;
+				maxX += pad;
+				minZ -= pad;
+				maxZ += pad;
+
+				try {
+					List<Location> segment = aStar2DWithRetries(last, first, 12, 64, minX, maxX, minZ, maxZ, logger, "segment#close(finish)", verbose);
+					if (segment != null && !segment.isEmpty()) {
+						appendDecimated(centerline, segment, 0.5);
+						closed = true;
+					}
+				} catch (Throwable ignored) { closed = false; }
+			}
+		}
+
+		// If closure succeeded, ensure the end is exactly the start (no epsilon drift).
+		if (closed) {
+			Location end = centerline.get(centerline.size() - 1);
+			if (end != null && end.getWorld() != null && end.getWorld().equals(first.getWorld())) {
+				double ex = end.getX() - first.getX();
+				double ey = end.getY() - first.getY();
+				double ez = end.getZ() - first.getZ();
+				if ((ex * ex + ey * ey + ez * ez) <= 0.25) {
+					centerline.add(first.clone());
+				}
+			}
+		} else if (verbose) {
+			warn(logger, "Centerline: skip forced closure to avoid diagonal jump (seamDistSqXZ=" + String.format(java.util.Locale.ROOT, "%.3f", distSqXZ) + ")");
+		}
 	}
 
 	private static Location centerOf(Region r) {
