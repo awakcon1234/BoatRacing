@@ -853,7 +853,7 @@ public final class CenterlineBuilder {
 		Node parent;
 		Node(int x,int y,int z){this.x=x;this.y=y;this.z=z;}
 		@Override public boolean equals(Object o){if(!(o instanceof Node n)) return false;return n.x==x&&n.y==y&&n.z==z;}
-		@Override public int hashCode(){return java.util.Objects.hash(x,y,z);}        
+		@Override public int hashCode(){return java.util.Objects.hash(x,y,z);}
 	}
 
 	private static String fmt(Location l) {
