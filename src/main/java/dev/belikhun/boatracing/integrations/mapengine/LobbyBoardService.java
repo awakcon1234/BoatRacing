@@ -98,9 +98,9 @@ public final class LobbyBoardService {
 		float b = Math.max(1, border);
 		// The minimap centerline can look too thin on large boards when we clamp too low.
 		// Use a slightly higher multiplier and a higher cap so it remains visible.
-		float s = b * 0.90f;
-		if (s < 1.5f) s = 1.5f;
-		if (s > 6.0f) s = 6.0f;
+		float s = b * 1.15f;
+		if (s < 2.0f) s = 2.0f;
+		if (s > 7.5f) s = 7.5f;
 		return s;
 	}
 
@@ -783,7 +783,7 @@ public final class LobbyBoardService {
 
 		float stroke = Math.max(1.0f, strokePx);
 		int shadowOff = Math.max(1, (int) Math.round(stroke));
-		int margin = Math.max(4, (int) Math.round(stroke * 2.0));
+		int margin = Math.max(6, (int) Math.round(stroke * 2.6));
 
 		// Background + border
 		g.setColor(new Color(0x10, 0x11, 0x13));
@@ -819,6 +819,15 @@ public final class LobbyBoardService {
 
 		double dx = Math.max(1.0e-6, maxX - minX);
 		double dz = Math.max(1.0e-6, maxZ - minZ);
+
+		// Add a little breathing room so the line doesn't hug the minimap border.
+		double pad = Math.max(dx, dz) * 0.02;
+		minX -= pad;
+		maxX += pad;
+		minZ -= pad;
+		maxZ += pad;
+		dx = Math.max(1.0e-6, maxX - minX);
+		dz = Math.max(1.0e-6, maxZ - minZ);
 
 		int innerW = Math.max(1, w - margin * 2);
 		int innerH = Math.max(1, h - margin * 2);
@@ -927,7 +936,7 @@ public final class LobbyBoardService {
 
 		float stroke = Math.max(1.0f, strokePx);
 		int shadowOff = Math.max(1, (int) Math.round(stroke));
-		int margin = Math.max(4, (int) Math.round(stroke * 2.0));
+		int margin = Math.max(6, (int) Math.round(stroke * 2.6));
 
 		// Background + border
 		g.setColor(new Color(0x10, 0x11, 0x13));
@@ -963,6 +972,15 @@ public final class LobbyBoardService {
 
 		double dx = Math.max(1.0e-6, maxX - minX);
 		double dz = Math.max(1.0e-6, maxZ - minZ);
+
+		// Add a little breathing room so the line doesn't hug the minimap border.
+		double pad = Math.max(dx, dz) * 0.02;
+		minX -= pad;
+		maxX += pad;
+		minZ -= pad;
+		maxZ += pad;
+		dx = Math.max(1.0e-6, maxX - minX);
+		dz = Math.max(1.0e-6, maxZ - minZ);
 
 		int innerW = Math.max(1, w - margin * 2);
 		int innerH = Math.max(1, h - margin * 2);
