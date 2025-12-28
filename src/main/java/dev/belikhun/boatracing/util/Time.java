@@ -16,46 +16,46 @@ import java.util.Locale;
  * their own output format (legacy '&' or MiniMessage) consistently.
  */
 public final class Time {
-    private Time() {}
+	private Time() {}
 
-    public static String formatStopwatchMillis(long ms) {
-        long t = Math.max(0L, ms);
+	public static String formatStopwatchMillis(long ms) {
+		long t = Math.max(0L, ms);
 
-        long totalSec = t / 1000L;
-        long hours = totalSec / 3600L;
-        long minutes = (totalSec % 3600L) / 60L;
-        long seconds = totalSec % 60L;
-        long msPart = t % 1000L;
+		long totalSec = t / 1000L;
+		long hours = totalSec / 3600L;
+		long minutes = (totalSec % 3600L) / 60L;
+		long seconds = totalSec % 60L;
+		long msPart = t % 1000L;
 
-        if (hours > 0L) {
-            return String.format(Locale.ROOT, "%d:%02d:%02d.%03d", hours, minutes, seconds, msPart);
-        }
+		if (hours > 0L) {
+			return String.format(Locale.ROOT, "%d:%02d:%02d.%03d", hours, minutes, seconds, msPart);
+		}
 
-        return String.format(Locale.ROOT, "%02d:%02d.%03d", minutes, seconds, msPart);
-    }
+		return String.format(Locale.ROOT, "%02d:%02d.%03d", minutes, seconds, msPart);
+	}
 
-    public static String formatDurationShort(long ms) {
-        long t = Math.max(0L, ms);
+	public static String formatDurationShort(long ms) {
+		long t = Math.max(0L, ms);
 
-        long totalSec = t / 1000L;
-        long hours = totalSec / 3600L;
-        long minutes = (totalSec % 3600L) / 60L;
-        long seconds = totalSec % 60L;
+		long totalSec = t / 1000L;
+		long hours = totalSec / 3600L;
+		long minutes = (totalSec % 3600L) / 60L;
+		long seconds = totalSec % 60L;
 
-        if (hours > 0L) {
-            return String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds);
-        }
+		if (hours > 0L) {
+			return String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, seconds);
+		}
 
-        return String.format(Locale.ROOT, "%02d:%02d", minutes, seconds);
-    }
+		return String.format(Locale.ROOT, "%02d:%02d", minutes, seconds);
+	}
 
-    public static String formatCountdownSeconds(int sec) {
-        int s = Math.max(0, sec);
-        if (s >= 60) {
-            int m = s / 60;
-            int r = s % 60;
-            return String.format(Locale.ROOT, "%d:%02d", m, r);
-        }
-        return s + "s";
-    }
+	public static String formatCountdownSeconds(int sec) {
+		int s = Math.max(0, sec);
+		if (s >= 60) {
+			int m = s / 60;
+			int r = s % 60;
+			return String.format(Locale.ROOT, "%d:%02d", m, r);
+		}
+		return s + "s";
+	}
 }
