@@ -9,7 +9,9 @@ import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.Entity;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.megavex.scoreboardlibrary.api.ScoreboardLibrary;
@@ -444,6 +446,12 @@ public class ScoreboardService {
 			int passedCp = (st.nextCheckpointIndex);
 			ph.put("checkpoint_passed", String.valueOf(passedCp));
 			ph.put("checkpoint_total", String.valueOf(totalCp));
+
+			// Ahead/behind racer placeholders (placement + speed + distance)
+			try {
+				fillNeighborRacerPlaceholders(p, rm, ctx, ph);
+			} catch (Throwable ignored) {}
+
 			lines = parseLines(p, cfgStringList("scoreboard.templates.racing.lines", java.util.List.of()), ph);
 			if (lines.isEmpty()) {
 				lines = parseLines(p, java.util.List.of(
@@ -493,7 +501,8 @@ public class ScoreboardService {
 		if (ended) {
 			// Race ended: show full list ordered by placement/time.
 			for (String line : cfgStringList("scoreboard.templates.ended.header", java.util.List.of("<yellow>Kết quả"))) {
-				lines.add(parse(p, line, java.util.Map.of()));
+				Component c = parse(p, line, java.util.Map.of());
+				if (c != null) lines.add(c);
 			}
 
 			long best = Long.MAX_VALUE;
@@ -525,6 +534,14 @@ public class ScoreboardService {
 				lines.add(parse(p, cfgString(key, def), ph));
 			}
 
+			// Optional footer lines for ended board
+			java.util.Map<String, String> phFooter = new java.util.HashMap<>(phTitle);
+			try {
+				phFooter.put("timer", Time.formatStopwatchMillis(rm.getRaceElapsedMillis()));
+			} catch (Throwable ignored) {}
+			java.util.List<String> footer = cfgStringList("scoreboard.templates.ended.footer", java.util.List.of());
+			if (!footer.isEmpty()) lines.addAll(parseLines(p, footer, phFooter));
+
 			applySidebarComponents(p, sb, title, lines);
 			return;
 		}
@@ -551,8 +568,12 @@ public class ScoreboardService {
 			if (shown >= maxFinished) break; // avoid overflow
 		}
 		// Unfinished racers: live position
-		String unfinishedHeader = cfgString("scoreboard.templates.completed.unfinished_header", "<yellow>Đang đua");
-		lines.add(parse(p, unfinishedHeader, java.util.Map.of()));
+		// Allow unfinished_header to be either a single string OR a list of lines.
+		java.util.List<String> unfinishedHeaderLines = cfgStringList("scoreboard.templates.completed.unfinished_header", java.util.List.of());
+		if (unfinishedHeaderLines.isEmpty()) {
+			unfinishedHeaderLines = java.util.List.of(cfgString("scoreboard.templates.completed.unfinished_header", "<yellow>Đang đua"));
+		}
+		lines.addAll(parseLines(p, unfinishedHeaderLines, java.util.Map.of()));
 		List<UUID> order = rm.getLiveOrder();
 		int limit = cfgInt("scoreboard.templates.completed.max_unfinished_lines", 6);
 		int count = 0;
@@ -576,6 +597,10 @@ public class ScoreboardService {
 			count += 2;
 			if (count >= limit) break;
 		}
+
+		// Optional footer lines for completed board
+		java.util.List<String> footer = cfgStringList("scoreboard.templates.completed.footer", java.util.List.of());
+		if (!footer.isEmpty()) lines.addAll(parseLines(p, footer, phTitle));
 		applySidebarComponents(p, sb, title, lines);
 	}
 
@@ -805,21 +830,154 @@ public class ScoreboardService {
 	}
 
 	private java.util.List<Component> parseLines(Player p, java.util.List<String> lines, java.util.Map<String,String> placeholders) {
-		java.util.List<Component> out = new java.util.ArrayList<>(lines.size());
-		for (String s : lines) out.add(parse(p, s, placeholders));
+		java.util.List<Component> out = new java.util.ArrayList<>(lines == null ? 0 : lines.size());
+		if (lines == null || lines.isEmpty()) return out;
+		for (String raw : lines) {
+			String expanded = expandPlaceholders(p, raw, placeholders);
+			if (expanded == null) continue;
+			// Control marker: skip sending this scoreboard line entirely.
+			if (expanded.contains("[skip]")) continue;
+			Component c = deserializeMini(expanded);
+			if (c != null) out.add(c);
+		}
 		return out;
 	}
 
 	private Component parse(Player p, String raw, java.util.Map<String,String> placeholders) {
-		if (raw == null) return Component.empty();
+		String expanded = expandPlaceholders(p, raw, placeholders);
+		if (expanded == null) return Component.empty();
+		try {
+			return MiniMessage.miniMessage().deserialize(expanded);
+		} catch (Throwable ignored) {
+			return Text.c(expanded);
+		}
+	}
+
+	private String expandPlaceholders(Player p, String raw, java.util.Map<String,String> placeholders) {
+		if (raw == null) return null;
 		String s = raw;
 		// plugin placeholders (%key%)
-		if (placeholders != null) for (var e : placeholders.entrySet()) s = s.replace("%" + e.getKey() + "%", e.getValue());
+		if (placeholders != null) {
+			for (var e : placeholders.entrySet()) {
+				String k = e.getKey();
+				String v = e.getValue();
+				if (k == null) continue;
+				s = s.replace("%" + k + "%", v == null ? "" : v);
+			}
+		}
 		// PlaceholderAPI if present
 		if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-			try { s = me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(p, s); } catch (Throwable ignored) {}
+			try {
+				s = me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(p, s);
+			} catch (Throwable ignored) {}
 		}
-		try { return MiniMessage.miniMessage().deserialize(s); } catch (Throwable ignored) { return Text.c(s); }
+		return s;
+	}
+
+	private Component deserializeMini(String expanded) {
+		if (expanded == null) return null;
+		try { return MiniMessage.miniMessage().deserialize(expanded); } catch (Throwable ignored) { return Text.c(expanded); }
+	}
+
+	private static boolean isBoatLike(Entity e) {
+		if (e == null) return false;
+		try {
+			String t = e.getType() != null ? e.getType().name() : null;
+			if (t == null) return false;
+			return t.endsWith("_BOAT") || t.endsWith("_CHEST_BOAT") || t.endsWith("_RAFT") || t.endsWith("_CHEST_RAFT")
+					|| t.equals("BOAT") || t.equals("CHEST_BOAT");
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	private static Location riderOrVehicleLocation(Player p) {
+		if (p == null) return null;
+		try {
+			Entity v = p.getVehicle();
+			if (isBoatLike(v)) return v.getLocation();
+		} catch (Throwable ignored) {}
+		try { return p.getLocation(); } catch (Throwable ignored) { return null; }
+	}
+
+	private static String fmt1(double v) {
+		if (!Double.isFinite(v)) return "0.0";
+		return String.format(java.util.Locale.US, "%.1f", v);
+	}
+
+	private void fillNeighborRacerPlaceholders(Player p, RaceManager rm, TickContext ctx, java.util.Map<String, String> ph) {
+		if (p == null || rm == null || ctx == null || ph == null) return;
+		if (ctx.liveOrder == null || ctx.liveOrder.isEmpty()) return;
+		UUID self = p.getUniqueId();
+		int idx = ctx.liveOrder.indexOf(self);
+		UUID aheadId = (idx > 0) ? ctx.liveOrder.get(idx - 1) : null;
+		UUID behindId = (idx >= 0 && idx + 1 < ctx.liveOrder.size()) ? ctx.liveOrder.get(idx + 1) : null;
+		int aheadPos = (idx > 0) ? idx : -1;
+		int behindPos = (idx >= 0 && idx + 1 < ctx.liveOrder.size()) ? (idx + 2) : -1;
+
+		// Unit choice: follow the viewing player's preference (same as actionbar)
+		String unitPref = "";
+		try { unitPref = pm != null ? pm.get(p.getUniqueId()).speedUnit : ""; } catch (Throwable ignored) { unitPref = ""; }
+		String unit = (unitPref != null && !unitPref.isEmpty()) ? unitPref.toLowerCase() : cfgString("scoreboard.speed.unit", "kmh").toLowerCase();
+		if (!"bps".equals(unit) && !"kmh".equals(unit) && !"bph".equals(unit)) unit = "kmh";
+		String unitLabel = "km/h";
+		if ("bps".equals(unit)) unitLabel = "bps";
+		else if ("bph".equals(unit)) unitLabel = "bph";
+
+		Location selfLoc = riderOrVehicleLocation(p);
+
+		fillNeighborOne("ahead", aheadId, aheadPos, selfLoc, unit, unitLabel, ph);
+		fillNeighborOne("behind", behindId, behindPos, selfLoc, unit, unitLabel, ph);
+	}
+
+	private void fillNeighborOne(String prefix, UUID id, int placement, Location selfLoc, String unit, String unitLabel,
+			java.util.Map<String, String> ph) {
+		String pfx = (prefix == null ? "" : prefix);
+		if (id == null || placement <= 0) {
+			ph.put(pfx + "_position", "-");
+			ph.put(pfx + "_position_tag", "-");
+			ph.put(pfx + "_racer_name", "-");
+			ph.put(pfx + "_racer_display", "-");
+			ph.put(pfx + "_speed", "-");
+			ph.put(pfx + "_speed_unit", unitLabel);
+			ph.put(pfx + "_speed_color", "gray");
+			ph.put(pfx + "_distance", "-");
+			ph.put(pfx + "_distance_unit", "m");
+			return;
+		}
+
+		ph.put(pfx + "_position", colorizePlacement(placement));
+		ph.put(pfx + "_position_tag", colorizePlacementTag(placement));
+
+		String name = nameOf(id);
+		ph.put(pfx + "_racer_name", name);
+		ph.put(pfx + "_racer_display", racerDisplay(id, name));
+
+		// Speed
+		double bps = lastBps.getOrDefault(id, 0.0);
+		double kmh = bps * 3.6;
+		double bph = bps * 3600.0;
+		String speedVal;
+		if ("bps".equals(unit)) speedVal = fmt2(bps);
+		else if ("bph".equals(unit)) speedVal = fmt2(bph);
+		else speedVal = fmt2(kmh);
+		ph.put(pfx + "_speed", speedVal);
+		ph.put(pfx + "_speed_unit", unitLabel);
+		ph.put(pfx + "_speed_color", resolveSpeedColorByUnit(bps, unit));
+
+		// Distance (blocks)
+		String distOut = "-";
+		try {
+			Player other = Bukkit.getPlayer(id);
+			Location otherLoc = riderOrVehicleLocation(other);
+			if (selfLoc != null && otherLoc != null && selfLoc.getWorld() != null && otherLoc.getWorld() != null
+					&& selfLoc.getWorld().equals(otherLoc.getWorld())) {
+				double d = selfLoc.distance(otherLoc);
+				if (Double.isFinite(d) && d >= 0.0) distOut = fmt1(d);
+			}
+		} catch (Throwable ignored) {}
+		ph.put(pfx + "_distance", distOut);
+		ph.put(pfx + "_distance_unit", "m");
 	}
 
 	private String cfgString(String path, String def) {

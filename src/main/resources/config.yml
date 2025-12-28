@@ -59,8 +59,13 @@ racing:
     #
     # Waiting: %track% %laps% %joined% %max% %countdown%
     # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %progress% %progress_int% %checkpoint_passed% %checkpoint_total%
+    # Racing neighbor (ahead/behind) placeholders:
+    #   %ahead_position% %ahead_position_tag% %ahead_racer_name% %ahead_racer_display% %ahead_speed% %ahead_speed_unit% %ahead_speed_color% %ahead_distance% %ahead_distance_unit%
+    #   %behind_position% %behind_position_tag% %behind_racer_name% %behind_racer_display% %behind_speed% %behind_speed_unit% %behind_speed_color% %behind_distance% %behind_distance_unit%
     # Completed (finished racers): %finish_pos% %finish_time% (plus %racer_display%)
     # Ended (everyone finished): also provides %delta_time%
+    # Special control marker:
+    #   - If a rendered line contains "[skip]" it will not be sent to the scoreboard.
     templates:
       lobby:
         title: "<gold>BoatRacing"
@@ -118,11 +123,15 @@ racing:
           - "<yellow>Về đích"
         finished_line: "<white>%finish_pos%)</white> %racer_display%"
         finished_time_line: "<gray>  thời gian: <white>%finish_time%"
-        unfinished_header: "<yellow>Đang đua"
+        # Can be a single string OR a list of lines.
+        unfinished_header:
+          - "<yellow>Đang đua"
         unfinished_line: "<white>%position%)</white> %racer_display%"
         unfinished_progress_line: "<gray>  tiến độ: <white>%progress%%"
         max_finished_lines: 8
         max_unfinished_lines: 6
+        # Optional footer lines appended to the completed board.
+        footer: []
       # Race ended (everyone finished): show full ordered results.
       # Placeholders:
       #   %finish_pos% %racer_name% %finish_time% %delta_time%
@@ -134,6 +143,8 @@ racing:
         winner_line: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%"
         # Everyone else (shows +delta from #1)
         delta_line: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>+%delta_time%"
+        # Optional footer lines appended to the ended board.
+        footer: []
       # ActionBar templates shown only while waiting and racing; supports MiniMessage and PlaceholderAPI
       actionbar:
         enabled: true
