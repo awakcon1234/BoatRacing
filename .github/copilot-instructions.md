@@ -4,6 +4,10 @@
 - This is a **PaperMC-only** plugin for boat racing. It targets **Java 21 only**. Entry point: [src/main/java/dev/belikhun/boatracing/BoatRacingPlugin.java](../src/main/java/dev/belikhun/boatracing/BoatRacingPlugin.java).
 - Tracks are persisted as YAML under the plugin data folder: `plugins/BoatRacing/tracks/<name>.yml` (see README for schema details).
 
+## Formatting (must-follow)
+- For code changes in this repo, **use tab indentation** (tab width = 4) for Java/Gradle/Groovy sources.
+- Do **not** convert YAML to tabs (YAML requires spaces). Follow `.editorconfig` for any file-type exceptions.
+
 ## Big-picture architecture (how it actually works)
 - **Runtime racing is per-track**: multiple races can run concurrently, keyed by track name.
   - Orchestrator: [src/main/java/dev/belikhun/boatracing/race/RaceService.java](../src/main/java/dev/belikhun/boatracing/race/RaceService.java) maps `trackName -> RaceManager` and `playerId -> trackName`.
