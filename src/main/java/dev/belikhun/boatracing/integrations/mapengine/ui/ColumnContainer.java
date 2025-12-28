@@ -38,20 +38,34 @@ public final class ColumnContainer extends UiContainer {
 		UiRect content = contentRect();
 		int count = 0;
 		int totalH = 0;
+		int growSum = 0;
+		UiElement lastGrow = null;
 		for (UiElement ch : children) {
 			if (ch == null || !ch.style().display()) continue;
 			UiInsets m = ch.style().margin();
 			UiMeasure cm = ch.measure(ctx, Math.max(0, content.w() - m.horizontal()), Integer.MAX_VALUE);
 			totalH += cm.h() + m.vertical();
+			int g = 0;
+			try { g = ch.style().flexGrow(); } catch (Throwable ignored) { g = 0; }
+			if (g > 0) {
+				growSum += g;
+				lastGrow = ch;
+			}
 			count++;
 		}
 		if (count > 1) totalH += gapPx * (count - 1);
 
+		int remaining = Math.max(0, content.h() - totalH);
+		boolean hasGrow = growSum > 0 && remaining > 0;
+
 		int y = content.y();
-		if (justifyContent == UiJustify.CENTER) y += Math.max(0, (content.h() - totalH) / 2);
-		else if (justifyContent == UiJustify.END) y += Math.max(0, (content.h() - totalH));
+		if (!hasGrow) {
+			if (justifyContent == UiJustify.CENTER) y += Math.max(0, (content.h() - totalH) / 2);
+			else if (justifyContent == UiJustify.END) y += Math.max(0, (content.h() - totalH));
+		}
 
 		int laidOut = 0;
+		int allocatedExtra = 0;
 		for (UiElement ch : children) {
 			if (ch == null || !ch.style().display()) continue;
 			UiInsets m = ch.style().margin();
@@ -64,6 +78,20 @@ public final class ColumnContainer extends UiContainer {
 				childW = Math.min(cm.w(), Math.max(0, content.w() - m.horizontal()));
 			}
 			int childH = cm.h();
+			if (hasGrow) {
+				int g;
+				try { g = ch.style().flexGrow(); } catch (Throwable ignored) { g = 0; }
+				if (g > 0) {
+					int extra;
+					if (ch == lastGrow) {
+						extra = Math.max(0, remaining - allocatedExtra);
+					} else {
+						extra = (int) (((long) remaining) * (long) g / (long) growSum);
+						allocatedExtra += extra;
+					}
+					childH = Math.max(0, childH + extra);
+				}
+			}
 
 			int x = content.x() + m.left();
 			if (alignItems == UiAlign.CENTER) x = content.x() + Math.max(0, (content.w() - childW) / 2);

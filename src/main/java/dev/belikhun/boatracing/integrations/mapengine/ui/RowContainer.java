@@ -37,20 +37,34 @@ public final class RowContainer extends UiContainer {
 		UiRect content = contentRect();
 		int count = 0;
 		int totalW = 0;
+		int growSum = 0;
+		UiElement lastGrow = null;
 		for (UiElement ch : children) {
 			if (ch == null || !ch.style().display()) continue;
 			UiInsets m = ch.style().margin();
 			UiMeasure cm = ch.measure(ctx, Integer.MAX_VALUE, Math.max(0, content.h() - m.vertical()));
 			totalW += cm.w() + m.horizontal();
+			int g = 0;
+			try { g = ch.style().flexGrow(); } catch (Throwable ignored) { g = 0; }
+			if (g > 0) {
+				growSum += g;
+				lastGrow = ch;
+			}
 			count++;
 		}
 		if (count > 1) totalW += gapPx * (count - 1);
 
+		int remaining = Math.max(0, content.w() - totalW);
+		boolean hasGrow = growSum > 0 && remaining > 0;
+
 		int x = content.x();
-		if (justifyContent == UiJustify.CENTER) x += Math.max(0, (content.w() - totalW) / 2);
-		else if (justifyContent == UiJustify.END) x += Math.max(0, (content.w() - totalW));
+		if (!hasGrow) {
+			if (justifyContent == UiJustify.CENTER) x += Math.max(0, (content.w() - totalW) / 2);
+			else if (justifyContent == UiJustify.END) x += Math.max(0, (content.w() - totalW));
+		}
 
 		int laidOut = 0;
+		int allocatedExtra = 0;
 		for (UiElement ch : children) {
 			if (ch == null || !ch.style().display()) continue;
 			UiInsets m = ch.style().margin();
@@ -63,6 +77,20 @@ public final class RowContainer extends UiContainer {
 				childH = Math.min(cm.h(), Math.max(0, content.h() - m.vertical()));
 			}
 			int childW = cm.w();
+			if (hasGrow) {
+				int g;
+				try { g = ch.style().flexGrow(); } catch (Throwable ignored) { g = 0; }
+				if (g > 0) {
+					int extra;
+					if (ch == lastGrow) {
+						extra = Math.max(0, remaining - allocatedExtra);
+					} else {
+						extra = (int) (((long) remaining) * (long) g / (long) growSum);
+						allocatedExtra += extra;
+					}
+					childW = Math.max(0, childW + extra);
+				}
+			}
 
 			int y = content.y() + m.top();
 			if (alignItems == UiAlign.CENTER) y = content.y() + Math.max(0, (content.h() - childH) / 2);

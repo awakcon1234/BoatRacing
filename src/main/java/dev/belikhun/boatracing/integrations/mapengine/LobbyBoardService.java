@@ -1403,6 +1403,8 @@ public final class LobbyBoardService {
                     .justifyContent(UiJustify.START)
                     .gap(2 * pad);
             mainRow.style().padding(UiInsets.symmetric(0, Math.max(0, pad - inset)));
+                // Fill the remaining mainPanel height (minimal flex-grow model).
+                mainRow.style().flexGrow(1);
             this.mainRow = mainRow;
 
             // Left column: cached track slots.
@@ -1825,12 +1827,13 @@ public final class LobbyBoardService {
                         availH = Math.max(24, contentH - 2);
                         mapPad = Math.max(1, (contentH - availH) / 2);
                     }
-                    int maxMiniW = clamp((int) Math.round(colW * 0.40), 72, Math.max(72, colW - 140));
                     miniH = Math.max(24, availH);
                     int desiredW = (int) Math.round(miniH * 4.0 / 3.0);
+                    // Compute based on actual available inner width to avoid overflow.
+                    int maxMiniW = Math.max(24, Math.max(0, innerW - 10));
                     miniW = Math.min(maxMiniW, Math.max(24, desiredW));
                 }
-                int textW = Math.max(0, colW - (minimalRunningRow ? 0 : miniW) - 10);
+                int textW = Math.max(0, innerW - (minimalRunningRow ? 0 : miniW) - 10);
 
                 // Line 1
                 String line1 = "● " + ti.trackName + "  [" + statusLabel(ti.status, ti.registered, ti.maxRacers, ti.countdownSeconds) + "]";
@@ -1929,7 +1932,8 @@ public final class LobbyBoardService {
                 } else if (type == RightLineType.RANK) {
                     g.setFont(bodyFont);
                     java.awt.FontMetrics fm = g.getFontMetrics(bodyFont);
-                    drawRankingRow(g, s, rect.x(), rect.y() + fm.getAscent(), rect.w(), bodyFont, accent, text, textDim);
+                    int pad = Math.max(0, trackInnerPad);
+                    drawRankingRow(g, s, rect.x() + pad, rect.y() + fm.getAscent(), Math.max(0, rect.w() - pad), bodyFont, accent, text, textDim);
                 } else {
                     g.setFont(smallFont);
                     java.awt.FontMetrics fm = g.getFontMetrics(smallFont);
