@@ -73,6 +73,12 @@ public class RaceManager {
 	private int[] gateIndex = new int[0]; // indices along path for each checkpoint and finish
 	private boolean pathReady = false;
 
+	// Arc-length cache along the centerline path (used for track-following distances).
+	// arcCum[i] = distance along path from index 0 to i (forward, without wrap).
+	private double[] arcCum = new double[0];
+	private double arcLapLength = 0.0;
+	private boolean arcReady = false;
+
 	private BukkitRunnable raceTickTask;
 	private BukkitTask registrationStartTask;
 	private BukkitRunnable countdownTask;
@@ -2787,6 +2793,32 @@ public class RaceManager {
 		return out;
 	}
 
+	/**
+	 * Lightweight check: whether any participant has finished.
+	 * Avoids building/sorting standings when only a boolean is needed.
+	 */
+	public boolean hasAnyFinishedParticipant() {
+		for (ParticipantState s : participants.values()) {
+			if (s != null && s.finished)
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Lightweight check: whether all participants have finished.
+	 * Returns false if there are no participants.
+	 */
+	public boolean areAllParticipantsFinished() {
+		if (participants.isEmpty())
+			return false;
+		for (ParticipantState s : participants.values()) {
+			if (s == null || !s.finished)
+				return false;
+		}
+		return true;
+	}
+
 	// Simple state holder
 	public static class ParticipantState {
 		public final UUID id;
@@ -4385,6 +4417,9 @@ public class RaceManager {
 			pathReady = false;
 			path = java.util.Collections.emptyList();
 			gateIndex = new int[0];
+			arcCum = new double[0];
+			arcLapLength = 0.0;
+			arcReady = false;
 			return;
 		}
 		path = cl;
@@ -4406,6 +4441,132 @@ public class RaceManager {
 		if (gateIndex.length > 0)
 			gateIndex[gateIndex.length - 1] = seed;
 		pathReady = true;
+		rebuildArcCache();
+	}
+
+	private void rebuildArcCache() {
+		arcReady = false;
+		arcLapLength = 0.0;
+		if (!pathReady || path == null)
+			return;
+		int n = path.size();
+		if (n < 2)
+			return;
+
+		double[] cum = new double[n];
+		cum[0] = 0.0;
+		double sum = 0.0;
+		for (int i = 1; i < n; i++) {
+			org.bukkit.Location a = path.get(i - 1);
+			org.bukkit.Location b = path.get(i);
+			double d = 0.0;
+			try {
+				if (a != null && b != null && a.getWorld() != null && b.getWorld() != null
+						&& a.getWorld().equals(b.getWorld())) {
+					d = a.distance(b);
+				}
+			} catch (Throwable ignored) {
+				d = 0.0;
+			}
+			if (!Double.isFinite(d) || d < 0.0)
+				d = 0.0;
+			sum += d;
+			cum[i] = sum;
+		}
+
+		// Close the loop (path is treated as a cycle throughout the live progress code).
+		double close = 0.0;
+		try {
+			org.bukkit.Location last = path.get(n - 1);
+			org.bukkit.Location first = path.get(0);
+			if (last != null && first != null && last.getWorld() != null && first.getWorld() != null
+					&& last.getWorld().equals(first.getWorld())) {
+				close = last.distance(first);
+			}
+		} catch (Throwable ignored) {
+			close = 0.0;
+		}
+		if (!Double.isFinite(close) || close < 0.0)
+			close = 0.0;
+
+		this.arcCum = cum;
+		this.arcLapLength = Math.max(0.0, sum + close);
+		this.arcReady = this.arcLapLength > 0.0001;
+	}
+
+	private static int clampIndex(int idx, int n) {
+		if (n <= 0)
+			return 0;
+		if (idx < 0)
+			return 0;
+		if (idx >= n)
+			return n - 1;
+		return idx;
+	}
+
+	private double arcDistanceForward(int fromIndex, int toIndex) {
+		if (!arcReady || arcCum == null || arcCum.length < 2)
+			return 0.0;
+		int n = arcCum.length;
+		int from = clampIndex(fromIndex, n);
+		int to = clampIndex(toIndex, n);
+		if (from == to)
+			return 0.0;
+
+		double a = arcCum[from];
+		double b = arcCum[to];
+		if (!Double.isFinite(a))
+			a = 0.0;
+		if (!Double.isFinite(b))
+			b = 0.0;
+
+		if (to > from) {
+			return Math.max(0.0, b - a);
+		}
+		// Wrap across the lap boundary.
+		double d = arcLapLength - (a - b);
+		if (!Double.isFinite(d))
+			d = 0.0;
+		return Math.max(0.0, d);
+	}
+
+	private double totalProgressMeters(UUID id) {
+		if (id == null)
+			return -1.0;
+		if (!arcReady)
+			return -1.0;
+		ParticipantState s = participants.get(id);
+		if (s == null)
+			return -1.0;
+
+		// Finished racers are clamped to full race distance.
+		if (s.finished)
+			return (double) getTotalLaps() * arcLapLength;
+
+		int n = (path == null ? 0 : path.size());
+		if (n <= 0)
+			return -1.0;
+		int idx = clampIndex(s.lastPathIndex, n);
+		int startIdx = finishGateIndex();
+		double inLap = arcDistanceForward(startIdx, idx);
+		return (double) Math.max(0, s.currentLap) * arcLapLength + inLap;
+	}
+
+	/**
+	 * Track-following distance (arc-length) along the centerline from {@code fromId} to {@code toId},
+	 * following race direction and accounting for completed laps.
+	 *
+	 * Returns -1 if arc-length cannot be computed (no centerline/path).
+	 */
+	public double getArcDistanceMeters(UUID fromId, UUID toId) {
+		double from = totalProgressMeters(fromId);
+		double to = totalProgressMeters(toId);
+		if (from < 0.0 || to < 0.0)
+			return -1.0;
+		double d = to - from;
+		if (!Double.isFinite(d) || d < 0.0)
+			return -1.0;
+		return d;
 	}
 
 	private static org.bukkit.Location centerOf(Region r) {

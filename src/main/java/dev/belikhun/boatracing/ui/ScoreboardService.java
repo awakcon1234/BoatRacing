@@ -28,15 +28,25 @@ public class ScoreboardService {
 	private int taskId = -1;
 	private int updatePeriodTicks = 5;
 	private ScoreboardLibrary lib;
-	private final java.util.Map<java.util.UUID, Sidebar> sidebars = new java.util.HashMap<>();
-	private final java.util.Map<java.util.UUID, Integer> lastCounts = new java.util.HashMap<>();
-	private final java.util.Map<java.util.UUID, String> lastState = new java.util.HashMap<>();
 	private volatile boolean debug = false;
-	// Per-player last locations used to compute speed
-	private final java.util.Map<java.util.UUID, org.bukkit.Location> lastLocations = new java.util.HashMap<>();
-	private final java.util.Map<java.util.UUID, Long> lastLocationTimes = new java.util.HashMap<>();
-	// Store last computed blocks-per-second (bps). Derive km/h or bph when needed.
-	private final java.util.Map<java.util.UUID, Double> lastBps = new java.util.HashMap<>();
+
+	private static final class PlayerEntry {
+		Sidebar sidebar;
+		int lastLineCount;
+		String lastState;
+		org.bukkit.Location lastLoc;
+		long lastLocTimeMs;
+		double lastBps;
+	}
+
+	private static final class TemplateUsage {
+		boolean actionbarEnabled;
+		boolean needsSpeed;
+		boolean needsNeighbors;
+	}
+
+	private TemplateUsage usage = new TemplateUsage();
+	private final java.util.Map<java.util.UUID, PlayerEntry> players = new java.util.HashMap<>();
 
 	public ScoreboardService(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
@@ -59,6 +69,7 @@ public class ScoreboardService {
 		);
 		period = Math.max(1, period);
 		this.updatePeriodTicks = period;
+		this.usage = computeTemplateUsage();
 		taskId = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 0L, period).getTaskId();
 		log("ScoreboardService started. taskId=" + taskId);
 		// Always print a one-time info so admins know how to enable debug
@@ -71,15 +82,14 @@ public class ScoreboardService {
 			taskId = -1;
 		}
 		// Close all sidebars and library
-		for (Sidebar s : sidebars.values()) {
-			try { s.close(); } catch (Throwable ignored) {}
+		for (PlayerEntry e : players.values()) {
+			try {
+				if (e != null && e.sidebar != null)
+					e.sidebar.close();
+			} catch (Throwable ignored) {
+			}
 		}
-		sidebars.clear();
-		lastCounts.clear();
-		lastState.clear();
-		lastLocations.clear();
-		lastLocationTimes.clear();
-		lastBps.clear();
+		players.clear();
 		try { if (lib != null) lib.close(); } catch (Throwable ignored) {}
 		log("ScoreboardService stopped and cleaned up.");
 	}
@@ -104,8 +114,11 @@ public class ScoreboardService {
 		}
 		log("tick: online=" + Bukkit.getOnlinePlayers().size() + ", libLoaded=" + (lib != null));
 
-		java.util.Set<java.util.UUID> onlineIds = new java.util.HashSet<>();
-		for (Player p : Bukkit.getOnlinePlayers()) onlineIds.add(p.getUniqueId());
+		java.util.Set<java.util.UUID> onlineIds = players.isEmpty() ? null : new java.util.HashSet<>();
+		if (onlineIds != null) {
+			for (Player p : Bukkit.getOnlinePlayers())
+				onlineIds.add(p.getUniqueId());
+		}
 
 		java.util.Map<RaceManager, TickContext> ctxByRace = new java.util.HashMap<>();
 
@@ -119,76 +132,33 @@ public class ScoreboardService {
 					continue;
 				}
 				TickContext ctx = ctxByRace.computeIfAbsent(rm, this::buildTickContext);
-				String trackName = safeTrackName(p.getUniqueId());
 
-				// Compute speed (blocks per second) based on movement since last tick.
-				// IMPORTANT: use vehicle position when in a boat to avoid passenger jitter producing fake idle speed.
-				org.bukkit.Location now = riderOrVehicleLocation(p);
-				if (now == null) now = p.getLocation();
-				org.bukkit.Location prev = lastLocations.get(p.getUniqueId());
-				Long prevT = lastLocationTimes.get(p.getUniqueId());
-				double bps = 0.0;
-				if (prev != null && prevT != null && prev.getWorld() != null && now.getWorld() != null && prev.getWorld().equals(now.getWorld())) {
-					long dtMsRaw = nowMs - prevT;
-					if (dtMsRaw > 0L) {
-						long expectedMs = Math.max(1L, (long) Math.max(1, updatePeriodTicks) * 50L);
-						long dtMs = Math.max(dtMsRaw, expectedMs);
-						double dist;
-						try {
-							dist = now.distance(prev);
-						} catch (Throwable ignored) {
-							dist = 0.0;
-						}
-
-						// Ignore teleport-like jumps (joins/respawns/vehicle snaps) to avoid spikes.
-						double maxDist = 5.0 * (double) Math.max(1, updatePeriodTicks);
-						if (Double.isFinite(dist) && dist >= 0.0 && dist <= maxDist) {
-							// Deadzone for micro-jitter (especially while seated): treat as 0 speed.
-							// Scale by update period so 2-tick sampling doesn't turn idle jitter into ~1 bps.
-							double deadzone = 0.03 * (double) Math.max(1, updatePeriodTicks);
-							if (dist >= deadzone) {
-								bps = Math.max(0.0, dist / (dtMs / 1000.0));
-							}
-						}
-					}
+				if (usage != null && usage.needsSpeed) {
+					updateSpeedCache(p, nowMs);
 				}
-				lastBps.put(p.getUniqueId(), bps);
-				try {
-					lastLocations.put(p.getUniqueId(), now.clone());
-				} catch (Throwable ignored) {
-					lastLocations.put(p.getUniqueId(), now);
-				}
-				lastLocationTimes.put(p.getUniqueId(), nowMs);
 
-				updateFor(p, rm, ctx, trackName);
+				updateFor(p, rm, ctx);
 			} catch (Throwable ignored) {}
 		}
 
 		// Prevent memory growth when players disconnect/reconnect.
-		pruneOfflineCaches(onlineIds);
+		if (onlineIds != null)
+			pruneOfflineCaches(onlineIds);
 	}
 
 	private void pruneOfflineCaches(java.util.Set<java.util.UUID> onlineIds) {
 		final java.util.Set<java.util.UUID> online = (onlineIds == null) ? java.util.Set.of() : onlineIds;
 
-		// Sidebars must be closed explicitly to avoid scoreboard artifacts.
-		for (java.util.UUID id : new java.util.HashSet<>(sidebars.keySet())) {
-			if (online.contains(id)) continue;
-			Sidebar sb = sidebars.remove(id);
-			try { if (sb != null) sb.close(); } catch (Throwable ignored) {}
-			lastCounts.remove(id);
-			lastState.remove(id);
-			lastLocations.remove(id);
-			lastLocationTimes.remove(id);
-			lastBps.remove(id);
+		for (java.util.UUID id : new java.util.HashSet<>(players.keySet())) {
+			if (online.contains(id))
+				continue;
+			PlayerEntry e = players.remove(id);
+			try {
+				if (e != null && e.sidebar != null)
+					e.sidebar.close();
+			} catch (Throwable ignored) {
+			}
 		}
-
-		// Defensive cleanup for any leftover entries.
-		lastCounts.keySet().removeIf(id -> !online.contains(id));
-		lastState.keySet().removeIf(id -> !online.contains(id));
-		lastLocations.keySet().removeIf(id -> !online.contains(id));
-		lastLocationTimes.keySet().removeIf(id -> !online.contains(id));
-		lastBps.keySet().removeIf(id -> !online.contains(id));
 	}
 
 	private TickContext buildTickContext(RaceManager rm) {
@@ -211,13 +181,12 @@ public class ScoreboardService {
 			ctx.positionById = java.util.Map.of();
 		}
 
-		// Standings can be shown even while the race is running (finished racers should see results immediately).
+		// Avoid sorting standings unless we actually need to render them.
+		ctx.standings = null;
 		if (!registering) {
-			ctx.standings = rm.getStandings();
-			ctx.anyFinished = ctx.standings.stream().anyMatch(s -> s.finished);
-			ctx.allFinished = !ctx.standings.isEmpty() && ctx.standings.stream().allMatch(s -> s.finished);
+			ctx.anyFinished = rm.hasAnyFinishedParticipant();
+			ctx.allFinished = rm.areAllParticipantsFinished();
 		} else {
-			ctx.standings = java.util.List.of();
 			ctx.anyFinished = false;
 			ctx.allFinished = false;
 		}
@@ -233,17 +202,17 @@ public class ScoreboardService {
 		return "(unknown)";
 	}
 
-	private void updateFor(Player p, RaceManager rm, TickContext ctx, String trackName) {
+	private void updateFor(Player p, RaceManager rm, TickContext ctx) {
 		if (ctx.registering) {
 			setState(p, "WAITING");
-			applyWaitingBoard(p, rm, trackName);
+			applyWaitingBoard(p, rm, safeTrackName(p.getUniqueId()));
 			applyActionBarForWaiting(p, rm);
 			return;
 		}
 
 		if (ctx.countdown) {
 			setState(p, "COUNTDOWN");
-			applyCountdownBoard(p, rm, trackName);
+			applyCountdownBoard(p, rm, safeTrackName(p.getUniqueId()));
 			// Reuse waiting actionbar template for countdown.
 			applyActionBarForWaiting(p, rm);
 			return;
@@ -268,7 +237,7 @@ public class ScoreboardService {
 				return;
 			}
 			setState(p, "RACING");
-			applyRacingBoard(p, rm, ctx, trackName);
+			applyRacingBoard(p, rm, ctx, safeTrackName(p.getUniqueId()));
 			applyActionBarForRacing(p, rm, ctx);
 			return;
 		}
@@ -290,6 +259,8 @@ public class ScoreboardService {
 		int joined = rm.getRegistered().size();
 		int max = rm.getTrackConfig().getStarts().size();
 		int laps = rm.getTotalLaps();
+		double trackLength = -1.0;
+		try { trackLength = rm.getTrackConfig().getTrackLength(); } catch (Throwable ignored) { trackLength = -1.0; }
 		int cps = 0;
 		try { cps = rm.getTrackConfig().getCheckpoints().size(); } catch (Throwable ignored) { cps = 0; }
 		PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
@@ -299,6 +270,9 @@ public class ScoreboardService {
 		ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
 		ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
 		ph.put("checkpoint_total", String.valueOf(cps));
+		ph.put("track_length", trackLength > 0.0 && Double.isFinite(trackLength) ? fmt1(trackLength) : "-");
+		ph.put("track_length_unit", "m");
+		ph.put("track_length_display", trackLength > 0.0 && Double.isFinite(trackLength) ? ("🛣 " + fmt1(trackLength) + "m") : "-");
 		ph.put("countdown", Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
 
 		Component title = parse(p, cfgString("scoreboard.templates.countdown.title", "<gold>Chuẩn bị"), ph);
@@ -318,7 +292,7 @@ public class ScoreboardService {
 	}
 
 	private void applyActionBarForCompleted(Player p, RaceManager rm, RaceManager.ParticipantState st) {
-		if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
+		if (usage == null || !usage.actionbarEnabled) return;
 		if (st == null || !st.finished) return;
 
 		int pos = st.finishPosition > 0 ? st.finishPosition : 1;
@@ -366,12 +340,18 @@ public class ScoreboardService {
 
 	private void applyLobbyBoard(Player p) {
 		Sidebar sb = ensureSidebar(p);
+		if (sb == null) {
+			return;
+		}
 		PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
 		ph.put("racer_name", p.getName()); ph.put("racer_color", ColorTranslator.miniColorTag(prof.color)); ph.put("icon", empty(prof.icon)?"-":prof.icon);
 		ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
 		ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("completed", String.valueOf(prof.completed)); ph.put("wins", String.valueOf(prof.wins));
 		ph.put("time_raced", Time.formatDurationShort(prof.timeRacedMillis));
+		ph.put("track_length", "-");
+		ph.put("track_length_unit", "m");
+		ph.put("track_length_display", "-");
 
 		// Allow internal placeholders in the scoreboard title too.
 		Component title = parse(p, cfgString("scoreboard.templates.lobby.title", "<gold>BoatRacing"), ph);
@@ -390,10 +370,15 @@ public class ScoreboardService {
 
 	private void applyWaitingBoard(Player p, RaceManager rm, String trackName) {
 		Sidebar sb = ensureSidebar(p);
+		if (sb == null) {
+			return;
+		}
 		String track = (trackName != null && !trackName.isBlank()) ? trackName : "(unknown)";
 		int joined = rm.getRegistered().size();
 		int max = rm.getTrackConfig().getStarts().size();
 		int laps = rm.getTotalLaps();
+		double trackLength = -1.0;
+		try { trackLength = rm.getTrackConfig().getTrackLength(); } catch (Throwable ignored) { trackLength = -1.0; }
 		int cps = 0;
 		try { cps = rm.getTrackConfig().getCheckpoints().size(); } catch (Throwable ignored) { cps = 0; }
 		PlayerProfileManager.Profile prof = pm.get(p.getUniqueId());
@@ -403,6 +388,9 @@ public class ScoreboardService {
 		ph.put("number", prof.number>0?String.valueOf(prof.number):"-"); ph.put("track", track); ph.put("laps", String.valueOf(laps));
 		ph.put("joined", String.valueOf(joined)); ph.put("max", String.valueOf(max));
 		ph.put("checkpoint_total", String.valueOf(cps));
+		ph.put("track_length", trackLength > 0.0 && Double.isFinite(trackLength) ? fmt1(trackLength) : "-");
+		ph.put("track_length_unit", "m");
+		ph.put("track_length_display", trackLength > 0.0 && Double.isFinite(trackLength) ? ("🛣 " + fmt1(trackLength) + "m") : "-");
 		ph.put("countdown", Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
 
 		// Records (track/global + personal)
@@ -453,12 +441,20 @@ public class ScoreboardService {
 
 	private void applyRacingBoard(Player p, RaceManager rm, TickContext ctx, String trackName) {
 		Sidebar sb = ensureSidebar(p);
+		if (sb == null) {
+			return;
+		}
 		String track = (trackName != null && !trackName.isBlank()) ? trackName : "(unknown)";
 		int laps = rm.getTotalLaps();
 		long ms = rm.getRaceElapsedMillis();
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
 		ph.put("track", track); ph.put("timer", Time.formatStopwatchMillis(ms));
 		ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
+		double trackLength = -1.0;
+		try { trackLength = rm.getTrackConfig().getTrackLength(); } catch (Throwable ignored) { trackLength = -1.0; }
+		ph.put("track_length", trackLength > 0.0 && Double.isFinite(trackLength) ? fmt1(trackLength) : "-");
+		ph.put("track_length_unit", "m");
+		ph.put("track_length_display", trackLength > 0.0 && Double.isFinite(trackLength) ? ("🛣 " + fmt1(trackLength) + "m") : "-");
 		var st = rm.getParticipantState(p.getUniqueId());
 		java.util.List<Component> lines;
 		if (st != null) {
@@ -515,6 +511,9 @@ public class ScoreboardService {
 			return;
 		}
 		Sidebar sb = ensureSidebar(p);
+		if (sb == null) {
+			return;
+		}
 		if (ctx == null) ctx = new TickContext();
 		boolean ended = ctx.allFinished;
 
@@ -528,13 +527,18 @@ public class ScoreboardService {
 			if (tn == null || tn.isBlank()) tn = "(unknown)";
 			phTitle.put("track", tn);
 		} catch (Throwable ignored) {}
+		double trackLength = -1.0;
+		try { trackLength = rm.getTrackConfig() != null ? rm.getTrackConfig().getTrackLength() : -1.0; } catch (Throwable ignored) { trackLength = -1.0; }
+		phTitle.put("track_length", trackLength > 0.0 && Double.isFinite(trackLength) ? fmt1(trackLength) : "-");
+		phTitle.put("track_length_unit", "m");
+		phTitle.put("track_length_display", trackLength > 0.0 && Double.isFinite(trackLength) ? ("🛣 " + fmt1(trackLength) + "m") : "-");
 
 		Component title = parse(p,
 			ended
 				? cfgString("scoreboard.templates.ended.title", cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"))
 				: cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"),
 			phTitle);
-		java.util.List<RaceManager.ParticipantState> standings = ctx.standings;
+		java.util.List<RaceManager.ParticipantState> standings = ensureStandings(rm, ctx);
 		java.util.List<Component> lines = new java.util.ArrayList<>();
 
 		if (ended) {
@@ -613,7 +617,7 @@ public class ScoreboardService {
 			unfinishedHeaderLines = java.util.List.of(cfgString("scoreboard.templates.completed.unfinished_header", "<yellow>Đang đua"));
 		}
 		lines.addAll(parseLines(p, unfinishedHeaderLines, java.util.Map.of()));
-		List<UUID> order = rm.getLiveOrder();
+		List<UUID> order = (ctx.liveOrder != null && !ctx.liveOrder.isEmpty()) ? ctx.liveOrder : rm.getLiveOrder();
 		int limit = cfgInt("scoreboard.templates.completed.max_unfinished_lines", 6);
 		int count = 0;
 		int posCounter = 0;
@@ -654,12 +658,14 @@ public class ScoreboardService {
 
 	private Sidebar ensureSidebar(Player p) {
 		if (lib == null) return null;
-		Sidebar sb = sidebars.computeIfAbsent(p.getUniqueId(), id -> {
-			Sidebar s = lib.createSidebar();
-			try { s.addPlayer(p); } catch (Throwable ignored) {}
+		PlayerEntry e = players.computeIfAbsent(p.getUniqueId(), id -> new PlayerEntry());
+		Sidebar sb = e.sidebar;
+		if (sb == null) {
+			sb = lib.createSidebar();
+			e.sidebar = sb;
+			try { sb.addPlayer(p); } catch (Throwable ignored) {}
 			log("Created sidebar for " + p.getName());
-			return s;
-		});
+		}
 
 		// Edge case: player disconnects/reconnects while we keep the Sidebar cached by UUID.
 		// ScoreboardLibrary requires adding the (new) Player instance again after reconnect.
@@ -669,9 +675,14 @@ public class ScoreboardService {
 
 	private void applySidebarComponents(Player p, Sidebar sidebar, Component title, java.util.List<Component> lines) {
 		if (sidebar == null) return;
+		PlayerEntry e = players.get(p.getUniqueId());
+		if (e == null) {
+			e = new PlayerEntry();
+			players.put(p.getUniqueId(), e);
+		}
 		sidebar.title(title);
 
-		int last = lastCounts.getOrDefault(p.getUniqueId(), 0);
+		int last = e.lastLineCount;
 		int newSize = (lines == null) ? 0 : lines.size();
 
 		// IMPORTANT: Setting removed lines to Component.empty() still leaves blank rows visible.
@@ -689,13 +700,13 @@ public class ScoreboardService {
 			for (int idx = limitNew; idx < limitOld; idx++) sidebar.line(idx, (Component) null);
 		}
 
-		lastCounts.put(p.getUniqueId(), newSize);
+		e.lastLineCount = newSize;
 		log("Applied sidebar to " + p.getName() + " title='" + Text.plain(title) + "' lines=" + newSize);
 	}
 
 	// --- ActionBar support ---
 	private void applyActionBarForWaiting(Player p, RaceManager rm) {
-		if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
+		if (usage == null || !usage.actionbarEnabled) return;
 		String tpl = cfgString("scoreboard.actionbar.waiting", "<yellow>Start in <white>%countdown%</white> ● <gray>%joined%/%max%</gray>");
 		int countdown = rm.getCountdownRemainingSeconds();
 		int joined = rm.getRegistered().size();
@@ -708,7 +719,7 @@ public class ScoreboardService {
 	}
 
 	private void applyActionBarForRacing(Player p, RaceManager rm, TickContext ctx) {
-		if (!cfgBool("scoreboard.actionbar.enabled", true)) return;
+		if (usage == null || !usage.actionbarEnabled) return;
 		// Default template uses the unified %speed_display% placeholder (already colored).
 		String tpl = cfgString("scoreboard.actionbar.racing", "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%lap_progress%%</yellow> %speed_display%");
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
@@ -733,7 +744,8 @@ public class ScoreboardService {
 		int nextCp = (st == null ? 0 : st.nextCheckpointIndex + 1);
 		int totalCp = rm.getTrackConfig().getCheckpoints().size();
 		int passedCp = (st == null ? 0 : st.nextCheckpointIndex);
-		double bps = lastBps.getOrDefault(p.getUniqueId(), 0.0);
+		PlayerEntry pe = players.get(p.getUniqueId());
+		double bps = (pe != null ? pe.lastBps : 0.0);
 		double kmh = bps * 3.6;
 		double bph = bps * 3600.0;
 		// Per-player preferred unit overrides global
@@ -1010,6 +1022,7 @@ public class ScoreboardService {
 	private void fillNeighborRacerPlaceholders(Player p, RaceManager rm, TickContext ctx, java.util.Map<String, String> ph) {
 		if (p == null || rm == null || ctx == null || ph == null) return;
 		if (ctx.liveOrder == null || ctx.liveOrder.isEmpty()) return;
+		if (usage == null || !usage.needsNeighbors) return;
 		UUID self = p.getUniqueId();
 		int idx = ctx.liveOrder.indexOf(self);
 		UUID aheadId = (idx > 0) ? ctx.liveOrder.get(idx - 1) : null;
@@ -1028,11 +1041,11 @@ public class ScoreboardService {
 
 		Location selfLoc = riderOrVehicleLocation(p);
 
-		fillNeighborOne("ahead", aheadId, aheadPos, selfLoc, unit, unitLabel, ph);
-		fillNeighborOne("behind", behindId, behindPos, selfLoc, unit, unitLabel, ph);
+		fillNeighborOne("ahead", aheadId, aheadPos, rm, self, selfLoc, unit, unitLabel, ph);
+		fillNeighborOne("behind", behindId, behindPos, rm, self, selfLoc, unit, unitLabel, ph);
 	}
 
-	private void fillNeighborOne(String prefix, UUID id, int placement, Location selfLoc, String unit, String unitLabel,
+	private void fillNeighborOne(String prefix, UUID id, int placement, RaceManager rm, UUID selfId, Location selfLoc, String unit, String unitLabel,
 			java.util.Map<String, String> ph) {
 		String pfx = (prefix == null ? "" : prefix);
 		if (id == null || placement <= 0) {
@@ -1059,7 +1072,13 @@ public class ScoreboardService {
 		ph.put(pfx + "_racer_display", racerDisplay(id, name));
 
 		// Speed
-		double bps = lastBps.getOrDefault(id, 0.0);
+		double bps = 0.0;
+		try {
+			PlayerEntry pe = players.get(id);
+			bps = pe != null ? pe.lastBps : 0.0;
+		} catch (Throwable ignored) {
+			bps = 0.0;
+		}
 		double kmh = bps * 3.6;
 		double bph = bps * 3600.0;
 		String speedVal;
@@ -1077,12 +1096,28 @@ public class ScoreboardService {
 		// Distance (blocks)
 		String distOut = "-";
 		try {
-			Player other = Bukkit.getPlayer(id);
-			Location otherLoc = riderOrVehicleLocation(other);
-			if (selfLoc != null && otherLoc != null && selfLoc.getWorld() != null && otherLoc.getWorld() != null
-					&& selfLoc.getWorld().equals(otherLoc.getWorld())) {
-				double d = selfLoc.distance(otherLoc);
-				if (Double.isFinite(d) && d >= 0.0) distOut = fmt1(d);
+			// Prefer track-following arc-length distance when available.
+			if (rm != null && selfId != null) {
+				double d = -1.0;
+				if ("ahead".equalsIgnoreCase(pfx)) {
+					d = rm.getArcDistanceMeters(selfId, id);
+				} else if ("behind".equalsIgnoreCase(pfx)) {
+					d = rm.getArcDistanceMeters(id, selfId);
+				}
+				if (d >= 0.0 && Double.isFinite(d)) {
+					distOut = fmt1(d);
+				}
+			}
+
+			// Fallback: straight-line distance in world space.
+			if ("-".equals(distOut)) {
+				Player other = Bukkit.getPlayer(id);
+				Location otherLoc = riderOrVehicleLocation(other);
+				if (selfLoc != null && otherLoc != null && selfLoc.getWorld() != null && otherLoc.getWorld() != null
+						&& selfLoc.getWorld().equals(otherLoc.getWorld())) {
+					double d = selfLoc.distance(otherLoc);
+					if (Double.isFinite(d) && d >= 0.0) distOut = fmt1(d);
+				}
 			}
 		} catch (Throwable ignored) {}
 		ph.put(pfx + "_distance", distOut);
@@ -1143,10 +1178,105 @@ public class ScoreboardService {
 
 	private void setState(Player p, String state) {
 		if (!debug) return;
-		String prev = lastState.put(p.getUniqueId(), state);
+		PlayerEntry e = players.computeIfAbsent(p.getUniqueId(), id -> new PlayerEntry());
+		String prev = e.lastState;
+		e.lastState = state;
 		if (prev == null || !prev.equals(state)) log("State for " + p.getName() + " -> " + state);
 	}
 
 	private void log(String msg) { if (debug) plugin.getLogger().info("[SB] " + msg); }
+
+	private java.util.List<RaceManager.ParticipantState> ensureStandings(RaceManager rm, TickContext ctx) {
+		if (rm == null)
+			return java.util.List.of();
+		if (ctx == null)
+			return rm.getStandings();
+		if (ctx.standings != null)
+			return ctx.standings;
+		// Only compute standings when we are about to render a completed/ended board.
+		java.util.List<RaceManager.ParticipantState> s = rm.getStandings();
+		ctx.standings = s;
+		return s;
+	}
+
+	private void updateSpeedCache(Player p, long nowMs) {
+		if (p == null)
+			return;
+		java.util.UUID id = p.getUniqueId();
+		PlayerEntry e = players.computeIfAbsent(id, k -> new PlayerEntry());
+
+		org.bukkit.Location now = riderOrVehicleLocation(p);
+		if (now == null)
+			now = p.getLocation();
+
+		org.bukkit.Location prev = e.lastLoc;
+		long prevT = e.lastLocTimeMs;
+		double bps = 0.0;
+
+		if (prev != null && prevT > 0L && prev.getWorld() != null && now.getWorld() != null
+				&& prev.getWorld().equals(now.getWorld())) {
+			long dtMsRaw = nowMs - prevT;
+			if (dtMsRaw > 0L) {
+				long expectedMs = Math.max(1L, (long) Math.max(1, updatePeriodTicks) * 50L);
+				long dtMs = Math.max(dtMsRaw, expectedMs);
+				double dist;
+				try {
+					dist = now.distance(prev);
+				} catch (Throwable ignored) {
+					dist = 0.0;
+				}
+
+				double maxDist = 5.0 * (double) Math.max(1, updatePeriodTicks);
+				if (Double.isFinite(dist) && dist >= 0.0 && dist <= maxDist) {
+					double deadzone = 0.03 * (double) Math.max(1, updatePeriodTicks);
+					if (dist >= deadzone) {
+						bps = Math.max(0.0, dist / (dtMs / 1000.0));
+					}
+				}
+			}
+		}
+
+		e.lastBps = bps;
+		try {
+			e.lastLoc = now.clone();
+		} catch (Throwable ignored) {
+			e.lastLoc = now;
+		}
+		e.lastLocTimeMs = nowMs;
+	}
+
+	private TemplateUsage computeTemplateUsage() {
+		TemplateUsage u = new TemplateUsage();
+		u.actionbarEnabled = cfgBool("scoreboard.actionbar.enabled", true);
+
+		java.util.List<String> pool = new java.util.ArrayList<>();
+		try {
+			pool.add(cfgString("scoreboard.actionbar.racing", ""));
+			pool.add(cfgString("scoreboard.actionbar.completed", ""));
+			pool.add(cfgString("scoreboard.actionbar.waiting", ""));
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			pool.add(cfgString("scoreboard.templates.racing.title", ""));
+			pool.addAll(cfgStringList("scoreboard.templates.racing.lines", java.util.List.of()));
+		} catch (Throwable ignored) {
+		}
+
+		boolean needsSpeed = false;
+		boolean needsNeighbors = false;
+		for (String s : pool) {
+			if (s == null)
+				continue;
+			if (s.contains("%speed") || s.contains("%avg_speed"))
+				needsSpeed = true;
+			if (s.contains("%ahead_") || s.contains("%behind_"))
+				needsNeighbors = true;
+		}
+
+		u.needsSpeed = u.actionbarEnabled && needsSpeed;
+		u.needsNeighbors = needsNeighbors;
+		return u;
+	}
 }
 

@@ -24,6 +24,8 @@ public class TrackConfig {
 	private final Map<java.util.UUID, Integer> customStartSlots = new HashMap<>();
 	// Centerline polyline nodes across the entire course (optional, built by path builder)
 	private final List<org.bukkit.Location> centerline = new ArrayList<>();
+	// Cached track length in blocks (arc-length along the centerline, including loop close)
+	private double cachedTrackLength = -1.0;
 	private final File tracksDir;
 	private final Logger logger;
 	private String currentName = null;
@@ -71,6 +73,7 @@ public class TrackConfig {
 		this.checkpoints.clear();
 		this.finish = null; this.bounds = null; this.pitlane = null; this.teamPits.clear(); this.customStartSlots.clear();
 		this.centerline.clear();
+		this.cachedTrackLength = readCachedTrackLength(cfg);
 		this.waitingSpawn = null;
 		// track world
 		this.worldName = cfg.getString("world", this.worldName);
@@ -186,6 +189,12 @@ public class TrackConfig {
 				}
 			}
 		}
+
+		// If we successfully loaded a centerline, recompute length (overrides cache).
+		try {
+			double computed = computeTrackLengthFromCenterline();
+			if (computed > 0.0) this.cachedTrackLength = computed;
+		} catch (Throwable ignored) {}
 		this.currentName = name;
 		// waiting spawn
 		Object wsp = cfg.get("waitingSpawn");
@@ -198,6 +207,47 @@ public class TrackConfig {
 			logger.warning("TrackConfig: waitingSpawn present but failed to parse (type=" + type + ", track=" + name + ", world=" + this.worldName + ")");
 		}
 		return true;
+	}
+
+	private double readCachedTrackLength(YamlConfiguration cfg) {
+		if (cfg == null) return -1.0;
+		try {
+			if (cfg.contains("cache.centerline-length")) return cfg.getDouble("cache.centerline-length", -1.0);
+			if (cfg.contains("centerline-length")) return cfg.getDouble("centerline-length", -1.0);
+			if (cfg.contains("centerlineLength")) return cfg.getDouble("centerlineLength", -1.0);
+			if (cfg.contains("track-length")) return cfg.getDouble("track-length", -1.0);
+			if (cfg.contains("trackLength")) return cfg.getDouble("trackLength", -1.0);
+		} catch (Throwable ignored) {}
+		return -1.0;
+	}
+
+	private double computeTrackLengthFromCenterline() {
+		if (this.centerline == null || this.centerline.size() < 2) return 0.0;
+		double sum = 0.0;
+		for (int i = 1; i < this.centerline.size(); i++) {
+			org.bukkit.Location a = this.centerline.get(i - 1);
+			org.bukkit.Location b = this.centerline.get(i);
+			if (a == null || b == null) continue;
+			if (a.getWorld() == null || b.getWorld() == null) continue;
+			if (!a.getWorld().equals(b.getWorld())) continue;
+			try {
+				double d = a.distance(b);
+				if (Double.isFinite(d) && d > 0.0) sum += d;
+			} catch (Throwable ignored) {}
+		}
+
+		// Close the loop (used by race logic when computing arc-length distances)
+		try {
+			org.bukkit.Location last = this.centerline.get(this.centerline.size() - 1);
+			org.bukkit.Location first = this.centerline.get(0);
+			if (last != null && first != null && last.getWorld() != null && first.getWorld() != null
+					&& last.getWorld().equals(first.getWorld())) {
+				double d = last.distance(first);
+				if (Double.isFinite(d) && d > 0.0) sum += d;
+			}
+		} catch (Throwable ignored) {}
+
+		return sum;
 	}
 
 	public boolean save(String name) {
@@ -248,6 +298,15 @@ public class TrackConfig {
 					cl.add(m);
 				}
 				cfg.set("centerline", cl);
+			}
+
+			// Persist cached length for faster UI and as a fallback when worlds aren't loaded.
+			try {
+				double computed = computeTrackLengthFromCenterline();
+				if (computed > 0.0) this.cachedTrackLength = computed;
+			} catch (Throwable ignored) {}
+			if (this.cachedTrackLength > 0.0 && Double.isFinite(this.cachedTrackLength)) {
+				cfg.set("cache.centerline-length", this.cachedTrackLength);
 			}
 			if (this.waitingSpawn != null) {
 				java.util.Map<String,Object> ws = new java.util.LinkedHashMap<>();
@@ -349,13 +408,21 @@ public class TrackConfig {
 
 	public String getCurrentName() { return currentName; }
 	public java.util.List<org.bukkit.Location> getCenterline() { return java.util.Collections.unmodifiableList(centerline); }
+	public double getTrackLength() { return (Double.isFinite(cachedTrackLength) ? cachedTrackLength : -1.0); }
 	public void setCenterline(java.util.List<org.bukkit.Location> nodes) {
 		this.centerline.clear();
 		if (nodes != null) {
 			for (org.bukkit.Location l : nodes) this.centerline.add(withTrackWorld(l));
 		}
+		try {
+			double computed = computeTrackLengthFromCenterline();
+			this.cachedTrackLength = computed > 0.0 ? computed : this.cachedTrackLength;
+		} catch (Throwable ignored) {}
 	}
-	public void clearCenterline() { this.centerline.clear(); }
+	public void clearCenterline() {
+		this.centerline.clear();
+		this.cachedTrackLength = -1.0;
+	}
 
 	public org.bukkit.Location getWaitingSpawn() { return withTrackWorld(waitingSpawn); }
 	public void setWaitingSpawn(org.bukkit.Location loc) {

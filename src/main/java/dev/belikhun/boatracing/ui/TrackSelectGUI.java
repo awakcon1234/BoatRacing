@@ -231,6 +231,17 @@ public class TrackSelectGUI implements Listener {
 		// Always show racer count in lore when we can.
 		if (rm != null) {
 			lore.add(0, "&7👥 Tay đua: &f" + racers);
+			double trackLength = -1.0;
+			try {
+				if (rm != null && rm.getTrackConfig() != null)
+					trackLength = rm.getTrackConfig().getTrackLength();
+			} catch (Throwable ignored) {
+				trackLength = -1.0;
+			}
+			String len = (trackLength > 0.0 && Double.isFinite(trackLength))
+					? (String.format(java.util.Locale.US, "%.1f", trackLength) + "m")
+					: "-";
+			lore.add(1, "&7🛣 Độ dài: &f" + len);
 			lore.add(1, "");
 		}
 
