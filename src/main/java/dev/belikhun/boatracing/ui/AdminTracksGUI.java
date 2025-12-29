@@ -47,6 +47,10 @@ public class AdminTracksGUI implements Listener {
 		NEW_TRACK,
 		SAVE,
 		SAVE_AS,
+		SET_ICON,
+		CLEAR_ICON,
+		SET_AUTHOR,
+		CLEAR_AUTHOR,
 		SET_BOUNDS,
 		SET_WAIT_SPAWN,
 		ADD_START,
@@ -81,6 +85,16 @@ public class AdminTracksGUI implements Listener {
 
 		// Top status
 		inv.setItem(10, statusCard());
+
+		// Track meta (icon/author)
+		inv.setItem(9, buttonWithLore(Material.NAME_TAG, Text.item("&b&lTác giả"), Action.SET_AUTHOR,
+				List.of("&7Đặt tên tác giả cho đường đua", "&8Có thể là tên người chơi hoặc chuỗi bất kỳ"), true));
+		inv.setItem(17, buttonWithLore(Material.ITEM_FRAME, Text.item("&d&lIcon đường"), Action.SET_ICON,
+				List.of("&7Đặt icon bằng vật phẩm bạn đang cầm"), true));
+		inv.setItem(0, buttonWithLore(Material.BARRIER, Text.item("&cXóa tác giả"), Action.CLEAR_AUTHOR,
+				List.of("&7Xóa tác giả đã đặt"), true));
+		inv.setItem(1, buttonWithLore(Material.BARRIER, Text.item("&cXóa icon"), Action.CLEAR_ICON,
+				List.of("&7Xóa icon đã đặt"), true));
 
 		// Row of core actions
 		inv.setItem(12, buttonWithLore(Material.MAP, Text.item("&b&lChọn đường"), Action.PICK_TRACK,
@@ -146,6 +160,36 @@ public class AdminTracksGUI implements Listener {
 		if (im != null) {
 			im.displayName(Text.item("&f&lĐường: &e" + name));
 			List<String> lore = new ArrayList<>();
+
+			// Meta: icon + author
+			try {
+				org.bukkit.inventory.ItemStack icon = cfg.getIcon();
+				lore.add("&7Icon: &f" + (icon != null && icon.getType() != Material.AIR ? icon.getType().name() : "(chưa đặt)"));
+			} catch (Throwable ignored) {
+				lore.add("&7Icon: &f(chưa đặt)");
+			}
+			try {
+				String a = "(chưa đặt)";
+				java.util.UUID id = cfg.getAuthorId();
+				String n = cfg.getAuthorName();
+				String t = cfg.getAuthorText();
+				if (id != null) {
+					String dn = (n == null || n.isBlank()) ? "(không rõ)" : n;
+					try {
+						var pm = plugin.getProfileManager();
+						a = (pm != null) ? Text.colorize(pm.formatRacerLegacy(id, dn)) : Text.colorize("&f" + dn);
+					} catch (Throwable ignored2) {
+						a = Text.colorize("&f" + dn);
+					}
+				} else if (t != null && !t.isBlank()) {
+					a = Text.colorize("&f" + t);
+				}
+				lore.add("&7Tác giả: " + a);
+			} catch (Throwable ignored) {
+				lore.add("&7Tác giả: &f(chưa đặt)");
+			}
+			lore.add("");
+
 			lore.add("&7Starts: &f" + starts);
 			lore.add("&7Đèn: &f" + lights + "/5");
 			lore.add("&7Đích: &f" + (hasFinish?"có":"không"));
@@ -296,6 +340,10 @@ public class AdminTracksGUI implements Listener {
 			case NEW_TRACK -> promptNewTrack(p);
 			case SAVE -> doSave(p);
 			case SAVE_AS -> promptSaveAs(p);
+			case SET_ICON -> doSetIcon(p);
+			case CLEAR_ICON -> { plugin.getTrackConfig().setIcon(null); Text.msg(p, "&aĐã xóa icon đường."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);} 
+			case SET_AUTHOR -> promptSetAuthor(p);
+			case CLEAR_AUTHOR -> { plugin.getTrackConfig().clearAuthor(); Text.msg(p, "&aĐã xóa tác giả."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);} 
 			case SET_BOUNDS -> doSetBounds(p);
 			case SET_WAIT_SPAWN -> doSetWaitSpawn(p);
 			case ADD_START -> doAddStart(p);
@@ -312,6 +360,95 @@ public class AdminTracksGUI implements Listener {
 			case BACK -> open(p);
 			case CLOSE -> p.closeInventory();
 		}
+	}
+
+	private void doSetIcon(Player p) {
+		if (p == null)
+			return;
+		org.bukkit.inventory.ItemStack held = null;
+		try {
+			held = p.getInventory().getItemInMainHand();
+		} catch (Throwable ignored) {
+			held = null;
+		}
+		if (held == null || held.getType() == Material.AIR) {
+			Text.msg(p, "&cHãy cầm 1 vật phẩm trên tay để đặt làm icon.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			return;
+		}
+		plugin.getTrackConfig().setIcon(held);
+		Text.msg(p, "&aĐã đặt icon đường: &f" + held.getType().name());
+		Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file.");
+		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+		open(p);
+	}
+
+	private void promptSetAuthor(Player p) {
+		if (p == null)
+			return;
+		String preset = "";
+		try {
+			var cfg = plugin.getTrackConfig();
+			if (cfg.getAuthorId() != null) {
+				preset = (cfg.getAuthorName() != null ? cfg.getAuthorName() : "");
+			} else if (cfg.getAuthorText() != null) {
+				preset = cfg.getAuthorText();
+			}
+		} catch (Throwable ignored) {
+			preset = "";
+		}
+
+		new AnvilGUI.Builder()
+				.plugin(plugin)
+				.title(Text.plain(Text.title("Tác giả đường")))
+				.text(preset == null ? "" : preset)
+				.itemLeft(new ItemStack(Material.NAME_TAG))
+				.onClick((slot, state) -> {
+					if (slot != AnvilGUI.Slot.OUTPUT)
+						return List.of();
+					String input = state.getText() == null ? "" : state.getText().trim();
+					if (input.isBlank()) {
+						Text.msg(p, "&cVui lòng nhập tên tác giả.");
+						return List.of(AnvilGUI.ResponseAction.close());
+					}
+
+					org.bukkit.OfflinePlayer op = resolveOffline(input);
+					if (op != null && op.getUniqueId() != null) {
+						plugin.getTrackConfig().setAuthorRacer(op.getUniqueId(), op.getName());
+						Text.msg(p, "&aĐã đặt tác giả (tay đua): &f" + (op.getName() != null ? op.getName() : op.getUniqueId().toString()));
+					} else {
+						plugin.getTrackConfig().setAuthorText(input);
+						Text.msg(p, "&aĐã đặt tác giả: &f" + input);
+					}
+					Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file.");
+					Bukkit.getScheduler().runTask(plugin, () -> open(p));
+					return List.of(AnvilGUI.ResponseAction.close());
+				})
+				.open(p);
+	}
+
+	private static org.bukkit.OfflinePlayer resolveOffline(String token) {
+		if (token == null || token.isBlank())
+			return null;
+		// 1) Exact online match
+		org.bukkit.entity.Player online = Bukkit.getPlayerExact(token);
+		if (online != null)
+			return online;
+		// 2) UUID literal
+		try {
+			java.util.UUID uid = java.util.UUID.fromString(token);
+			return Bukkit.getOfflinePlayer(uid);
+		} catch (IllegalArgumentException ignored) {
+		}
+		// 3) Offline cache entries by name (case-insensitive)
+		try {
+			for (org.bukkit.OfflinePlayer op : Bukkit.getOfflinePlayers()) {
+				if (op.getName() != null && op.getName().equalsIgnoreCase(token))
+					return op;
+			}
+		} catch (Throwable ignored) {
+		}
+		return null;
 	}
 
 	private void pickTrackFromItem(Player p, ItemMeta im) {

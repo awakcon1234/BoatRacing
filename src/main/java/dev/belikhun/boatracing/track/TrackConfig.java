@@ -13,6 +13,12 @@ import java.util.logging.Logger;
  * Track configuration with simple disk persistence (YAML files under dataFolder/tracks).
  */
 public class TrackConfig {
+	// Optional per-track UI metadata
+	private org.bukkit.inventory.ItemStack icon;
+	private java.util.UUID authorId;
+	private String authorName;
+	private String authorText;
+
 	private final List<Location> starts = new ArrayList<>();
 	private final List<Block> lights = new ArrayList<>();
 	private final List<Region> checkpoints = new ArrayList<>();
@@ -68,6 +74,10 @@ public class TrackConfig {
 		File f = new File(tracksDir, name + ".yml");
 		if (!f.exists()) return false;
 		YamlConfiguration cfg = YamlConfiguration.loadConfiguration(f);
+		this.icon = null;
+		this.authorId = null;
+		this.authorName = null;
+		this.authorText = null;
 		this.starts.clear();
 		this.lights.clear();
 		this.checkpoints.clear();
@@ -75,6 +85,44 @@ public class TrackConfig {
 		this.centerline.clear();
 		this.cachedTrackLength = readCachedTrackLength(cfg);
 		this.waitingSpawn = null;
+
+		// UI metadata
+		try {
+			org.bukkit.inventory.ItemStack it = cfg.getItemStack("icon");
+			if (it != null && it.getType() != org.bukkit.Material.AIR) {
+				this.icon = it.clone();
+				try { this.icon.setAmount(1); } catch (Throwable ignored) {}
+			}
+		} catch (Throwable ignored) {
+			this.icon = null;
+		}
+		try {
+			// New format: author.uuid/name or author.text
+			String uuidStr = cfg.getString("author.uuid", null);
+			if (uuidStr == null) uuidStr = cfg.getString("author.id", null);
+			if (uuidStr == null) uuidStr = cfg.getString("author-uuid", null);
+			if (uuidStr != null && !uuidStr.isBlank()) {
+				try {
+					this.authorId = java.util.UUID.fromString(uuidStr.trim());
+				} catch (Throwable ignored2) {
+					this.authorId = null;
+				}
+				this.authorName = cfg.getString("author.name", null);
+				if (this.authorName == null) this.authorName = cfg.getString("author-name", null);
+				this.authorText = null;
+			} else {
+				String txt = cfg.getString("author.text", null);
+				if (txt == null) txt = cfg.getString("author", null);
+				this.authorText = (txt != null && !txt.isBlank()) ? txt.trim() : null;
+				this.authorId = null;
+				this.authorName = null;
+			}
+		} catch (Throwable ignored) {
+			this.authorId = null;
+			this.authorName = null;
+			this.authorText = null;
+		}
+
 		// track world
 		this.worldName = cfg.getString("world", this.worldName);
 		// starts
@@ -254,6 +302,26 @@ public class TrackConfig {
 		try {
 			File f = new File(tracksDir, name + ".yml");
 			YamlConfiguration cfg = new YamlConfiguration();
+
+			// UI metadata
+			try {
+				if (this.icon != null && this.icon.getType() != org.bukkit.Material.AIR) {
+					org.bukkit.inventory.ItemStack it = this.icon.clone();
+					try { it.setAmount(1); } catch (Throwable ignored) {}
+					cfg.set("icon", it);
+				}
+			} catch (Throwable ignored) {
+			}
+			try {
+				if (this.authorId != null) {
+					cfg.set("author.uuid", this.authorId.toString());
+					if (this.authorName != null && !this.authorName.isBlank()) cfg.set("author.name", this.authorName);
+				} else if (this.authorText != null && !this.authorText.isBlank()) {
+					cfg.set("author.text", this.authorText);
+				}
+			} catch (Throwable ignored) {
+			}
+
 			// Ensure world is always persisted once when possible (prevents waitingSpawn-only tracks from losing their world on reload)
 			if (this.worldName == null && this.waitingSpawn != null && this.waitingSpawn.getWorld() != null) {
 				this.worldName = this.waitingSpawn.getWorld().getName();
@@ -555,5 +623,55 @@ public class TrackConfig {
 
 	public String getWorldName() { return worldName; }
 	public void setWorldName(String worldName) { this.worldName = worldName; }
+
+	// --- UI metadata (icon/author) ---
+	public org.bukkit.inventory.ItemStack getIcon() {
+		return (icon == null ? null : icon.clone());
+	}
+
+	public void setIcon(org.bukkit.inventory.ItemStack icon) {
+		if (icon == null || icon.getType() == org.bukkit.Material.AIR) {
+			this.icon = null;
+			return;
+		}
+		try {
+			org.bukkit.inventory.ItemStack it = icon.clone();
+			try { it.setAmount(1); } catch (Throwable ignored) {}
+			this.icon = it;
+		} catch (Throwable ignored) {
+			this.icon = null;
+		}
+	}
+
+	public java.util.UUID getAuthorId() { return authorId; }
+	public String getAuthorName() { return authorName; }
+	public String getAuthorText() { return authorText; }
+
+	public void clearAuthor() {
+		this.authorId = null;
+		this.authorName = null;
+		this.authorText = null;
+	}
+
+	public void setAuthorRacer(java.util.UUID id, String name) {
+		if (id == null) {
+			clearAuthor();
+			return;
+		}
+		this.authorId = id;
+		this.authorName = (name == null || name.isBlank()) ? null : name;
+		this.authorText = null;
+	}
+
+	public void setAuthorText(String text) {
+		String t = (text == null) ? null : text.trim();
+		if (t == null || t.isBlank()) {
+			clearAuthor();
+			return;
+		}
+		this.authorId = null;
+		this.authorName = null;
+		this.authorText = t;
+	}
 }
 

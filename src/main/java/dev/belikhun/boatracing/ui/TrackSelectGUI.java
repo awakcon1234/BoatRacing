@@ -2,6 +2,7 @@ package dev.belikhun.boatracing.ui;
 
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.race.RaceManager;
+import dev.belikhun.boatracing.track.TrackConfig;
 import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.util.Time;
 import net.kyori.adventure.text.Component;
@@ -138,6 +139,34 @@ public class TrackSelectGUI implements Listener {
 		lore.add(pbLine);
 	}
 
+	private void appendAuthorLine(TrackConfig tc, List<String> lore) {
+		if (tc == null || lore == null)
+			return;
+		String authorLine = null;
+		try {
+			java.util.UUID id = tc.getAuthorId();
+			String name = tc.getAuthorName();
+			String txt = tc.getAuthorText();
+			if (id != null) {
+				String display;
+				String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
+				try {
+					var pm = plugin.getProfileManager();
+					display = (pm != null) ? pm.formatRacerLegacy(id, n) : ("&f" + n);
+				} catch (Throwable ignored) {
+					display = "&f" + n;
+				}
+				authorLine = "&7✎ Tác giả: " + display;
+			} else if (txt != null && !txt.isBlank()) {
+				authorLine = "&7✎ Tác giả: &f" + txt;
+			}
+		} catch (Throwable ignored) {
+			authorLine = null;
+		}
+		if (authorLine != null)
+			lore.add(authorLine);
+	}
+
 	private ItemStack trackItem(Player viewer, String trackName) {
 		Material mat;
 		List<String> lore = new ArrayList<>();
@@ -151,9 +180,11 @@ public class TrackSelectGUI implements Listener {
 		}
 
 		boolean ready = false;
+		TrackConfig tc = null;
 		if (rm != null && rm.getTrackConfig() != null) {
 			try {
-				ready = rm.getTrackConfig().isReady();
+				tc = rm.getTrackConfig();
+				ready = tc.isReady();
 			} catch (Throwable ignored) {
 				ready = false;
 			}
@@ -179,6 +210,7 @@ public class TrackSelectGUI implements Listener {
 		if (rm == null) {
 			mat = Material.BARRIER;
 			lore.add("&cKhông thể tải đường đua này.");
+			// no author available
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7Vui lòng thử lại hoặc kiểm tra file cấu hình.");
@@ -191,6 +223,7 @@ public class TrackSelectGUI implements Listener {
 					lore.add("&7Thiếu: &f" + String.join(", ", miss));
 			} catch (Throwable ignored) {
 			}
+			appendAuthorLine(tc, lore);
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột phải&7: &eXem thông tin");
@@ -209,6 +242,7 @@ public class TrackSelectGUI implements Listener {
 				} catch (Throwable ignored) {
 				}
 			}
+			appendAuthorLine(tc, lore);
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột phải&7: &eXem thông tin");
@@ -222,6 +256,7 @@ public class TrackSelectGUI implements Listener {
 				} catch (Throwable ignored) {
 				}
 			}
+			appendAuthorLine(tc, lore);
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột trái&7: &aTham gia đăng ký");
@@ -245,7 +280,19 @@ public class TrackSelectGUI implements Listener {
 			lore.add(1, "");
 		}
 
-		ItemStack it = new ItemStack(mat, (rm == null ? 1 : stackAmountForCount(racers)));
+		ItemStack it;
+		org.bukkit.inventory.ItemStack icon = null;
+		try {
+			if (tc != null) icon = tc.getIcon();
+		} catch (Throwable ignored) {
+			icon = null;
+		}
+		if (rm != null && icon != null && icon.getType() != Material.AIR) {
+			it = icon;
+			try { it.setAmount(stackAmountForCount(racers)); } catch (Throwable ignored) {}
+		} else {
+			it = new ItemStack(mat, (rm == null ? 1 : stackAmountForCount(racers)));
+		}
 		ItemMeta im = it.getItemMeta();
 		if (im != null) {
 			im.displayName(Text.item("&e" + trackName));
