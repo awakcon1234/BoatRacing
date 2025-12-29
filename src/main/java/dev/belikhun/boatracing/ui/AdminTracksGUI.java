@@ -341,19 +341,19 @@ public class AdminTracksGUI implements Listener {
 			case SAVE -> doSave(p);
 			case SAVE_AS -> promptSaveAs(p);
 			case SET_ICON -> doSetIcon(p);
-			case CLEAR_ICON -> { plugin.getTrackConfig().setIcon(null); Text.msg(p, "&aĐã xóa icon đường."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);} 
+			case CLEAR_ICON -> { plugin.getTrackConfig().setIcon(null); Text.msg(p, "&aĐã xóa icon đường."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);}
 			case SET_AUTHOR -> promptSetAuthor(p);
-			case CLEAR_AUTHOR -> { plugin.getTrackConfig().clearAuthor(); Text.msg(p, "&aĐã xóa tác giả."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);} 
+			case CLEAR_AUTHOR -> { plugin.getTrackConfig().clearAuthor(); Text.msg(p, "&aĐã xóa tác giả."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);}
 			case SET_BOUNDS -> doSetBounds(p);
 			case SET_WAIT_SPAWN -> doSetWaitSpawn(p);
 			case ADD_START -> doAddStart(p);
-			case CLEAR_STARTS -> { plugin.getTrackConfig().clearStarts(); Text.msg(p, "&aĐã xóa tất cả start."); open(p);} 
+			case CLEAR_STARTS -> { plugin.getTrackConfig().clearStarts(); Text.msg(p, "&aĐã xóa tất cả start."); open(p);}
 			case SET_FINISH -> doSetFinish(p);
 			// SET_PIT removed
 			case ADD_CHECKPOINT -> doAddCheckpoint(p);
-			case CLEAR_CHECKPOINTS -> { plugin.getTrackConfig().clearCheckpoints(); Text.msg(p, "&aĐã xóa tất cả checkpoint."); open(p);} 
+			case CLEAR_CHECKPOINTS -> { plugin.getTrackConfig().clearCheckpoints(); Text.msg(p, "&aĐã xóa tất cả checkpoint."); open(p);}
 			case ADD_LIGHT -> doAddLight(p);
-			case CLEAR_LIGHTS -> { plugin.getTrackConfig().clearLights(); Text.msg(p, "&aĐã xóa tất cả đèn." ); open(p);} 
+			case CLEAR_LIGHTS -> { plugin.getTrackConfig().clearLights(); Text.msg(p, "&aĐã xóa tất cả đèn." ); open(p);}
 			case REFRESH -> open(p);
 			case BUILD_PATH -> doBuildPath(p);
 			case TOGGLE_VIZ -> doToggleViz(p);
