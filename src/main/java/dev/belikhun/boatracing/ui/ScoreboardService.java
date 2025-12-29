@@ -390,6 +390,84 @@ public class ScoreboardService {
 		ph.put("track_length_display", trackLength > 0.0 && Double.isFinite(trackLength) ? ("🛣 " + fmt1(trackLength) + "m") : "-");
 		ph.put("countdown", Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
 
+		// Additional track info placeholders (metadata + structure)
+		try {
+			var tc = rm.getTrackConfig();
+			int starts = 0;
+			int lights = 0;
+			int centerline = 0;
+			boolean hasFinish = false;
+			boolean hasBounds = false;
+			boolean hasWaitSpawn = false;
+			boolean ready = false;
+			java.util.List<String> missing = java.util.List.of();
+
+			try { starts = tc.getStarts().size(); } catch (Throwable ignored) { starts = 0; }
+			try { lights = tc.getLights().size(); } catch (Throwable ignored) { lights = 0; }
+			try { centerline = tc.getCenterline().size(); } catch (Throwable ignored) { centerline = 0; }
+			try { hasFinish = tc.getFinish() != null; } catch (Throwable ignored) { hasFinish = false; }
+			try { hasBounds = tc.getBounds() != null; } catch (Throwable ignored) { hasBounds = false; }
+			try { hasWaitSpawn = tc.getWaitingSpawn() != null; } catch (Throwable ignored) { hasWaitSpawn = false; }
+			try { ready = tc.isReady(); } catch (Throwable ignored) { ready = false; }
+			try {
+				java.util.List<String> m = tc.missingRequirements();
+				missing = (m == null) ? java.util.List.of() : m;
+			} catch (Throwable ignored) {
+				missing = java.util.List.of();
+			}
+
+			ph.put("track_world", (tc.getWorldName() == null || tc.getWorldName().isBlank()) ? "-" : tc.getWorldName());
+			ph.put("track_ready", String.valueOf(ready));
+			ph.put("track_ready_display", ready ? "<green>Sẵn sàng</green>" : "<red>Chưa sẵn sàng</red>");
+			ph.put("track_missing", missing.isEmpty() ? "-" : String.join(", ", missing));
+			ph.put("track_starts", String.valueOf(starts));
+			ph.put("track_lights", String.valueOf(lights));
+			ph.put("track_checkpoints", String.valueOf(cps));
+			ph.put("track_centerline_nodes", String.valueOf(centerline));
+			ph.put("track_has_finish", String.valueOf(hasFinish));
+			ph.put("track_has_bounds", String.valueOf(hasBounds));
+			ph.put("track_has_waiting_spawn", String.valueOf(hasWaitSpawn));
+			ph.put("track_has_finish_display", hasFinish ? "có" : "không");
+			ph.put("track_has_bounds_display", hasBounds ? "có" : "không");
+			ph.put("track_has_waiting_spawn_display", hasWaitSpawn ? "có" : "không");
+
+			// Track author (from TrackConfig)
+			String authorName = "-";
+			String authorDisplay = "<gray>-</gray>";
+			try {
+				java.util.UUID aid = tc.getAuthorId();
+				String an = tc.getAuthorName();
+				String at = tc.getAuthorText();
+				if (aid != null) {
+					String n = (an == null || an.isBlank()) ? "(không rõ)" : an;
+					authorName = n;
+					authorDisplay = racerDisplay(aid, n);
+				} else if (at != null && !at.isBlank()) {
+					authorName = at;
+					authorDisplay = "<white>" + at;
+				}
+			} catch (Throwable ignored) {
+				authorName = "-";
+				authorDisplay = "<gray>-</gray>";
+			}
+			ph.put("track_author_name", authorName);
+			ph.put("track_author_display", authorDisplay);
+
+			// Track icon material (from TrackConfig)
+			String iconMat = "-";
+			try {
+				org.bukkit.inventory.ItemStack icon = tc.getIcon();
+				if (icon != null && icon.getType() != null && icon.getType() != org.bukkit.Material.AIR) {
+					iconMat = icon.getType().name();
+				}
+			} catch (Throwable ignored) {
+				iconMat = "-";
+			}
+			ph.put("track_icon_material", iconMat);
+		} catch (Throwable ignored) {
+			// Keep placeholders absent on failure; templates can still render without them.
+		}
+
 		// Records (track/global + personal)
 		String trTime = "-";
 		String trHolder = "-";

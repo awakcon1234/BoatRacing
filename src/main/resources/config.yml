@@ -58,6 +58,15 @@ racing:
     # Lobby-only: %completed% %wins% %time_raced%
     #
     # Waiting: %track% %laps% %joined% %max% %countdown%
+    # Waiting (thông tin đường bổ sung):
+    #   %track_world% %track_length_display%
+    #   %track_ready% %track_ready_display% %track_missing%
+    #   %track_starts% %track_lights% %track_checkpoints% %track_centerline_nodes%
+    #   %track_has_finish% %track_has_finish_display%
+    #   %track_has_bounds% %track_has_bounds_display%
+    #   %track_has_waiting_spawn% %track_has_waiting_spawn_display%
+    #   %track_author_name% %track_author_display%
+    #   %track_icon_material%
     # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %lap_progress% %track_progress% %checkpoint_passed% %checkpoint_total%
     # Racing neighbor (ahead/behind) placeholders:
     #   %ahead_position% %ahead_position_tag% %ahead_racer_name% %ahead_racer_display%

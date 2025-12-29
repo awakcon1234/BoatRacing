@@ -35,6 +35,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private TrackConfig trackConfig;
 	private TrackLibrary trackLibrary;
 	private dev.belikhun.boatracing.race.RaceService raceService;
+	private dev.belikhun.boatracing.event.EventService eventService;
 	private SetupWizard setupWizard;
 	private dev.belikhun.boatracing.ui.AdminTracksGUI tracksGUI;
 	private dev.belikhun.boatracing.track.TrackRecordManager trackRecordManager;
@@ -84,6 +85,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 		return raceService;
 	}
 
+	public dev.belikhun.boatracing.event.EventService getEventService() {
+		return eventService;
+	}
+
 	public TrackConfig getTrackConfig() {
 		return trackConfig;
 	}
@@ -128,6 +133,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		this.trackConfig = new TrackConfig(this, getDataFolder());
 		this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
 		this.raceService = new dev.belikhun.boatracing.race.RaceService(this);
+		this.eventService = new dev.belikhun.boatracing.event.EventService(this);
 		this.scoreboardService = new dev.belikhun.boatracing.ui.ScoreboardService(this);
 		this.hotbarService = new dev.belikhun.boatracing.ui.HotbarService(this);
 		this.setupWizard = new SetupWizard(this);
@@ -402,6 +408,13 @@ public class BoatRacingPlugin extends JavaPlugin {
 			getCommand("boatracing").setExecutor(this);
 			getCommand("boatracing").setTabCompleter(this);
 		}
+
+		// Start event service (single-active-event orchestrator)
+		try {
+			if (eventService != null)
+				eventService.start();
+		} catch (Throwable ignored) {
+		}
 		getLogger().info("BoatRacing enabled");
 	}
 
@@ -515,6 +528,12 @@ public class BoatRacingPlugin extends JavaPlugin {
 		}
 
 		try {
+			if (eventService != null)
+				eventService.stop();
+		} catch (Throwable ignored) {
+		}
+
+		try {
 			if (lobbyBoardService != null)
 				lobbyBoardService.stop();
 		} catch (Throwable ignored) {
@@ -530,8 +549,13 @@ public class BoatRacingPlugin extends JavaPlugin {
 		Player p = (Player) sender;
 		if (command.getName().equalsIgnoreCase("boatracing")) {
 			if (args.length == 0) {
-				Text.msg(p, "&cCách dùng: /" + label + " profile|race|setup|reload|version");
+				Text.msg(p, "&cCách dùng: /" + label + " profile|race|setup|event|reload|version");
 				return true;
+			}
+
+			// /boatracing event ...
+			if (args[0].equalsIgnoreCase("event")) {
+				return dev.belikhun.boatracing.event.EventCommands.handle(this, p, label, args);
 			}
 			if (args[0].equalsIgnoreCase("scoreboard") || args[0].equalsIgnoreCase("sb")) {
 				if (!p.hasPermission("boatracing.admin")) {
@@ -1315,6 +1339,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 				java.util.List<String> root = new java.util.ArrayList<>();
 				// if (sender.hasPermission("boatracing.teams")) root.add("teams");
 				root.add("profile");
+				root.add("event");
 				root.add("race");
 				root.add("scoreboard");
 				if (sender.hasPermission("boatracing.setup"))
@@ -1328,6 +1353,43 @@ public class BoatRacingPlugin extends JavaPlugin {
 				if (sender.hasPermission("boatracing.version"))
 					root.add("version");
 				return root.stream().filter(s -> s.startsWith(pref)).toList();
+			}
+
+			if (args.length >= 2 && args[0].equalsIgnoreCase("event")) {
+				if (args.length == 2) {
+					java.util.List<String> subs = new java.util.ArrayList<>();
+					subs.add("help");
+					subs.add("status");
+					subs.add("join");
+					subs.add("leave");
+					if (sender.hasPermission("boatracing.event.admin")) {
+						subs.add("create");
+						subs.add("open");
+						subs.add("schedule");
+						subs.add("start");
+						subs.add("cancel");
+						subs.add("track");
+					}
+					String pref2 = args[1] == null ? "" : args[1].toLowerCase();
+					return subs.stream().filter(s -> s.startsWith(pref2)).toList();
+				}
+				if (!sender.hasPermission("boatracing.event.admin"))
+					return java.util.Collections.emptyList();
+				if (args.length == 3 && args[1].equalsIgnoreCase("track")) {
+					return java.util.Arrays.asList("add", "remove", "list");
+				}
+				if (args.length == 4 && args[1].equalsIgnoreCase("track")
+						&& (args[2].equalsIgnoreCase("add") || args[2].equalsIgnoreCase("remove"))) {
+					String prefix = args[3] == null ? "" : args[3].toLowerCase();
+					java.util.List<String> names = new java.util.ArrayList<>();
+					if (trackLibrary != null) {
+						for (String n : trackLibrary.list())
+							if (n.toLowerCase().startsWith(prefix))
+								names.add(n);
+					}
+					return names;
+				}
+				return java.util.Collections.emptyList();
 			}
 
 			if (args.length >= 2 && args[0].equalsIgnoreCase("board")) {
