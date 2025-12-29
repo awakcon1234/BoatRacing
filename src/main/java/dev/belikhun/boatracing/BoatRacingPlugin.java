@@ -26,6 +26,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private static BoatRacingPlugin instance;
 	private dev.belikhun.boatracing.ui.AdminGUI adminGUI;
 	private dev.belikhun.boatracing.ui.AdminRaceGUI adminRaceGUI;
+	private dev.belikhun.boatracing.ui.AdminEventGUI adminEventGUI;
 	private dev.belikhun.boatracing.profile.PlayerProfileManager profileManager;
 	private dev.belikhun.boatracing.ui.ProfileGUI profileGUI;
 	private dev.belikhun.boatracing.ui.TrackSelectGUI trackSelectGUI;
@@ -59,6 +60,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 
 	public dev.belikhun.boatracing.ui.AdminRaceGUI getAdminRaceGUI() {
 		return adminRaceGUI;
+	}
+
+	public dev.belikhun.boatracing.ui.AdminEventGUI getAdminEventGUI() {
+		return adminEventGUI;
 	}
 
 	public dev.belikhun.boatracing.profile.PlayerProfileManager getProfileManager() {
@@ -126,6 +131,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		// Team and pit features removed
 		this.adminGUI = new dev.belikhun.boatracing.ui.AdminGUI(this);
 		this.adminRaceGUI = new dev.belikhun.boatracing.ui.AdminRaceGUI(this);
+		this.adminEventGUI = new dev.belikhun.boatracing.ui.AdminEventGUI(this);
 		this.profileManager = new dev.belikhun.boatracing.profile.PlayerProfileManager(getDataFolder());
 		this.trackRecordManager = new dev.belikhun.boatracing.track.TrackRecordManager(getDataFolder());
 		this.profileGUI = new dev.belikhun.boatracing.ui.ProfileGUI(this);
@@ -143,6 +149,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		Bukkit.getPluginManager().registerEvents(adminGUI, this);
 		Bukkit.getPluginManager().registerEvents(tracksGUI, this);
 		Bukkit.getPluginManager().registerEvents(adminRaceGUI, this);
+		Bukkit.getPluginManager().registerEvents(adminEventGUI, this);
 		Bukkit.getPluginManager().registerEvents(profileGUI, this);
 		Bukkit.getPluginManager().registerEvents(trackSelectGUI, this);
 		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.ui.HotbarListener(this, hotbarService),
@@ -1290,6 +1297,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 				if (args[1].equalsIgnoreCase("help")) {
 					Text.msg(p, "&eLệnh quản trị:");
 					Text.tell(p, "&7 - &f/" + label + " admin tracks &7(Quản lý đường đua qua GUI)");
+					Text.tell(p, "&7 - &f/" + label + " admin event &7(Quản lý sự kiện qua GUI)");
 					return true;
 				}
 				if (args[1].equalsIgnoreCase("tracks")) {
@@ -1298,6 +1306,19 @@ public class BoatRacingPlugin extends JavaPlugin {
 						return true;
 					}
 					tracksGUI.open(p);
+					return true;
+				}
+				if (args[1].equalsIgnoreCase("event")) {
+					if (!p.hasPermission("boatracing.event.admin")) {
+						Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+						return true;
+					}
+					if (adminEventGUI == null) {
+						Text.msg(p, "&cTính năng sự kiện đang bị tắt.");
+						return true;
+					}
+					adminEventGUI.open(p);
 					return true;
 				}
 				// Only tracks admin remains
@@ -1414,7 +1435,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 				if (!sender.hasPermission("boatracing.admin"))
 					return java.util.Collections.emptyList();
 				if (args.length == 2)
-					return java.util.Arrays.asList("help", "tracks");
+					return java.util.Arrays.asList("help", "tracks", "event");
 				return java.util.Collections.emptyList();
 			}
 			if (args.length >= 2 && args[0].equalsIgnoreCase("race")) {

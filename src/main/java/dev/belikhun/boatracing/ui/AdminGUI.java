@@ -31,6 +31,7 @@ public class AdminGUI implements Listener {
 
 	private enum Action {
 		TRACKS,
+		EVENT,
 		RACE,
 		SETUP_WIZARD,
 		RELOAD,
@@ -79,6 +80,20 @@ public class AdminGUI implements Listener {
 				canRaceAdmin ? "&eBấm: &fXem lệnh nhanh" : "&cCần quyền: &fboatracing.race.admin"
 			),
 			canRaceAdmin
+		));
+
+		boolean canEventAdmin = p.hasPermission("boatracing.event.admin");
+		inv.setItem(13, buttonWithLore(
+			Material.FIREWORK_ROCKET,
+			Text.item("&d&lSự kiện"),
+			Action.EVENT,
+			java.util.Arrays.asList(
+				"&7Tạo và quản lý sự kiện nhiều chặng.",
+				"&7Mở đăng ký, đặt lịch, bắt đầu, hủy.",
+				canEventAdmin ? " " : " ",
+				canEventAdmin ? "&eBấm: &fMở quản lý sự kiện" : "&cCần quyền: &fboatracing.event.admin"
+			),
+			canEventAdmin
 		));
 
 		inv.setItem(16, buttonWithLore(
@@ -189,6 +204,19 @@ public class AdminGUI implements Listener {
 					return;
 				}
 				plugin.getAdminRaceGUI().open(p);
+			}
+			case EVENT -> {
+				if (!p.hasPermission("boatracing.event.admin")) {
+					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+					return;
+				}
+				try {
+					plugin.getAdminEventGUI().open(p);
+				} catch (Throwable t) {
+					Text.msg(p, "&cKhông thể mở quản lý sự kiện.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+				}
 			}
 			case SETUP_WIZARD -> {
 				if (!p.hasPermission("boatracing.setup")) {
