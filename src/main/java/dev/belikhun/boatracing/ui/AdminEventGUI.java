@@ -685,12 +685,26 @@ public class AdminEventGUI implements Listener {
 		EventService svc = svc();
 		if (svc == null)
 			return;
-		boolean ok = svc.addTrackToActiveEvent(trackName.trim());
-		if (!ok) {
-			Text.msg(p, "&cKhông thể thêm track.");
+		String eventId = selectedEventId(p);
+		if (eventId == null || eventId.isBlank()) {
+			Text.msg(p, "&cChưa chọn sự kiện.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			open(p);
+			return;
+		}
+		String tn = trackName.trim();
+		dev.belikhun.boatracing.event.EventService.TrackPoolResult r = svc.addTrackToEvent(eventId, tn);
+		if (r != dev.belikhun.boatracing.event.EventService.TrackPoolResult.OK) {
+			switch (r) {
+				case NO_SUCH_EVENT -> Text.msg(p, "&cSự kiện không tồn tại.");
+				case EVENT_RUNNING -> Text.msg(p, "&cKhông thể chỉnh track khi sự kiện đang chạy.");
+				case TRACK_INVALID -> Text.msg(p, "&cTên track không hợp lệ.");
+				case DUPLICATE -> Text.msg(p, "&eTrack đã có trong pool.");
+				default -> Text.msg(p, "&cKhông thể thêm track.");
+			}
 			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
 		} else {
-			Text.msg(p, "&a✔ Đã thêm track: &f" + trackName.trim());
+			Text.msg(p, "&a✔ Đã thêm track: &f" + tn);
 			p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
 		}
 		openTrackPool(p);
@@ -702,12 +716,26 @@ public class AdminEventGUI implements Listener {
 		EventService svc = svc();
 		if (svc == null)
 			return;
-		boolean ok = svc.removeTrackFromActiveEvent(trackName.trim());
-		if (!ok) {
-			Text.msg(p, "&cKhông thể xóa track.");
+		String eventId = selectedEventId(p);
+		if (eventId == null || eventId.isBlank()) {
+			Text.msg(p, "&cChưa chọn sự kiện.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			open(p);
+			return;
+		}
+		String tn = trackName.trim();
+		dev.belikhun.boatracing.event.EventService.TrackPoolResult r = svc.removeTrackFromEvent(eventId, tn);
+		if (r != dev.belikhun.boatracing.event.EventService.TrackPoolResult.OK) {
+			switch (r) {
+				case NO_SUCH_EVENT -> Text.msg(p, "&cSự kiện không tồn tại.");
+				case EVENT_RUNNING -> Text.msg(p, "&cKhông thể chỉnh track khi sự kiện đang chạy.");
+				case TRACK_INVALID -> Text.msg(p, "&cTên track không hợp lệ.");
+				case NOT_FOUND -> Text.msg(p, "&eTrack này không có trong pool.");
+				default -> Text.msg(p, "&cKhông thể xóa track.");
+			}
 			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
 		} else {
-			Text.msg(p, "&a✔ Đã xóa track: &f" + trackName.trim());
+			Text.msg(p, "&a✔ Đã xóa track: &f" + tn);
 			p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
 		}
 		openTrackPool(p);

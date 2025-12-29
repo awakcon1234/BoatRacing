@@ -22,6 +22,15 @@ import java.util.UUID;
  * will be implemented in follow-up steps.
  */
 public class EventService {
+	public enum TrackPoolResult {
+		OK,
+		NO_SUCH_EVENT,
+		EVENT_RUNNING,
+		TRACK_INVALID,
+		DUPLICATE,
+		NOT_FOUND
+	}
+
 	private final BoatRacingPlugin plugin;
 	private final File dataFolder;
 	private final PodiumService podiumService;
@@ -246,34 +255,56 @@ public class EventService {
 		RaceEvent e = getActiveEvent();
 		if (e == null)
 			return false;
+		TrackPoolResult r = addTrackToEvent(e.id, trackName);
+		return r == TrackPoolResult.OK;
+	}
+
+	public synchronized TrackPoolResult addTrackToEvent(String eventId, String trackName) {
+		RaceEvent e = get(eventId);
+		if (e == null)
+			return TrackPoolResult.NO_SUCH_EVENT;
 		if (e.state == EventState.RUNNING)
-			return false;
+			return TrackPoolResult.EVENT_RUNNING;
 		if (trackName == null || trackName.isBlank())
-			return false;
+			return TrackPoolResult.TRACK_INVALID;
 		String tn = trackName.trim();
+		if (tn.isBlank())
+			return TrackPoolResult.TRACK_INVALID;
 		if (e.trackPool == null)
 			e.trackPool = new java.util.ArrayList<>();
-		if (e.trackPool.contains(tn))
-			return false;
+		for (String s : e.trackPool) {
+			if (s != null && s.equalsIgnoreCase(tn))
+				return TrackPoolResult.DUPLICATE;
+		}
 		e.trackPool.add(tn);
 		EventStorage.saveEvent(dataFolder, e);
-		return true;
+		return TrackPoolResult.OK;
 	}
 
 	public synchronized boolean removeTrackFromActiveEvent(String trackName) {
 		RaceEvent e = getActiveEvent();
 		if (e == null)
 			return false;
+		TrackPoolResult r = removeTrackFromEvent(e.id, trackName);
+		return r == TrackPoolResult.OK;
+	}
+
+	public synchronized TrackPoolResult removeTrackFromEvent(String eventId, String trackName) {
+		RaceEvent e = get(eventId);
+		if (e == null)
+			return TrackPoolResult.NO_SUCH_EVENT;
 		if (e.state == EventState.RUNNING)
-			return false;
+			return TrackPoolResult.EVENT_RUNNING;
 		if (trackName == null || trackName.isBlank())
-			return false;
+			return TrackPoolResult.TRACK_INVALID;
 		String tn = trackName.trim();
+		if (tn.isBlank())
+			return TrackPoolResult.TRACK_INVALID;
 		if (e.trackPool == null)
-			return false;
+			return TrackPoolResult.NOT_FOUND;
 		boolean ok = e.trackPool.removeIf(s -> s != null && s.equalsIgnoreCase(tn));
 		EventStorage.saveEvent(dataFolder, e);
-		return ok;
+		return ok ? TrackPoolResult.OK : TrackPoolResult.NOT_FOUND;
 	}
 
 	public synchronized boolean registerToActiveEvent(Player p) {
