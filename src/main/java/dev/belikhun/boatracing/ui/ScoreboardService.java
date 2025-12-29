@@ -63,10 +63,7 @@ public class ScoreboardService {
 			plugin.getLogger().warning("ScoreboardLibrary not available: " + t.getMessage());
 			lib = null;
 		}
-		int period = cfgIntAny(
-			java.util.List.of("racing.ui.update-ticks", "scoreboard.update-ticks"),
-			5
-		);
+		int period = cfgInt("racing.ui.update-ticks", 5);
 		period = Math.max(1, period);
 		this.updatePeriodTicks = period;
 		this.usage = computeTemplateUsage();
@@ -275,8 +272,8 @@ public class ScoreboardService {
 		ph.put("track_length_display", trackLength > 0.0 && Double.isFinite(trackLength) ? ("🛣 " + fmt1(trackLength) + "m") : "-");
 		ph.put("countdown", Time.formatCountdownSeconds(rm.getCountdownRemainingSeconds()));
 
-		Component title = parse(p, cfgString("scoreboard.templates.countdown.title", "<gold>Chuẩn bị"), ph);
-		java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.countdown.lines", java.util.List.of()), ph);
+		Component title = parse(p, cfgString("racing.ui.templates.countdown.title", "<gold>Chuẩn bị"), ph);
+		java.util.List<Component> lines = parseLines(p, cfgStringList("racing.ui.templates.countdown.lines", java.util.List.of()), ph);
 		if (lines.isEmpty()) {
 			lines = parseLines(p, java.util.List.of(
 				"<yellow>Vào vị trí xuất phát",
@@ -317,7 +314,7 @@ public class ScoreboardService {
 		String avgSpeedDisplay = miniWrapTag(speedColorName, speedVal + " " + speedUnit);
 
 		String tpl = cfgString(
-				"scoreboard.actionbar.completed",
+				"racing.ui.templates.actionbar.completed",
 			"%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
 		);
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
@@ -354,8 +351,8 @@ public class ScoreboardService {
 		ph.put("track_length_display", "-");
 
 		// Allow internal placeholders in the scoreboard title too.
-		Component title = parse(p, cfgString("scoreboard.templates.lobby.title", "<gold>BoatRacing"), ph);
-		java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.lobby.lines", java.util.List.of(
+		Component title = parse(p, cfgString("racing.ui.templates.lobby.title", "<gold>BoatRacing"), ph);
+		java.util.List<Component> lines = parseLines(p, cfgStringList("racing.ui.templates.lobby.lines", java.util.List.of(
 			"<yellow>Hồ sơ của bạn",
 			"<gray>Tên: %racer_color%%racer_name%",
 			"<gray>Màu: <white>%racer_color%",
@@ -418,8 +415,8 @@ public class ScoreboardService {
 		ph.put("personal_record_time", pbTime);
 
 		// Allow internal placeholders in the scoreboard title too.
-		Component title = parse(p, cfgString("scoreboard.templates.waiting.title", "<gold>Đang chờ"), ph);
-		java.util.List<Component> lines = parseLines(p, cfgStringList("scoreboard.templates.waiting.lines", java.util.List.of()), ph);
+		Component title = parse(p, cfgString("racing.ui.templates.waiting.title", "<gold>Đang chờ"), ph);
+		java.util.List<Component> lines = parseLines(p, cfgStringList("racing.ui.templates.waiting.lines", java.util.List.of()), ph);
 		if (lines.isEmpty()) {
 			lines = parseLines(p, java.util.List.of(
 				"<yellow>Thông tin đường",
@@ -486,7 +483,7 @@ public class ScoreboardService {
 				fillNeighborRacerPlaceholders(p, rm, ctx, ph);
 			} catch (Throwable ignored) {}
 
-			lines = parseLines(p, cfgStringList("scoreboard.templates.racing.lines", java.util.List.of()), ph);
+			lines = parseLines(p, cfgStringList("racing.ui.templates.racing.lines", java.util.List.of()), ph);
 			if (lines.isEmpty()) {
 				lines = parseLines(p, java.util.List.of(
 						"<gray>Đường: <white>%track%",
@@ -498,10 +495,10 @@ public class ScoreboardService {
 						"<gray>Tiến độ tổng: <white>%track_progress%%"), ph);
 			}
 		} else {
-			lines = parseLines(p, cfgStringList("scoreboard.templates.racing.lines", java.util.List.of("<gray>Đường: <white>%track%", "<gray>Thời gian: <white>%timer%")), ph);
+			lines = parseLines(p, cfgStringList("racing.ui.templates.racing.lines", java.util.List.of("<gray>Đường: <white>%track%", "<gray>Thời gian: <white>%timer%")), ph);
 		}
 		// Allow internal placeholders in the scoreboard title too.
-		Component title = parse(p, cfgString("scoreboard.templates.racing.title", "<gold>Đang đua"), ph);
+		Component title = parse(p, cfgString("racing.ui.templates.racing.title", "<gold>Đang đua"), ph);
 		applySidebarComponents(p, sb, title, lines);
 	}
 
@@ -533,21 +530,100 @@ public class ScoreboardService {
 		phTitle.put("track_length_unit", "m");
 		phTitle.put("track_length_display", trackLength > 0.0 && Double.isFinite(trackLength) ? ("🛣 " + fmt1(trackLength) + "m") : "-");
 
+		// Add racer info + final result placeholders for completed/ended header templates.
+		try {
+			PlayerProfileManager.Profile prof = (pm != null ? pm.get(p.getUniqueId()) : null);
+			if (prof != null) {
+				phTitle.put("racer_color", ColorTranslator.miniColorTag(prof.color));
+				phTitle.put("icon", empty(prof.icon) ? "-" : prof.icon);
+				phTitle.put("number", prof.number > 0 ? String.valueOf(prof.number) : "-");
+				phTitle.put("completed", String.valueOf(prof.completed));
+				phTitle.put("wins", String.valueOf(prof.wins));
+				phTitle.put("time_raced", Time.formatDurationShort(prof.timeRacedMillis));
+			}
+		} catch (Throwable ignored) {}
+
+		String unitPref = "";
+		try {
+			unitPref = pm != null ? pm.get(p.getUniqueId()).speedUnit : "";
+		} catch (Throwable ignored) {
+			unitPref = "";
+		}
+		String unit = (unitPref != null && !unitPref.isEmpty())
+				? unitPref.toLowerCase()
+				: cfgString("scoreboard.speed.unit", "kmh").toLowerCase();
+		if (!"bps".equals(unit) && !"kmh".equals(unit) && !"bph".equals(unit))
+			unit = "kmh";
+		String unitLabel = "km/h";
+		if ("bps".equals(unit)) unitLabel = "bps";
+		else if ("bph".equals(unit)) unitLabel = "bph";
+		phTitle.put("speed_unit", unitLabel);
+
+		RaceManager.ParticipantState self = null;
+		try { self = rm.getParticipantState(p.getUniqueId()); } catch (Throwable ignored) { self = null; }
+		if (self != null && self.finished) {
+			int pos = self.finishPosition > 0 ? self.finishPosition : 1;
+			long t = Math.max(0L, self.finishTimeMillis - rm.getRaceStartMillis()) + self.penaltySeconds * 1000L;
+
+			double avgBps = 0.0;
+			try {
+				double seconds = Math.max(0.001, t / 1000.0);
+				avgBps = Math.max(0.0, self.distanceBlocks / seconds);
+			} catch (Throwable ignored) {}
+
+			double kmh = avgBps * 3.6;
+			double bph = avgBps * 3600.0;
+			String speedVal;
+			if ("bps".equals(unit)) speedVal = fmt2(avgBps);
+			else if ("bph".equals(unit)) speedVal = fmt2(bph);
+			else speedVal = fmt2(kmh);
+
+			String speedColorName = resolveSpeedColorByUnit(avgBps, unit);
+			String avgSpeedDisplay = miniWrapTag(speedColorName, speedVal + " " + unitLabel);
+
+			phTitle.put("finish_pos", colorizePlacement(pos));
+			phTitle.put("finish_pos_tag", colorizePlacementTag(pos));
+			phTitle.put("finish_time", Time.formatStopwatchMillis(t));
+			phTitle.put("avg_speed", speedVal);
+			phTitle.put("avg_speed_display", avgSpeedDisplay);
+			phTitle.put("avg_speed_bps", fmt2(avgBps));
+			phTitle.put("avg_speed_kmh", fmt2(kmh));
+			phTitle.put("avg_speed_bph", fmt2(bph));
+			phTitle.put("speed_color_name", speedColorName);
+			phTitle.put("speed_color", miniOpenTag(speedColorName));
+			phTitle.put("speed_color_close", miniCloseTag(speedColorName));
+		} else {
+			phTitle.put("finish_pos", "-");
+			phTitle.put("finish_pos_tag", "-");
+			phTitle.put("finish_time", "-");
+			phTitle.put("avg_speed", "-");
+			phTitle.put("avg_speed_display", "<gray>-</gray>");
+			phTitle.put("avg_speed_bps", "-");
+			phTitle.put("avg_speed_kmh", "-");
+			phTitle.put("avg_speed_bph", "-");
+			phTitle.put("speed_color_name", "gray");
+			phTitle.put("speed_color", "<gray>");
+			phTitle.put("speed_color_close", "</gray>");
+		}
+
 		Component title = parse(p,
 			ended
-				? cfgString("scoreboard.templates.ended.title", cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"))
-				: cfgString("scoreboard.templates.completed.title", "<gold>Kết quả"),
+				? cfgString("racing.ui.templates.ended.title", "<gold>Kết quả")
+				: cfgString("racing.ui.templates.completed.title", "<gold>Kết quả"),
 			phTitle);
 		java.util.List<RaceManager.ParticipantState> standings = ensureStandings(rm, ctx);
 		java.util.List<Component> lines = new java.util.ArrayList<>();
 
+		// Common header (multi-line) for completed/ended boards.
+		java.util.List<String> headerTpl = ended
+				? cfgStringList("racing.ui.templates.ended.header", java.util.List.of())
+				: cfgStringList("racing.ui.templates.completed.header", java.util.List.of());
+		if (headerTpl != null && !headerTpl.isEmpty()) {
+			lines.addAll(parseLines(p, headerTpl, phTitle));
+		}
+
 		if (ended) {
 			// Race ended: show full list ordered by placement/time.
-			for (String line : cfgStringList("scoreboard.templates.ended.header", java.util.List.of("<yellow>Kết quả"))) {
-				Component c = parse(p, line, java.util.Map.of());
-				if (c != null) lines.add(c);
-			}
-
 			long best = Long.MAX_VALUE;
 			for (RaceManager.ParticipantState s : standings) {
 				if (!s.finished) continue;
@@ -569,8 +645,8 @@ public class ScoreboardService {
 				ph.put("finish_time", Time.formatStopwatchMillis(t));
 				ph.put("delta_time", Time.formatStopwatchMillis(delta));
 				String key = (s.finishPosition == 1 || delta == 0L)
-						? "scoreboard.templates.ended.winner_line"
-						: "scoreboard.templates.ended.delta_line";
+						? "racing.ui.templates.ended.winner_line"
+						: "racing.ui.templates.ended.delta_line";
 				String def = (s.finishPosition == 1 || delta == 0L)
 					? "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white>"
 					: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>+%delta_time%</white>";
@@ -582,60 +658,103 @@ public class ScoreboardService {
 			try {
 				phFooter.put("timer", Time.formatStopwatchMillis(rm.getRaceElapsedMillis()));
 			} catch (Throwable ignored) {}
-			java.util.List<String> footer = cfgStringList("scoreboard.templates.ended.footer", java.util.List.of());
+			java.util.List<String> footer = cfgStringList("racing.ui.templates.ended.footer", java.util.List.of());
 			if (!footer.isEmpty()) lines.addAll(parseLines(p, footer, phFooter));
 
 			applySidebarComponents(p, sb, title, lines);
 			return;
 		}
 
-		// Default completed board: some finished, others still racing.
-		for (String line : cfgStringList("scoreboard.templates.completed.header", java.util.List.of("<yellow>Về đích"))) {
-			lines.add(parse(p, line, java.util.Map.of()));
-		}
-		int shown = 0;
-		int maxFinished = cfgInt("scoreboard.templates.completed.max_finished_lines", 8);
+		// Completed board: some finished, others still racing.
+		java.util.List<String> finishedHeaderTpl = cfgStringList(
+				"racing.ui.templates.completed.finished-header",
+				java.util.List.of("<yellow>Về đích")
+		);
+		java.util.List<String> finishedItemTpl = cfgStringList(
+				"racing.ui.templates.completed.finished-item",
+				java.util.List.of(
+						"%finish_pos_tag% %racer_display%",
+						"<gray>  thời gian: <white>%finish_time%"
+				)
+		);
+		java.util.List<String> unfinishedHeaderTpl = cfgStringList(
+				"racing.ui.templates.completed.unfinished-header",
+				java.util.List.of("<yellow>Đang đua")
+		);
+		java.util.List<String> unfinishedItemTpl = cfgStringList(
+				"racing.ui.templates.completed.unfinished-item",
+				java.util.List.of(
+						"%position_tag% %racer_display%",
+						"<gray>  tiến độ vòng: <white>%lap_progress%%",
+						"<gray>  tiến độ tổng: <white>%track_progress%%"
+				)
+		);
+
+		int maxFinishedLines = cfgInt("racing.ui.templates.completed.finished-max-lines", 8);
+		int maxUnfinishedLines = cfgInt("racing.ui.templates.completed.unfinished-max-lines", 6);
+		maxFinishedLines = Math.max(0, maxFinishedLines);
+		maxUnfinishedLines = Math.max(0, maxUnfinishedLines);
+
+		// Finished section
+		int finishedLinesUsed = 0;
+		boolean wroteFinishedHeader = false;
+		int finishedLinesPerItem = Math.max(1, finishedItemTpl == null ? 0 : finishedItemTpl.size());
 		for (RaceManager.ParticipantState s : standings) {
-			if (!s.finished) continue;
+			if (s == null || !s.finished)
+				continue;
+			if (maxFinishedLines > 0 && finishedLinesUsed >= maxFinishedLines)
+				break;
+			if (!wroteFinishedHeader) {
+				lines.addAll(parseLines(p, finishedHeaderTpl, phTitle));
+				wroteFinishedHeader = true;
+			}
+
 			String name = nameOf(s.id);
-			long t = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + s.penaltySeconds*1000L;
+			long t = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + s.penaltySeconds * 1000L;
 			java.util.Map<String,String> ph = new java.util.HashMap<>();
 			ph.put("racer_name", name);
 			ph.put("racer_display", racerDisplay(s.id, name));
 			ph.put("finish_pos", colorizePlacement(s.finishPosition));
 			ph.put("finish_pos_tag", colorizePlacementTag(s.finishPosition));
 			ph.put("finish_time", Time.formatStopwatchMillis(t));
-			lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_line", "<white>%finish_pos%)</white> %racer_display%"), ph));
-			lines.add(parse(p, cfgString("scoreboard.templates.completed.finished_time_line", "<gray>  thời gian: <white>%finish_time%"), ph));
-			shown += 2;
-			if (shown >= maxFinished) break; // avoid overflow
+			lines.addAll(parseLines(p, finishedItemTpl, ph));
+			finishedLinesUsed += finishedLinesPerItem;
 		}
-		// Unfinished racers: live position
-		// Allow unfinished_header to be either a single string OR a list of lines.
-		java.util.List<String> unfinishedHeaderLines = cfgStringList("scoreboard.templates.completed.unfinished_header", java.util.List.of());
-		if (unfinishedHeaderLines.isEmpty()) {
-			unfinishedHeaderLines = java.util.List.of(cfgString("scoreboard.templates.completed.unfinished_header", "<yellow>Đang đua"));
-		}
-		lines.addAll(parseLines(p, unfinishedHeaderLines, java.util.Map.of()));
+
+		// Unfinished section
 		List<UUID> order = (ctx.liveOrder != null && !ctx.liveOrder.isEmpty()) ? ctx.liveOrder : rm.getLiveOrder();
-		int limit = cfgInt("scoreboard.templates.completed.max_unfinished_lines", 6);
-		int count = 0;
-		int posCounter = 0;
-		for (UUID id : order) {
+		int unfinishedLinesUsed = 0;
+		boolean wroteUnfinishedHeader = false;
+		int unfinishedLinesPerItem = Math.max(1, unfinishedItemTpl == null ? 0 : unfinishedItemTpl.size());
+		for (int i = 0; i < order.size(); i++) {
+			UUID id = order.get(i);
 			RaceManager.ParticipantState s = rm.getParticipantState(id);
-			if (s == null || s.finished) continue;
-			posCounter++;
-			int pos = posCounter;
+			if (s == null || s.finished)
+				continue;
+			if (maxUnfinishedLines > 0 && unfinishedLinesUsed >= maxUnfinishedLines)
+				break;
+
+			// IMPORTANT: show the racer's true live placement (including finished racers),
+			// not just 1..N within the unfinished subset.
+			int pos;
+			try {
+				pos = (ctx != null && ctx.positionById != null && !ctx.positionById.isEmpty())
+						? ctx.positionById.getOrDefault(id, i + 1)
+						: (i + 1);
+			} catch (Throwable ignored) {
+				pos = i + 1;
+			}
+			if (!wroteUnfinishedHeader) {
+				lines.addAll(parseLines(p, unfinishedHeaderTpl, phTitle));
+				wroteUnfinishedHeader = true;
+			}
+
 			String name = nameOf(id);
 			double lapProgressPct = rm.getLapProgressRatio(id) * 100.0;
 			double trackProgressPct;
-			if (s.finished) {
-				trackProgressPct = 100.0;
-			} else {
-				double lapRatio = Math.max(0.0, Math.min(1.0, rm.getLapProgressRatio(id)));
-				trackProgressPct = ((double) s.currentLap + lapRatio) / (double) Math.max(1, rm.getTotalLaps()) * 100.0;
-				trackProgressPct = Math.max(0.0, Math.min(100.0, trackProgressPct));
-			}
+			double lapRatio = Math.max(0.0, Math.min(1.0, rm.getLapProgressRatio(id)));
+			trackProgressPct = ((double) s.currentLap + lapRatio) / (double) Math.max(1, rm.getTotalLaps()) * 100.0;
+			trackProgressPct = Math.max(0.0, Math.min(100.0, trackProgressPct));
 			java.util.Map<String,String> ph = new java.util.HashMap<>();
 			ph.put("racer_name", name);
 			ph.put("racer_display", racerDisplay(id, name));
@@ -643,16 +762,13 @@ public class ScoreboardService {
 			ph.put("position_tag", colorizePlacementTag(pos));
 			ph.put("lap_progress", fmt2(lapProgressPct));
 			ph.put("track_progress", fmt2(trackProgressPct));
-			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_line", "<white>%position%)</white> %racer_display%"), ph));
-			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_progress_line", "<gray>  tiến độ vòng: <white>%lap_progress%%"), ph));
-			lines.add(parse(p, cfgString("scoreboard.templates.completed.unfinished_track_progress_line", "<gray>  tiến độ tổng: <white>%track_progress%%"), ph));
-			count += 3;
-			if (count >= limit) break;
+			lines.addAll(parseLines(p, unfinishedItemTpl, ph));
+			unfinishedLinesUsed += unfinishedLinesPerItem;
 		}
 
-		// Optional footer lines for completed board
-		java.util.List<String> footer = cfgStringList("scoreboard.templates.completed.footer", java.util.List.of());
-		if (!footer.isEmpty()) lines.addAll(parseLines(p, footer, phTitle));
+		java.util.List<String> footer = cfgStringList("racing.ui.templates.completed.footer", java.util.List.of());
+		if (footer != null && !footer.isEmpty())
+			lines.addAll(parseLines(p, footer, phTitle));
 		applySidebarComponents(p, sb, title, lines);
 	}
 
@@ -707,7 +823,7 @@ public class ScoreboardService {
 	// --- ActionBar support ---
 	private void applyActionBarForWaiting(Player p, RaceManager rm) {
 		if (usage == null || !usage.actionbarEnabled) return;
-		String tpl = cfgString("scoreboard.actionbar.waiting", "<yellow>Start in <white>%countdown%</white> ● <gray>%joined%/%max%</gray>");
+		String tpl = cfgString("racing.ui.templates.actionbar.waiting", "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>");
 		int countdown = rm.getCountdownRemainingSeconds();
 		int joined = rm.getRegistered().size();
 		int max = rm.getTrackConfig().getStarts().size();
@@ -721,7 +837,7 @@ public class ScoreboardService {
 	private void applyActionBarForRacing(Player p, RaceManager rm, TickContext ctx) {
 		if (usage == null || !usage.actionbarEnabled) return;
 		// Default template uses the unified %speed_display% placeholder (already colored).
-		String tpl = cfgString("scoreboard.actionbar.racing", "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%lap_progress%%</yellow> %speed_display%");
+		String tpl = cfgString("racing.ui.templates.actionbar.racing", "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%lap_progress%%</yellow> %speed_display%");
 		java.util.Map<String,String> ph = new java.util.HashMap<>();
 		var st = rm.getParticipantState(p.getUniqueId());
 		int pos = Math.max(1, ctx.positionById.getOrDefault(p.getUniqueId(), 1));
@@ -861,16 +977,6 @@ public class ScoreboardService {
 		};
 	}
 
-	private int cfgIntAny(java.util.List<String> paths, int def) {
-		if (paths != null) {
-			for (String p : paths) {
-				try {
-					if (p != null && plugin.getConfig().contains(p)) return plugin.getConfig().getInt(p, def);
-				} catch (Throwable ignored) {}
-			}
-		}
-		return def;
-	}
 
 	private static class TickContext {
 		boolean running;
@@ -1127,22 +1233,12 @@ public class ScoreboardService {
 	private String cfgString(String path, String def) {
 		String v = plugin.getConfig().getString(path);
 		if (v != null) return v;
-		String alt = altUiPath(path);
-		if (alt != null) {
-			String av = plugin.getConfig().getString(alt);
-			if (av != null) return av;
-		}
 		return def;
 	}
 
 	private java.util.List<String> cfgStringList(String path, java.util.List<String> def) {
 		java.util.List<String> out = plugin.getConfig().getStringList(path);
 		if (out != null && !out.isEmpty()) return out;
-		String alt = altUiPath(path);
-		if (alt != null) {
-			java.util.List<String> ao = plugin.getConfig().getStringList(alt);
-			if (ao != null && !ao.isEmpty()) return ao;
-		}
 		return def;
 	}
 
@@ -1150,21 +1246,7 @@ public class ScoreboardService {
 
 	private boolean cfgBool(String path, boolean def) {
 		if (plugin.getConfig().contains(path)) return plugin.getConfig().getBoolean(path, def);
-		String alt = altUiPath(path);
-		if (alt != null && plugin.getConfig().contains(alt)) return plugin.getConfig().getBoolean(alt, def);
 		return def;
-	}
-
-	// Support both legacy keys (scoreboard.templates/actionbar.*) and current keys (racing.ui.templates.*)
-	private static String altUiPath(String path) {
-		if (path == null) return null;
-		if (path.startsWith("scoreboard.templates.")) {
-			return "racing.ui.templates." + path.substring("scoreboard.templates.".length());
-		}
-		if (path.startsWith("scoreboard.actionbar.")) {
-			return "racing.ui.templates.actionbar." + path.substring("scoreboard.actionbar.".length());
-		}
-		return null;
 	}
 
 	private static boolean empty(String s) { return s == null || s.isEmpty(); }
@@ -1247,19 +1329,30 @@ public class ScoreboardService {
 
 	private TemplateUsage computeTemplateUsage() {
 		TemplateUsage u = new TemplateUsage();
-		u.actionbarEnabled = cfgBool("scoreboard.actionbar.enabled", true);
+		u.actionbarEnabled = cfgBool("racing.ui.templates.actionbar.enabled", true);
 
 		java.util.List<String> pool = new java.util.ArrayList<>();
 		try {
-			pool.add(cfgString("scoreboard.actionbar.racing", ""));
-			pool.add(cfgString("scoreboard.actionbar.completed", ""));
-			pool.add(cfgString("scoreboard.actionbar.waiting", ""));
+			pool.add(cfgString("racing.ui.templates.actionbar.racing", ""));
+			pool.add(cfgString("racing.ui.templates.actionbar.completed", ""));
+			pool.add(cfgString("racing.ui.templates.actionbar.waiting", ""));
 		} catch (Throwable ignored) {
 		}
 
 		try {
-			pool.add(cfgString("scoreboard.templates.racing.title", ""));
-			pool.addAll(cfgStringList("scoreboard.templates.racing.lines", java.util.List.of()));
+			pool.add(cfgString("racing.ui.templates.racing.title", ""));
+			pool.addAll(cfgStringList("racing.ui.templates.racing.lines", java.util.List.of()));
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			pool.add(cfgString("racing.ui.templates.completed.title", ""));
+			pool.addAll(cfgStringList("racing.ui.templates.completed.header", java.util.List.of()));
+			pool.addAll(cfgStringList("racing.ui.templates.completed.footer", java.util.List.of()));
+			pool.addAll(cfgStringList("racing.ui.templates.completed.finished-header", java.util.List.of()));
+			pool.addAll(cfgStringList("racing.ui.templates.completed.finished-item", java.util.List.of()));
+			pool.addAll(cfgStringList("racing.ui.templates.completed.unfinished-header", java.util.List.of()));
+			pool.addAll(cfgStringList("racing.ui.templates.completed.unfinished-item", java.util.List.of()));
 		} catch (Throwable ignored) {
 		}
 

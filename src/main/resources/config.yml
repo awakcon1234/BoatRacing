@@ -69,8 +69,13 @@ racing:
     #   %behind_distance% %behind_distance_unit%
     #
     # Lưu ý: %*_speed_color% trả về tag MiniMessage đầy đủ (ví dụ: "<red>").
-    # Completed (finished racers): %finish_pos% %finish_time% (plus %racer_display%)
-    # Ended (everyone finished): also provides %delta_time%
+    # Completed / Ended (header + title) placeholders (the VIEWER'S own result):
+    #   %finish_pos% %finish_pos_tag% %finish_time%
+    #   %avg_speed_display% %avg_speed% %avg_speed_bps% %avg_speed_kmh% %avg_speed_bph%
+    #   %speed_unit% %speed_color% %speed_color_close% %speed_color_name%
+    #
+    # Completed (finished racers list items): %finish_pos% %finish_pos_tag% %finish_time% (plus %racer_display%)
+    # Ended (everyone finished list items): also provides %delta_time%
     # Special control marker:
     #   - If a rendered line contains "[skip]" it will not be sent to the scoreboard.
     templates:
@@ -127,27 +132,37 @@ racing:
           - "<gray>Tiến độ tổng: <white>%track_progress%%"
       completed:
         title: "<gold>Kết quả"
+        # Header/footer apply to everyone when showing the completed board.
         header:
-          - "<yellow>Về đích"
-        finished_line: "<white>%finish_pos%)</white> %racer_display%"
-        finished_time_line: "<gray>  thời gian: <white>%finish_time%"
-        # Can be a single string OR a list of lines.
-        unfinished_header:
-          - "<yellow>Đang đua"
-        unfinished_line: "<white>%position%)</white> %racer_display%"
-        unfinished_progress_line: "<gray>  tiến độ vòng: <white>%lap_progress%%"
-        unfinished_track_progress_line: "<gray>  tiến độ tổng: <white>%track_progress%%"
-        max_finished_lines: 8
-        max_unfinished_lines: 6
-        # Optional footer lines appended to the completed board.
+          - "<gray>Đường: <white>%track%</white> <gray>●</gray> <white>%track_length_display%"
+          - "<gray>Bạn:</gray> %racer_display% <gray>●</gray> %finish_pos_tag% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
         footer: []
+
+        # Multi-line blocks for racers that have finished.
+        finished-header:
+          - "<yellow>Về đích"
+        finished-item:
+          - "%finish_pos_tag% %racer_display%"
+          - "<gray>  thời gian: <white>%finish_time%"
+        finished-max-lines: 8
+
+        # Multi-line blocks for racers that are still racing.
+        unfinished-header:
+          - "<yellow>Đang đua"
+        unfinished-item:
+          - "%position_tag% %racer_display%"
+          - "<gray>  tiến độ vòng: <white>%lap_progress%%"
+          - "<gray>  tiến độ tổng: <white>%track_progress%%"
+        unfinished-max-lines: 6
       # Race ended (everyone finished): show full ordered results.
       # Placeholders:
       #   %finish_pos% %racer_name% %finish_time% %delta_time%
       ended:
         title: "<gold>Kết quả"
         header:
+          - "<gray>Đường: <white>%track%</white> <gray>●</gray> <white>%track_length_display%"
           - "<yellow>Kết quả"
+          - "<gray>Bạn:</gray> %racer_display% <gray>●</gray> %finish_pos_tag% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
         # #1 line (shows absolute time)
         winner_line: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%"
         # Everyone else (shows +delta from #1)

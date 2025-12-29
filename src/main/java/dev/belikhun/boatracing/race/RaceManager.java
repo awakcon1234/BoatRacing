@@ -86,6 +86,8 @@ public class RaceManager {
 	private BukkitTask startLightsBlinkTask;
 	private BukkitTask postFinishCleanupTask;
 	private BukkitTask allFinishedFireworksTask;
+	private BukkitTask resultsTopBoardTask;
+	private BukkitTask resultsRestBoardTask;
 	private BukkitTask dashboardTask;
 	private final java.util.Map<UUID, org.bukkit.entity.TextDisplay> dashboardByPlayer = new java.util.HashMap<>();
 	private final java.util.Map<UUID, org.bukkit.Location> dashboardLastBoatLoc = new java.util.HashMap<>();
@@ -93,6 +95,125 @@ public class RaceManager {
 	private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
 	private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
 	private final java.util.Map<Block, BlockData> countdownBarrierRestore = new java.util.HashMap<>();
+
+	private void cancelResultsBoards() {
+		if (resultsTopBoardTask != null) {
+			try {
+				resultsTopBoardTask.cancel();
+			} catch (Throwable ignored) {
+			}
+			resultsTopBoardTask = null;
+		}
+		if (resultsRestBoardTask != null) {
+			try {
+				resultsRestBoardTask.cancel();
+			} catch (Throwable ignored) {
+			}
+			resultsRestBoardTask = null;
+		}
+	}
+
+	private static String placementTagLegacy(int pos) {
+		int p = Math.max(1, pos);
+		// Minecraft-safe: use colored #n instead of medal emojis.
+		return switch (p) {
+			case 1 -> "&6#1";
+			case 2 -> "&7#2";
+			case 3 -> "&c#3";
+			default -> "&f#" + p;
+		};
+	}
+
+	private java.util.List<String> buildResultsTop3BoardLines(java.util.List<ParticipantState> standings) {
+		java.util.List<String> lines = new java.util.ArrayList<>();
+		String track = safeTrackName();
+		lines.add("&6&l┏━━━━━━━━━━━━━━━━━━━━━━ &eBẢNG XẾP HẠNG &6&l━━━━━━━━━━━━━━━━━━━━━━┓");
+		lines.add("&7Đường đua: &f" + track + " &8● &7Số vòng: &f" + getTotalLaps());
+		lines.add("&eTop 3");
+
+		int shown = 0;
+		for (ParticipantState s : standings) {
+			if (s == null || !s.finished)
+				continue;
+			int place = s.finishPosition > 0 ? s.finishPosition : (shown + 1);
+			if (place > 3)
+				continue;
+			long rawMs = Math.max(0L, s.finishTimeMillis - getRaceStartMillis());
+			long penaltyMs = Math.max(0L, s.penaltySeconds) * 1000L;
+			long totalMs = rawMs + penaltyMs;
+			String racer = racerDisplayLegacy(s.id, null);
+			lines.add(placementTagLegacy(place) + " &f" + racer + " &8● &7⌚ &f" + Time.formatStopwatchMillis(totalMs));
+			shown++;
+			if (shown >= 3)
+				break;
+		}
+
+		if (shown == 0) {
+			lines.add("&7Không có dữ liệu xếp hạng.");
+		}
+		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+		return lines;
+	}
+
+	private java.util.List<String> buildResultsRestBoardLines(java.util.List<ParticipantState> standings) {
+		java.util.List<String> lines = new java.util.ArrayList<>();
+		String track = safeTrackName();
+		lines.add("&6&l┏━━━━━━━━━━━━━━━━━━━━━━ &eXẾP HẠNG #4+ &6&l━━━━━━━━━━━━━━━━━━━━━━┓");
+		lines.add("&7Đường đua: &f" + track + " &8● &7⌚ &f" + Time.formatStopwatchMillis(getRaceElapsedMillis()));
+
+		java.util.List<String> entries = new java.util.ArrayList<>();
+		for (ParticipantState s : standings) {
+			if (s == null || !s.finished)
+				continue;
+			int place = s.finishPosition > 0 ? s.finishPosition : 0;
+			if (place > 0 && place <= 3)
+				continue;
+			if (place <= 0)
+				continue;
+
+			long rawMs = Math.max(0L, s.finishTimeMillis - getRaceStartMillis());
+			long penaltyMs = Math.max(0L, s.penaltySeconds) * 1000L;
+			long totalMs = rawMs + penaltyMs;
+			String racer = racerDisplayLegacy(s.id, null);
+			entries.add("&7" + placementTagLegacy(place) + " &f" + racer + " &8(⌚ &f" + Time.formatStopwatchMillis(totalMs) + "&8)");
+		}
+
+		if (entries.isEmpty()) {
+			lines.add("&7Không có tay đua nào ngoài top 3.");
+			lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+			return lines;
+		}
+
+		// Table layout: 2 racers per line (safer length-wise); last line may have 1.
+		for (int i = 0; i < entries.size(); i += 2) {
+			String a = entries.get(i);
+			String b = (i + 1 < entries.size()) ? entries.get(i + 1) : null;
+			if (b != null)
+				lines.add(a + " &8● " + b);
+			else
+				lines.add(a);
+		}
+
+		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+		return lines;
+	}
+
+	private void broadcastChatBoard(java.util.List<String> lines) {
+		if (lines == null || lines.isEmpty())
+			return;
+		for (UUID id : getInvolved()) {
+			try {
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline())
+					continue;
+				for (String line : lines) {
+					Text.tell(p, line);
+				}
+			} catch (Throwable ignored) {
+				}
+				// End of try-catch block
+		}
+	}
 
 	// Checkpoint markers: rotating ItemDisplay + TextDisplay label at each
 	// checkpoint
@@ -821,13 +942,6 @@ public class RaceManager {
 		try {
 			org.bukkit.Location prev = dashboardLastBoatLoc.get(id);
 			Long prevT = dashboardLastBoatLocTime.get(id);
-			double prevBps = 0.0;
-			try {
-				String raw = null;
-				// We don't store bps for the dashboard separately; infer from last displayed
-				// speed if needed.
-			} catch (Throwable ignored2) {
-			}
 
 			if (prev != null && prevT != null
 					&& prev.getWorld() != null && bl.getWorld() != null
@@ -2501,6 +2615,31 @@ public class RaceManager {
 				} catch (Throwable ignored) {
 				}
 
+				// After the race is fully completed, send 2 boards in chat separated by 5 seconds.
+				try {
+					cancelResultsBoards();
+					java.util.List<ParticipantState> standings = getStandings();
+					java.util.List<String> top = buildResultsTop3BoardLines(standings);
+					java.util.List<String> rest = buildResultsRestBoardLines(standings);
+					if (plugin != null) {
+						resultsTopBoardTask = plugin.getServer().getScheduler().runTask(plugin, () -> {
+							try {
+								broadcastChatBoard(top);
+							} catch (Throwable ignored) {
+							}
+							resultsTopBoardTask = null;
+						});
+						resultsRestBoardTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+							try {
+								broadcastChatBoard(rest);
+							} catch (Throwable ignored) {
+							}
+							resultsRestBoardTask = null;
+						}, 5L * 20L);
+					}
+				} catch (Throwable ignored) {
+				}
+
 				if (plugin != null) {
 					int sec = 15;
 					try {
@@ -3373,6 +3512,9 @@ public class RaceManager {
 			return;
 		this.registering = false;
 
+		// Cancel any pending end-of-race result announcements when starting a new countdown.
+		cancelResultsBoards();
+
 		// Ensure checkpoint holos exist for this race instance.
 		try {
 			ensureCheckpointHolos();
@@ -3909,6 +4051,10 @@ public class RaceManager {
 		} catch (Throwable ignored) {
 		}
 		try {
+			cancelResultsBoards();
+		} catch (Throwable ignored) {
+		}
+		try {
 			clearCheckpointHolos();
 		} catch (Throwable ignored) {
 		}
@@ -3965,6 +4111,8 @@ public class RaceManager {
 			}
 			startLightsBlinkTask = null;
 		}
+
+		cancelResultsBoards();
 
 		// Turn off start lights when stopping.
 		try {
