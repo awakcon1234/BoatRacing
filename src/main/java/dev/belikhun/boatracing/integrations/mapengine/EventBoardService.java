@@ -13,6 +13,7 @@ import dev.belikhun.boatracing.integrations.mapengine.board.BoardViewers;
 import dev.belikhun.boatracing.integrations.mapengine.board.MapEngineBoardDisplay;
 import dev.belikhun.boatracing.integrations.mapengine.board.RenderBuffers;
 import dev.belikhun.boatracing.integrations.mapengine.ui.ColumnContainer;
+import dev.belikhun.boatracing.integrations.mapengine.ui.LegacyTextElement;
 import dev.belikhun.boatracing.integrations.mapengine.ui.GraphicsElement;
 import dev.belikhun.boatracing.integrations.mapengine.ui.ImageElement;
 import dev.belikhun.boatracing.integrations.mapengine.ui.RowContainer;
@@ -641,23 +642,15 @@ public final class EventBoardService {
 		Font timerIcon = countdown.deriveFont(Font.PLAIN, Math.max(22f, countdown.getSize2D() * 0.92f));
 
 		Color bg = pal.bg0();
-		Color panel = pal.panel();
-		Color panel2 = pal.panel2();
+		// Keep a natural base but add controlled accent tinting for a more colorful HUD.
+		Color panel = pal.panelTint(0.05);
+		Color panel2 = pal.panelTint(0.10);
 		Color fg = pal.text();
 		Color muted = pal.textDim();
 		Color accent = pal.accent();
-		Color accentSoft;
-		Color mutedSoft;
-		try {
-			accentSoft = new Color(accent.getRed(), accent.getGreen(), accent.getBlue(), 160);
-		} catch (Throwable ignored) {
-			accentSoft = accent;
-		}
-		try {
-			mutedSoft = new Color(muted.getRed(), muted.getGreen(), muted.getBlue(), 110);
-		} catch (Throwable ignored) {
-			mutedSoft = muted;
-		}
+		Color accentSoft = pal.accentSoft(160);
+		Color mutedSoft = pal.textDimSoft(110);
+		Color borderSoft = pal.accentSoft(110);
 
 		ColumnContainer root = new ColumnContainer()
 				.gap(gap)
@@ -687,7 +680,7 @@ public final class EventBoardService {
 				.gap(Math.max(8, gap / 2))
 				.alignItems(UiAlign.STRETCH)
 				.justifyContent(UiJustify.START);
-		left.style().flexGrow(1).widthPx(colW).background(panel2).padding(UiInsets.all(cardPad));
+		left.style().flexGrow(1).widthPx(colW).background(pal.panelTint(0.08)).padding(UiInsets.all(cardPad)).border(borderSoft, 2);
 		left.add(buildTopStripe(mutedSoft, stripeH * 5));
 
 		int racers = 0;
@@ -721,7 +714,7 @@ public final class EventBoardService {
 				.gap(Math.max(10, gap))
 				.alignItems(UiAlign.STRETCH)
 				.justifyContent(UiJustify.START);
-		right.style().flexGrow(1).widthPx(colW).background(panel2).padding(UiInsets.all(cardPad));
+		right.style().flexGrow(1).widthPx(colW).background(pal.panelTint(0.14)).padding(UiInsets.all(cardPad)).border(borderSoft, 2);
 		right.add(buildTopStripe(accentSoft, stripeH * 5));
 
 		RowContainer chipRow = new RowContainer().gap(Math.max(10, gap / 2)).alignItems(UiAlign.CENTER).justifyContent(UiJustify.START);
@@ -934,7 +927,12 @@ public final class EventBoardService {
 				if (count > 0) {
 					row.add(text("●", font, color, TextElement.Align.CENTER));
 				}
-				row.add(text(displays.get(idx), font, color, TextElement.Align.LEFT));
+				LegacyTextElement racer = new LegacyTextElement(displays.get(idx))
+						.font(font)
+						.defaultColor(color)
+						.align(LegacyTextElement.Align.LEFT)
+						.trimToFit(false);
+				row.add(racer);
 				idx++;
 				count++;
 			}
@@ -948,20 +946,13 @@ public final class EventBoardService {
 
 	private String formatRacerBoard(java.util.UUID id, String name) {
 		String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
-		String icon = "●";
-		String number = "-";
 		try {
-			if (plugin != null && plugin.getProfileManager() != null && id != null) {
-				String ic = plugin.getProfileManager().getIcon(id);
-				if (ic != null && !ic.isBlank())
-					icon = ic;
-				int num = plugin.getProfileManager().getNumber(id);
-				if (num > 0)
-					number = String.valueOf(num);
+			if (plugin != null && plugin.getProfileManager() != null) {
+				return plugin.getProfileManager().formatRacerLegacy(id, n);
 			}
 		} catch (Throwable ignored) {
 		}
-		return "[" + icon + " " + number + "] " + n;
+		return "&f[● -] " + n;
 	}
 
 	private static final class Spacer extends UiElement {
@@ -981,11 +972,12 @@ public final class EventBoardService {
 
 		BroadcastTheme.Palette pal = BroadcastTheme.palette(accentFor(Screen.NEXT_TRACK));
 		Color bg = pal.bg0();
-		Color panel = pal.panel();
-		Color panel2 = pal.panel2();
+		Color panel = pal.panelTint(0.05);
+		Color panel2 = pal.panelTint(0.10);
 		Color fg = pal.text();
 		Color muted = pal.textDim();
 		Color accent = pal.accent();
+		Color borderSoft = pal.accentSoft(110);
 
 		Font title = (titleFont != null ? titleFont : new Font("Monospaced", Font.BOLD, 18));
 		Font body = (bodyFont != null ? bodyFont : new Font("Monospaced", Font.PLAIN, 14));
@@ -1002,7 +994,7 @@ public final class EventBoardService {
 
 		ColumnContainer bodyCol = new ColumnContainer().gap(Math.max(12, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
 		bodyCol.style().flexGrow(1);
-		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2)));
+		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2))).border(borderSoft, 2);
 
 		// Centered hero block
 		ColumnContainer hero = new ColumnContainer().gap(Math.max(8, gap)).alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
@@ -1011,7 +1003,9 @@ public final class EventBoardService {
 		String track = (e != null ? e.currentTrackName() : null);
 		if (track == null || track.isBlank())
 			track = "-";
-		hero.add(text("CHẶNG TIẾP THEO", section, muted, TextElement.Align.CENTER));
+		TextElement nextChip = text("CHẶNG TIẾP THEO", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), bg, TextElement.Align.CENTER);
+		nextChip.style().padding(UiInsets.symmetric(Math.max(4, pad / 6), Math.max(12, pad / 2))).background(accent);
+		hero.add(nextChip);
 		hero.add(text(track.toUpperCase(java.util.Locale.ROOT), big, fg, TextElement.Align.CENTER));
 
 		long sec = secondsUntilNextPhase(e);
@@ -1047,11 +1041,12 @@ public final class EventBoardService {
 
 		BroadcastTheme.Palette pal = BroadcastTheme.palette(accentFor(Screen.CURRENT_RACE));
 		Color bg = pal.bg0();
-		Color panel = pal.panel();
-		Color panel2 = pal.panel2();
+		Color panel = pal.panelTint(0.05);
+		Color panel2 = pal.panelTint(0.10);
 		Color fg = pal.text();
 		Color muted = pal.textDim();
 		Color accent = pal.accent();
+		Color borderSoft = pal.accentSoft(110);
 
 		Font title = (titleFont != null ? titleFont : new Font("Monospaced", Font.BOLD, 18));
 		Font body = (bodyFont != null ? bodyFont : new Font("Monospaced", Font.PLAIN, 14));
@@ -1091,9 +1086,11 @@ public final class EventBoardService {
 
 		ColumnContainer bodyCol = new ColumnContainer().gap(Math.max(12, gap)).alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
 		bodyCol.style().flexGrow(1);
-		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2)));
+		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2))).border(borderSoft, 2);
 
-		bodyCol.add(text("CUỘC ĐUA ĐANG DIỄN RA", section, muted, TextElement.Align.CENTER));
+		TextElement runningChip = text("ĐANG THI ĐẤU", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), bg, TextElement.Align.CENTER);
+		runningChip.style().padding(UiInsets.symmetric(Math.max(4, pad / 6), Math.max(12, pad / 2))).background(accent);
+		bodyCol.add(runningChip);
 		bodyCol.add(text(track.toUpperCase(java.util.Locale.ROOT), big, fg, TextElement.Align.CENTER));
 		bodyCol.add(text("THỜI GIAN", section.deriveFont(Font.BOLD, Math.max(20f, section.getSize2D() * 0.80f)), muted, TextElement.Align.CENTER));
 		bodyCol.add(text(timer, huge, fg, TextElement.Align.CENTER));
@@ -1108,11 +1105,12 @@ public final class EventBoardService {
 
 		BroadcastTheme.Palette pal = BroadcastTheme.palette(accentFor(Screen.EVENT_FINISHED));
 		Color bg = pal.bg0();
-		Color panel = pal.panel();
-		Color panel2 = pal.panel2();
+		Color panel = pal.panelTint(0.05);
+		Color panel2 = pal.panelTint(0.10);
 		Color fg = pal.text();
 		Color muted = pal.textDim();
 		Color accent = pal.accent();
+		Color borderSoft = pal.accentSoft(110);
 
 		Font title = (titleFont != null ? titleFont : new Font("Monospaced", Font.BOLD, 18));
 		Font body = (bodyFont != null ? bodyFont : new Font("Monospaced", Font.PLAIN, 14));
@@ -1127,12 +1125,15 @@ public final class EventBoardService {
 
 		List<EventRankEntry> ranking = buildRanking(e);
 
-		ColumnContainer bodyCol = new ColumnContainer().gap(Math.max(12, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+		ColumnContainer bodyCol = new ColumnContainer().gap(Math.max(12, gap)).alignItems(UiAlign.STRETCH)
+				.justifyContent((ranking.size() <= 3) ? UiJustify.CENTER : UiJustify.START);
 		bodyCol.style().flexGrow(1);
-		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2)));
+		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2))).border(borderSoft, 2);
 
 		ColumnContainer top3 = new ColumnContainer().gap(Math.max(6, gap / 2)).alignItems(UiAlign.CENTER);
-		top3.add(text("KẾT QUẢ", section, muted, TextElement.Align.CENTER));
+		TextElement resultChip = text("KẾT QUẢ", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), bg, TextElement.Align.CENTER);
+		resultChip.style().padding(UiInsets.symmetric(Math.max(4, pad / 6), Math.max(12, pad / 2))).background(accent);
+		top3.add(resultChip);
 		top3.add(text("TOP 3", section.deriveFont(Font.BOLD, Math.max(22f, section.getSize2D() * 0.85f)), fg, TextElement.Align.CENTER));
 		for (int i = 0; i < Math.min(3, ranking.size()); i++) {
 			EventRankEntry it = ranking.get(i);
@@ -1141,24 +1142,36 @@ public final class EventBoardService {
 		}
 		bodyCol.add(top3);
 
-		Spacer grow = new Spacer();
-		grow.style().flexGrow(1);
-		bodyCol.add(grow);
+		// Thank-you message
+		RowContainer thanksRow = new RowContainer().alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
+		TextElement thanks = text("Cảm ơn bạn đã tham gia sự kiện", body.deriveFont(Font.BOLD, Math.max(15f, body.getSize2D() * 1.05f)), bg, TextElement.Align.CENTER);
+		thanks.style().padding(UiInsets.symmetric(Math.max(5, pad / 4), Math.max(14, pad / 2))).background(accent);
+		thanksRow.add(thanks);
+		bodyCol.add(thanksRow);
 
-		ColumnContainer full = new ColumnContainer().gap(Math.max(4, gap / 2)).alignItems(UiAlign.CENTER);
-		full.add(text("XẾP HẠNG CUỐI", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), muted, TextElement.Align.CENTER));
-		int maxRows = Math.max(8, (int) Math.round((double) h / (double) Math.max(1, body.getSize()) / 2.1));
-		ColumnContainer list = new ColumnContainer().gap(Math.max(2, gap / 3)).alignItems(UiAlign.CENTER);
-		int shown = 0;
-		for (EventRankEntry it : ranking) {
-			if (shown >= maxRows)
-				break;
-			String line = String.format(java.util.Locale.ROOT, "#%d  %s  ●  %d điểm", it.position, it.name, it.points);
-			list.add(text(line, body, muted, TextElement.Align.CENTER));
-			shown++;
+		// Only show the final ranking section if it adds new information beyond TOP 3.
+		int restStart = Math.min(3, ranking.size());
+		if (restStart < ranking.size()) {
+			Spacer grow = new Spacer();
+			grow.style().flexGrow(1);
+			bodyCol.add(grow);
+
+			ColumnContainer full = new ColumnContainer().gap(Math.max(4, gap / 2)).alignItems(UiAlign.CENTER);
+			full.add(text("XẾP HẠNG CUỐI", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), muted, TextElement.Align.CENTER));
+			int maxRows = Math.max(8, (int) Math.round((double) h / (double) Math.max(1, body.getSize()) / 2.1));
+			ColumnContainer list = new ColumnContainer().gap(Math.max(2, gap / 3)).alignItems(UiAlign.CENTER);
+			int shown = 0;
+			for (int i = restStart; i < ranking.size(); i++) {
+				if (shown >= maxRows)
+					break;
+				EventRankEntry it = ranking.get(i);
+				String line = String.format(java.util.Locale.ROOT, "#%d  %s  ●  %d điểm", it.position, it.name, it.points);
+				list.add(text(line, body, muted, TextElement.Align.CENTER));
+				shown++;
+			}
+			full.add(list);
+			bodyCol.add(full);
 		}
-		full.add(list);
-		bodyCol.add(full);
 
 		root.add(bodyCol);
 		root.add(buildFooterClock(panel, muted, body, pad, gap));

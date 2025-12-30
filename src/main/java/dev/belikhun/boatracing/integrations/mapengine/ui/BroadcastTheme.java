@@ -19,15 +19,34 @@ public final class BroadcastTheme {
 			Color accent,
 			Color text,
 			Color textDim) {
+		public Color accentSoft(int alpha) {
+			Color a = accent;
+			if (a == null)
+				return null;
+			int al = Math.max(0, Math.min(255, alpha));
+			return new Color(a.getRed(), a.getGreen(), a.getBlue(), al);
+		}
+
+		public Color textDimSoft(int alpha) {
+			Color a = textDim;
+			if (a == null)
+				return null;
+			int al = Math.max(0, Math.min(255, alpha));
+			return new Color(a.getRed(), a.getGreen(), a.getBlue(), al);
+		}
+
+		public Color panelTint(double t) {
+			return mix(panel2, accent, t);
+		}
 	}
 
-	// Base colors (dark UI)
-	public static final Color BASE_BG0 = new Color(0x0E, 0x10, 0x12);
-	public static final Color BASE_PANEL = new Color(0x14, 0x16, 0x1A);
-	public static final Color BASE_PANEL2 = new Color(0x12, 0x14, 0x17);
-	public static final Color BASE_BORDER = new Color(0x3A, 0x3A, 0x3A);
+	// Base colors (warm, natural dark UI)
+	public static final Color BASE_BG0 = new Color(0x10, 0x0F, 0x0D);
+	public static final Color BASE_PANEL = new Color(0x18, 0x16, 0x13);
+	public static final Color BASE_PANEL2 = new Color(0x1D, 0x1A, 0x16);
+	public static final Color BASE_BORDER = new Color(0x2F, 0x2B, 0x25);
 	public static final Color BASE_TEXT = new Color(0xFF, 0xFF, 0xFF);
-	public static final Color BASE_TEXT_DIM = new Color(0xA6, 0xA6, 0xA6);
+	public static final Color BASE_TEXT_DIM = new Color(0xB0, 0xA8, 0x9E);
 
 	// Accent colors (mirrors LobbyBoard status accents)
 	public static final Color ACCENT_RUNNING = new Color(0x56, 0xF2, 0x7A);
@@ -39,9 +58,9 @@ public final class BroadcastTheme {
 	public static Palette palette(Color accent) {
 		Color a = accent != null ? accent : ACCENT_OFF;
 		return new Palette(
-				mix(BASE_BG0, a, 0.10),
-				mix(BASE_PANEL, a, 0.07),
-				mix(BASE_PANEL2, a, 0.08),
+				BASE_BG0,
+				BASE_PANEL,
+				BASE_PANEL2,
 				BASE_BORDER,
 				a,
 				BASE_TEXT,

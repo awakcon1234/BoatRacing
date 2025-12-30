@@ -754,7 +754,13 @@ public class EventService {
 						String.CASE_INSENSITIVE_ORDER));
 
 		java.util.List<String> lines = new java.util.ArrayList<>();
-		lines.add("&6&l┏━━━━━━ &eXẾP HẠNG CHUNG CUỘC &6&l━━━━━━┓");
+		// Decorative box: keep header/footer widths consistent.
+		final String boxTitle = "XẾP HẠNG CHUNG CUỘC";
+		int innerW = Math.max(28, boxTitle.length() + 2 + 12); // title + spaces + padding
+		int filler = Math.max(0, innerW - (boxTitle.length() + 2));
+		int left = filler / 2;
+		int right = filler - left;
+		lines.add("&6&l┏" + "━".repeat(left) + " &e" + boxTitle + " &6&l" + "━".repeat(right) + "┓");
 		lines.add("&7Sự kiện: &f" + safeName(e.title) + " &8● &7Tổng chặng: &f" + (e.trackPool == null ? 0 : e.trackPool.size()));
 
 		int shown = 0;
@@ -768,7 +774,7 @@ public class EventService {
 					? Bukkit.getOfflinePlayer(ep.id).getName()
 					: ep.nameSnapshot;
 			if (name == null || name.isBlank())
-				name = "(không rõ)";
+				name = "Tay đua " + shortId(ep.id);
 			String display;
 			try {
 				var pm = plugin.getProfileManager();
@@ -791,7 +797,7 @@ public class EventService {
 
 		if (shown == 0)
 			lines.add("&7Không có dữ liệu xếp hạng.");
-		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+		lines.add("&6&l┗" + "━".repeat(innerW) + "┛");
 
 		broadcastToParticipants(e, "&eBảng xếp hạng chung cuộc:");
 		for (UUID id : new java.util.ArrayList<>(e.participants.keySet())) {
@@ -807,6 +813,13 @@ public class EventService {
 			} catch (Throwable ignored) {
 			}
 		}
+	}
+
+	private static String shortId(java.util.UUID id) {
+		if (id == null)
+			return "--------";
+		String s = id.toString();
+		return s.length() >= 8 ? s.substring(0, 8) : s;
 	}
 
 	private java.util.List<Player> collectEligibleOnline(RaceEvent e) {
