@@ -91,4 +91,69 @@ public final class UiComposer {
 		}
 		return img;
 	}
+
+	/**
+	 * Render into an existing image buffer.
+	 *
+	 * This is used by services that maintain their own render buffer pool
+	 * (e.g. MapEngine boards) to avoid allocating a new BufferedImage each frame.
+	 */
+	public static void renderInto(BufferedImage img, UiElement root, Font defaultFont, Font fallbackFont) {
+		if (img == null)
+			return;
+		int w = Math.max(1, img.getWidth());
+		int h = Math.max(1, img.getHeight());
+
+		final long nowNs = System.nanoTime();
+		final boolean doPerfLog = shouldLogPerf(nowNs);
+		final long t0 = doPerfLog ? nowNs : 0L;
+		long tCtx = 0L;
+		long tLayout = 0L;
+
+		Graphics2D g = img.createGraphics();
+		try {
+			UiRenderContext ctx = new UiRenderContext(
+					g,
+					defaultFont,
+					fallbackFont,
+					Color.WHITE
+			);
+			ctx.applyDefaultHints();
+			if (doPerfLog)
+				tCtx = System.nanoTime();
+
+			if (defaultFont != null)
+				g.setFont(defaultFont);
+			if (root != null) {
+				root.layout(ctx, 0, 0, w, h);
+				if (doPerfLog)
+					tLayout = System.nanoTime();
+				root.render(ctx);
+			}
+		} finally {
+			try {
+				g.dispose();
+			} catch (Throwable ignored) {
+			}
+		}
+
+		if (doPerfLog) {
+			long tEnd = System.nanoTime();
+			long ctxNs = (tCtx > 0L) ? (tCtx - t0) : 0L;
+			long layoutNs = (tLayout > 0L && tCtx > 0L) ? (tLayout - tCtx) : 0L;
+			long renderNs = (tLayout > 0L) ? (tEnd - tLayout) : (tEnd - (tCtx > 0L ? tCtx : t0));
+			long totalNs = tEnd - t0;
+			try {
+				java.util.function.Consumer<String> logger = perfLogger;
+				if (logger != null) {
+					logger.accept("renderInto " + w + "x" + h
+							+ " total=" + fmtMs(totalNs) + "ms"
+							+ " ctx=" + fmtMs(ctxNs) + "ms"
+							+ " layout=" + fmtMs(layoutNs) + "ms"
+							+ " render=" + fmtMs(renderNs) + "ms");
+				}
+			} catch (Throwable ignored) {
+			}
+		}
+	}
 }

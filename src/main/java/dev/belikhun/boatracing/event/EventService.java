@@ -83,6 +83,35 @@ public class EventService {
 		return podiumService;
 	}
 
+	public EventBoardService getEventBoardService() {
+		return eventBoardService;
+	}
+
+	// ===================== Runtime snapshot getters (for UI/boards) =====================
+	public synchronized String getActiveTrackNameRuntime() {
+		return (activeTrackName == null || activeTrackName.isBlank()) ? null : activeTrackName;
+	}
+
+	public synchronized boolean isTrackCountdownStarted() {
+		return trackCountdownStarted;
+	}
+
+	public synchronized long getIntroEndMillis() {
+		return introEndMillis;
+	}
+
+	public synchronized long getLobbyWaitEndMillis() {
+		return lobbyWaitEndMillis;
+	}
+
+	public synchronized long getBreakEndMillis() {
+		return breakEndMillis;
+	}
+
+	public synchronized long getTrackDeadlineMillis() {
+		return trackDeadlineMillis;
+	}
+
 	public synchronized void loadAll() {
 		eventsById.clear();
 		for (String id : EventStorage.listEventIds(dataFolder)) {

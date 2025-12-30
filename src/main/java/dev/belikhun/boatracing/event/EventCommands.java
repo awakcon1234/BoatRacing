@@ -25,6 +25,79 @@ public final class EventCommands {
 
 		String sub = args[1].toLowerCase();
 		switch (sub) {
+			case "board" -> {
+				if (!p.hasPermission("boatracing.event.admin")) {
+					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+					return true;
+				}
+				var bs = (svc != null ? svc.getEventBoardService() : null);
+				if (bs == null) {
+					Text.msg(p, "&cTính năng bảng sự kiện đang bị tắt.");
+					return true;
+				}
+				if (args.length == 2 || args[2].equalsIgnoreCase("help")) {
+					Text.msg(p, "&eBảng sự kiện (MapEngine):");
+					Text.tell(p, "&7 - &f/" + label + " event board set [north|south|east|west] &7(Dùng selection hiện tại; bỏ trống để tự chọn theo hướng nhìn)");
+					Text.tell(p, "&7 - &f/" + label + " event board clear");
+					Text.tell(p, "&7 - &f/" + label + " event board status");
+					return true;
+				}
+
+				String act = args[2].toLowerCase();
+				switch (act) {
+					case "status" -> {
+						java.util.List<String> lines;
+						try {
+							lines = bs.statusLines();
+						} catch (Throwable t) {
+							lines = java.util.List.of("&cKhông thể lấy trạng thái bảng: "
+									+ (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+						}
+						for (String line : lines) {
+							try {
+								Text.msg(p, line);
+							} catch (Throwable ignored) {
+							}
+						}
+						return true;
+					}
+					case "clear" -> {
+						bs.clearPlacement();
+						Text.msg(p, "&aĐã xóa vị trí bảng sự kiện.");
+						return true;
+					}
+					case "set" -> {
+						var sel = dev.belikhun.boatracing.track.SelectionUtils.getSelectionDetailed(p);
+						if (sel == null) {
+							Text.msg(p, "&cKhông phát hiện selection. Dùng wand để chọn 2 góc trước.");
+							return true;
+						}
+						org.bukkit.block.BlockFace face = null;
+						if (args.length >= 4) {
+							try {
+								face = org.bukkit.block.BlockFace.valueOf(args[3].toUpperCase(java.util.Locale.ROOT));
+							} catch (Throwable t) {
+								Text.msg(p, "&cHướng không hợp lệ. Dùng: north|south|east|west");
+								return true;
+							}
+						}
+
+						boolean ok = bs.setPlacementFromSelection(p, sel.box, face);
+						if (!ok) {
+							Text.msg(p, "&cKhông thể đặt bảng. Hãy chọn vùng phẳng (2D) phù hợp và thử lại.");
+							return true;
+						}
+						Text.msg(p, "&aĐã đặt bảng sự kiện.");
+						Text.tell(p, bs.placementSummary());
+						return true;
+					}
+					default -> {
+						Text.msg(p, "&cKhông rõ lệnh. Dùng: /" + label + " event board help");
+						return true;
+					}
+				}
+			}
 			case "status" -> {
 				if (!p.hasPermission("boatracing.event.status")) {
 					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
@@ -206,6 +279,7 @@ public final class EventCommands {
 		if (p.hasPermission("boatracing.event.admin")) {
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event create|open|schedule|start|cancel");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event track add|remove|list");
+			Text.tell(p, "&8Quản trị:&7 /" + label + " event board set|status|clear");
 		}
 	}
 
