@@ -40,19 +40,50 @@ public final class ImageElement extends UiElement {
 
 	@Override
 	protected UiMeasure onMeasure(UiRenderContext ctx, int maxWidth, int maxHeight) {
-		// If the caller didn't force size, prefer natural size but respect bounds.
-		int w = 0;
-		int h = 0;
+		// Prefer natural size but respect bounds.
+		// If only one dimension is forced (e.g. height capped), derive the other
+		// dimension from the image aspect ratio so "width:auto" behaves as expected.
+		int iw = 0;
+		int ih = 0;
 		if (image != null) {
-			w = image.getWidth();
-			h = image.getHeight();
+			iw = Math.max(0, image.getWidth());
+			ih = Math.max(0, image.getHeight());
 		}
 
-		w = Math.min(Math.max(0, maxWidth), Math.max(0, w));
-		h = Math.min(Math.max(0, maxHeight), Math.max(0, h));
-		w += style.padding().horizontal();
-		h += style.padding().vertical();
-		return UiMeasure.of(w, h);
+		int padW = style.padding().horizontal();
+		int padH = style.padding().vertical();
+		int maxW = Math.max(0, maxWidth - padW);
+		int maxH = Math.max(0, maxHeight - padH);
+
+		Integer forcedW = style.widthPx();
+		Integer forcedH = style.heightPx();
+
+		int w;
+		int h;
+		if (iw <= 0 || ih <= 0) {
+			w = 0;
+			h = 0;
+		} else if (forcedW == null && forcedH != null) {
+			// Height constrained, width auto.
+			int contentH = Math.max(0, forcedH - padH);
+			contentH = Math.min(contentH, maxH);
+			long scaledW = Math.round((double) iw * ((double) contentH / (double) ih));
+			w = (int) Math.min((long) maxW, Math.max(0L, scaledW));
+			h = contentH;
+		} else if (forcedW != null && forcedH == null) {
+			// Width constrained, height auto.
+			int contentW = Math.max(0, forcedW - padW);
+			contentW = Math.min(contentW, maxW);
+			long scaledH = Math.round((double) ih * ((double) contentW / (double) iw));
+			w = contentW;
+			h = (int) Math.min((long) maxH, Math.max(0L, scaledH));
+		} else {
+			// No single-axis constraint: use natural size clamped to bounds.
+			w = Math.min(maxW, iw);
+			h = Math.min(maxH, ih);
+		}
+
+		return UiMeasure.of(Math.max(0, w) + padW, Math.max(0, h) + padH);
 	}
 
 	@Override

@@ -88,12 +88,22 @@ public final class TextElement extends UiElement {
 			return;
 		}
 
+		// IMPORTANT: When a glyph is missing in the primary font, we draw it using the
+		// fallback font. But to keep visual consistency (especially for big HUD icons),
+		// the fallback must be scaled to the same size/style as the primary.
+		Font fallbackSized;
+		try {
+			fallbackSized = fallback.deriveFont(primary.getStyle(), primary.getSize2D());
+		} catch (Throwable ignored) {
+			fallbackSized = fallback;
+		}
+
 		int curX = x;
 		StringBuilder run = new StringBuilder();
 		Font curFont = primary;
 		for (int i = 0; i < s.length(); i++) {
 			char ch = s.charAt(i);
-			Font want = primary.canDisplay(ch) ? primary : (fallback.canDisplay(ch) ? fallback : primary);
+			Font want = primary.canDisplay(ch) ? primary : (fallback.canDisplay(ch) ? fallbackSized : primary);
 			if (!want.equals(curFont) && !run.isEmpty()) {
 				ctx.g.setFont(curFont);
 				ctx.g.drawString(run.toString(), curX, y);
