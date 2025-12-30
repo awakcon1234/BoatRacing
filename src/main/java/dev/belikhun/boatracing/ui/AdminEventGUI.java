@@ -2,7 +2,6 @@ package dev.belikhun.boatracing.ui;
 
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.event.EventService;
-import dev.belikhun.boatracing.event.EventState;
 import dev.belikhun.boatracing.event.RaceEvent;
 import dev.belikhun.boatracing.util.Text;
 import net.kyori.adventure.text.Component;

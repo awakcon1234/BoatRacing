@@ -1,5 +1,9 @@
 package dev.belikhun.boatracing.race;
 
+import dev.belikhun.boatracing.BoatRacingPlugin;
+import dev.belikhun.boatracing.cinematic.CinematicCameraService;
+import dev.belikhun.boatracing.cinematic.CinematicKeyframe;
+import dev.belikhun.boatracing.cinematic.CinematicSequence;
 import dev.belikhun.boatracing.track.TrackConfig;
 import dev.belikhun.boatracing.track.Region;
 import dev.belikhun.boatracing.util.Text;
@@ -30,8 +34,10 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 /**
  * Race manager with minimal yet functional placement and countdown.
@@ -64,6 +70,9 @@ public class RaceManager {
 	private volatile long countdownEndMillis = 0L;
 	// Waiting end (millis) for registration waiting phase; 0 if none
 	private volatile long waitingEndMillis = 0L;
+	// Intro end (millis) for the pre-race cinematic; 0 if none
+	private volatile long introEndMillis = 0L;
+	private final java.util.Set<UUID> introPlayers = new java.util.HashSet<>();
 	// Post-finish cleanup end (millis) after everyone finished; 0 if not in ending
 	// window
 	private volatile long postFinishCleanupEndMillis = 0L;
@@ -1662,13 +1671,19 @@ public class RaceManager {
 	}
 
 	public boolean isAnyCountdownActive() {
-		return countdownTask != null && !countdownPlayers.isEmpty();
+		return (countdownTask != null && !countdownPlayers.isEmpty())
+				|| (introEndMillis > System.currentTimeMillis() && !introPlayers.isEmpty());
+	}
+
+	public boolean isIntroActive() {
+		return introEndMillis > System.currentTimeMillis() && !introPlayers.isEmpty();
 	}
 
 	public boolean isInvolved(UUID id) {
 		if (id == null)
 			return false;
-		return registered.contains(id) || participants.containsKey(id) || countdownPlayers.contains(id);
+		return registered.contains(id) || participants.containsKey(id) || countdownPlayers.contains(id)
+				|| introPlayers.contains(id);
 	}
 
 	public java.util.Set<UUID> getInvolved() {
@@ -1676,6 +1691,7 @@ public class RaceManager {
 		out.addAll(registered);
 		out.addAll(participants.keySet());
 		out.addAll(countdownPlayers);
+		out.addAll(introPlayers);
 		return out;
 	}
 
@@ -3011,6 +3027,311 @@ public class RaceManager {
 		return "(không rõ)";
 	}
 
+	private CinematicCameraService cinematic() {
+		try {
+			if (plugin instanceof BoatRacingPlugin br)
+				return br.getCinematicCameraService();
+		} catch (Throwable ignored) {
+		}
+		return null;
+	}
+
+	private boolean introEnabled() {
+		try {
+			return plugin != null && plugin.getConfig().getBoolean("racing.intro.enabled", true);
+		} catch (Throwable ignored) {
+			return true;
+		}
+	}
+
+	private int introPoints() {
+		try {
+			return Math.max(1, plugin != null ? plugin.getConfig().getInt("racing.intro.points", 4) : 4);
+		} catch (Throwable ignored) {
+			return 4;
+		}
+	}
+
+	private int introSegmentTicks() {
+		try {
+			return Math.max(10, plugin != null ? plugin.getConfig().getInt("racing.intro.segment-ticks", 60) : 60);
+		} catch (Throwable ignored) {
+			return 60;
+		}
+	}
+
+	private double introRadius() {
+		try {
+			return Math.max(2.0, plugin != null ? plugin.getConfig().getDouble("racing.intro.radius", 16.0) : 16.0);
+		} catch (Throwable ignored) {
+			return 16.0;
+		}
+	}
+
+	private double introHeight() {
+		try {
+			return Math.max(2.0, plugin != null ? plugin.getConfig().getDouble("racing.intro.height", 12.0) : 12.0);
+		} catch (Throwable ignored) {
+			return 12.0;
+		}
+	}
+
+	private java.util.List<Location> introCandidateTargets() {
+		java.util.List<Location> out = new java.util.ArrayList<>();
+		try {
+			java.util.List<Location> cl = trackConfig != null ? trackConfig.getCenterline() : null;
+			if (cl != null) {
+				for (Location l : cl) {
+					if (l != null && l.getWorld() != null)
+						out.add(l.clone());
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			java.util.List<Region> cps = trackConfig != null ? trackConfig.getCheckpoints() : null;
+			if (cps != null) {
+				for (Region r : cps) {
+					try {
+						Location c = centerOf(r);
+						if (c != null && c.getWorld() != null)
+							out.add(c);
+					} catch (Throwable ignored2) {
+					}
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+		try {
+			if (trackConfig != null && trackConfig.getFinish() != null) {
+				Location f = centerOf(trackConfig.getFinish());
+				if (f != null && f.getWorld() != null)
+					out.add(f);
+			}
+		} catch (Throwable ignored) {
+		}
+		try {
+			Location s = trackConfig != null ? trackConfig.getStartCenter() : null;
+			if (s != null && s.getWorld() != null)
+				out.add(s.clone());
+		} catch (Throwable ignored) {
+		}
+
+		java.util.List<Location> dedup = new java.util.ArrayList<>();
+		for (Location l : out) {
+			if (l == null || l.getWorld() == null)
+				continue;
+			boolean exists = false;
+			for (Location e : dedup) {
+				if (e == null || e.getWorld() == null)
+					continue;
+				if (!e.getWorld().equals(l.getWorld()))
+					continue;
+				try {
+					if (e.distanceSquared(l) <= 4.0 * 4.0) {
+						exists = true;
+						break;
+					}
+				} catch (Throwable ignored) {
+				}
+			}
+			if (!exists)
+				dedup.add(l);
+		}
+		return dedup;
+	}
+
+	private CinematicSequence buildIntroSequence(java.util.List<Location> targets) {
+		if (targets == null || targets.isEmpty())
+			return null;
+		Random rnd = new Random();
+		int points = Math.max(1, introPoints());
+		int segTicks = Math.max(10, introSegmentTicks());
+		double radius = introRadius();
+		double height = introHeight();
+
+		java.util.List<Location> pick = new java.util.ArrayList<>(targets);
+		java.util.Collections.shuffle(pick, rnd);
+		if (pick.size() > points)
+			pick = pick.subList(0, points);
+
+		java.util.List<CinematicKeyframe> keys = new java.util.ArrayList<>();
+		for (Location t : pick) {
+			if (t == null || t.getWorld() == null)
+				continue;
+
+			double a1 = rnd.nextDouble() * Math.PI * 2.0;
+			double a2 = a1 + (Math.PI * (0.35 + rnd.nextDouble() * 0.5));
+			double r1 = radius * (0.75 + rnd.nextDouble() * 0.5);
+			double r2 = radius * (0.75 + rnd.nextDouble() * 0.5);
+
+			Location camA = t.clone().add(Math.cos(a1) * r1, height, Math.sin(a1) * r1);
+			Location camB = t.clone().add(Math.cos(a2) * r2, height * 0.85, Math.sin(a2) * r2);
+			float[] ap = CinematicCameraService.lookAt(camA, t);
+			float[] bp = CinematicCameraService.lookAt(camB, t);
+			camA.setYaw(ap[0]);
+			camA.setPitch(ap[1]);
+			camB.setYaw(bp[0]);
+			camB.setPitch(bp[1]);
+
+			int half = Math.max(5, segTicks / 2);
+			keys.add(new CinematicKeyframe(camA, half));
+			keys.add(new CinematicKeyframe(camB, half));
+		}
+
+		if (keys.size() < 2)
+			return null;
+
+		keys.add(new CinematicKeyframe(keys.get(keys.size() - 1).location.clone(), 0));
+
+		java.util.List<dev.belikhun.boatracing.cinematic.CinematicSoundEvent> snd = java.util.Collections.emptyList();
+		try {
+			boolean soundEnabled = plugin != null && plugin.getConfig().getBoolean("racing.intro.sound.enabled", true);
+			if (soundEnabled) {
+				snd = CinematicCameraService.defaultMarioKartInspiredJingle();
+			}
+		} catch (Throwable ignored) {
+		}
+		return new CinematicSequence(keys, snd);
+	}
+
+	public boolean startIntroThenCountdown(java.util.List<Player> racers, Consumer<java.util.List<Player>> onCountdownStarted) {
+		if (racers == null)
+			return false;
+		if (plugin == null)
+			return false;
+		if (isRunning())
+			return false;
+		if (isAnyCountdownActive())
+			return false;
+
+		int startSlots = 0;
+		try {
+			startSlots = trackConfig != null ? trackConfig.getStarts().size() : 0;
+		} catch (Throwable ignored) {
+			startSlots = 0;
+		}
+		startSlots = Math.max(0, startSlots);
+
+		java.util.List<Player> online = new java.util.ArrayList<>();
+		for (Player p : racers) {
+			if (p == null || !p.isOnline())
+				continue;
+			online.add(p);
+		}
+		if (online.isEmpty())
+			return false;
+		if (startSlots > 0 && online.size() > startSlots) {
+			java.util.List<Player> extras = new java.util.ArrayList<>(online.subList(startSlots, online.size()));
+			online = online.subList(0, startSlots);
+			for (Player p : extras) {
+				try {
+					if (p != null && p.isOnline())
+						Text.msg(p, "&e⚠ Đường đua thiếu vị trí xuất phát, bạn sẽ không tham gia chặng này.");
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+
+		CinematicCameraService cam = cinematic();
+		if (!introEnabled() || cam == null) {
+			java.util.List<Player> placed = placeAtStartsWithBoats(online);
+			if (placed.isEmpty())
+				return false;
+			startLightsCountdown(placed);
+			try {
+				if (onCountdownStarted != null)
+					onCountdownStarted.accept(placed);
+			} catch (Throwable ignored) {
+			}
+			return true;
+		}
+
+		// 'online' may be reassigned above (subList trim), so use a stable final copy
+		// for lambda capture.
+		final java.util.List<Player> introPlayersList = new java.util.ArrayList<>(online);
+
+		try {
+			if (!introPlayers.isEmpty())
+				cam.stopForPlayers(new java.util.ArrayList<>(introPlayers), true);
+		} catch (Throwable ignored) {
+		}
+		introPlayers.clear();
+		introEndMillis = 0L;
+
+		this.registering = false;
+		this.waitingEndMillis = 0L;
+
+		String track = safeTrackName();
+		for (Player p : introPlayersList) {
+			try {
+				if (p.isInsideVehicle())
+					p.leaveVehicle();
+			} catch (Throwable ignored) {
+			}
+			try {
+				Text.msg(p, "&e⏳ Đang giới thiệu đường đua: &f" + track);
+			} catch (Throwable ignored) {
+			}
+			introPlayers.add(p.getUniqueId());
+		}
+
+		CinematicSequence seq = buildIntroSequence(introCandidateTargets());
+		if (seq == null) {
+			introPlayers.clear();
+			introEndMillis = 0L;
+			java.util.List<Player> placed = placeAtStartsWithBoats(introPlayersList);
+			if (placed.isEmpty())
+				return false;
+			startLightsCountdown(placed);
+			try {
+				if (onCountdownStarted != null)
+					onCountdownStarted.accept(placed);
+			} catch (Throwable ignored) {
+			}
+			return true;
+		}
+
+		int introTicks = Math.max(1, seq.totalTicks());
+		introEndMillis = System.currentTimeMillis() + (introTicks * 50L);
+		String introId = "track:" + trackId + ":intro:" + System.nanoTime();
+
+		boolean started = cam.start(introId, introPlayersList, seq, () -> {
+			try {
+				introPlayers.clear();
+				introEndMillis = 0L;
+			} catch (Throwable ignored) {
+			}
+
+			java.util.List<Player> placed = placeAtStartsWithBoats(introPlayersList);
+			if (placed.isEmpty())
+				return;
+			startLightsCountdown(placed);
+			try {
+				if (onCountdownStarted != null)
+					onCountdownStarted.accept(placed);
+			} catch (Throwable ignored) {
+			}
+		});
+
+		if (!started) {
+			introPlayers.clear();
+			introEndMillis = 0L;
+			java.util.List<Player> placed = placeAtStartsWithBoats(introPlayersList);
+			if (placed.isEmpty())
+				return false;
+			startLightsCountdown(placed);
+			try {
+				if (onCountdownStarted != null)
+					onCountdownStarted.accept(placed);
+			} catch (Throwable ignored) {
+			}
+			return true;
+		}
+		return true;
+	}
+
 	private void announceRegistrationOpened(int laps) {
 		if (plugin == null)
 			return;
@@ -3233,21 +3554,9 @@ public class RaceManager {
 				waitingEndMillis = 0L;
 				return;
 			}
-			java.util.List<org.bukkit.entity.Player> placed = placeAtStartsWithBoats(participants);
-			if (placed.isEmpty()) {
-				cancelRegistration(false);
-				waitingEndMillis = 0L;
-				return;
-			}
-			if (placed.size() < participants.size()) {
-				for (org.bukkit.entity.Player p : participants)
-					if (!placed.contains(p))
-						dev.belikhun.boatracing.util.Text.msg(p,
-								"&e⚠ Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
-			}
 			this.registering = false;
 			waitingEndMillis = 0L;
-			startLightsCountdown(placed);
+			startIntroThenCountdown(participants, null);
 		}, waitSec * 20L);
 	}
 
@@ -3376,17 +3685,8 @@ public class RaceManager {
 		}
 		if (participants.isEmpty())
 			return;
-		// Place at starts and run the same lights countdown
-		java.util.List<Player> placed = placeAtStartsWithBoats(participants);
-		if (placed.isEmpty())
-			return;
-		if (placed.size() < participants.size()) {
-			for (Player p : participants)
-				if (!placed.contains(p))
-					dev.belikhun.boatracing.util.Text.msg(p,
-							"&e⚠ Không đủ vị trí xuất phát cho tất cả người chơi đã đăng ký.");
-		}
-		startLightsCountdown(placed);
+		// Intro sequence, then countdown.
+		startIntroThenCountdown(participants, null);
 	}
 
 	// Place participants at start locations and spawn boats for them
@@ -4032,6 +4332,19 @@ public class RaceManager {
 		boolean hadAny = wasRunning || wasRegistering || wasCountdown || !registered.isEmpty()
 				|| !participants.isEmpty() || !countdownPlayers.isEmpty();
 
+		// Stop intro cinematic if active.
+		try {
+			CinematicCameraService cam = cinematic();
+			if (cam != null && !introPlayers.isEmpty())
+				cam.stopForPlayers(new java.util.ArrayList<>(introPlayers), true);
+		} catch (Throwable ignored) {
+		}
+		try {
+			introPlayers.clear();
+			introEndMillis = 0L;
+		} catch (Throwable ignored) {
+		}
+
 		// If we were freezing boats during countdown, restore physics regardless of how
 		// we stop.
 		try {
@@ -4305,6 +4618,10 @@ public class RaceManager {
 		if (countdownLockLocation.remove(id) != null)
 			changed = true;
 
+		// Remove from intro state.
+		if (introPlayers.remove(id))
+			changed = true;
+
 		// Remove from live race state.
 		if (participants.remove(id) != null)
 			changed = true;
@@ -4363,6 +4680,15 @@ public class RaceManager {
 			} catch (Throwable ignored) {
 			}
 			changed = true;
+		}
+
+		// If intro is active but nobody is left, cancel intro state.
+		try {
+			if (introEndMillis > System.currentTimeMillis() && introPlayers.isEmpty()) {
+				introEndMillis = 0L;
+				changed = true;
+			}
+		} catch (Throwable ignored) {
 		}
 
 		// If registration is active but nobody remains, cancel it.
@@ -4900,6 +5226,8 @@ public class RaceManager {
 		long end = 0L;
 		if (registering && waitingEndMillis > now)
 			end = waitingEndMillis;
+		else if (introEndMillis > now)
+			end = introEndMillis;
 		else if (countdownEndMillis > now)
 			end = countdownEndMillis;
 		if (end <= now)

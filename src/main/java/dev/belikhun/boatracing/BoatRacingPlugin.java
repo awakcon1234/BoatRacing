@@ -41,6 +41,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private dev.belikhun.boatracing.ui.AdminTracksGUI tracksGUI;
 	private dev.belikhun.boatracing.track.TrackRecordManager trackRecordManager;
 	private dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService lobbyBoardService;
+	private dev.belikhun.boatracing.cinematic.CinematicCameraService cinematicCameraService;
 	// Plugin metadata (avoid deprecated getDescription())
 	private String pluginVersion = "unknown";
 	private java.util.List<String> pluginAuthors = java.util.Collections.emptyList();
@@ -114,6 +115,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 		return lobbyBoardService;
 	}
 
+	public dev.belikhun.boatracing.cinematic.CinematicCameraService getCinematicCameraService() {
+		return cinematicCameraService;
+	}
+
 	@Override
 	public void onEnable() {
 		instance = this;
@@ -145,6 +150,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		this.setupWizard = new SetupWizard(this);
 		this.tracksGUI = new dev.belikhun.boatracing.ui.AdminTracksGUI(this, trackLibrary);
 		this.lobbyBoardService = new dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService(this);
+		this.cinematicCameraService = new dev.belikhun.boatracing.cinematic.CinematicCameraService(this);
 		// Team GUI removed
 		Bukkit.getPluginManager().registerEvents(adminGUI, this);
 		Bukkit.getPluginManager().registerEvents(tracksGUI, this);
@@ -543,6 +549,16 @@ public class BoatRacingPlugin extends JavaPlugin {
 		try {
 			if (lobbyBoardService != null)
 				lobbyBoardService.stop();
+		} catch (Throwable ignored) {
+		}
+
+		// Stop any running cinematic sequences (restore player gamemode where possible)
+		try {
+			if (cinematicCameraService != null) {
+				cinematicCameraService.stopForPlayers(
+						org.bukkit.Bukkit.getOnlinePlayers().stream().map(org.bukkit.entity.Player::getUniqueId).toList(),
+						true);
+			}
 		} catch (Throwable ignored) {
 		}
 	}
