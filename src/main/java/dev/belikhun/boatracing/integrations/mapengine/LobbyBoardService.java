@@ -1,9 +1,11 @@
 package dev.belikhun.boatracing.integrations.mapengine;
 
 import de.pianoman911.mapengine.api.MapEngineApi;
-import de.pianoman911.mapengine.api.clientside.IMapDisplay;
-import de.pianoman911.mapengine.api.drawing.IDrawingSpace;
-import de.pianoman911.mapengine.api.util.Converter;
+import dev.belikhun.boatracing.integrations.mapengine.board.BoardFontLoader;
+import dev.belikhun.boatracing.integrations.mapengine.board.BoardPlacement;
+import dev.belikhun.boatracing.integrations.mapengine.board.BoardViewers;
+import dev.belikhun.boatracing.integrations.mapengine.board.MapEngineBoardDisplay;
+import dev.belikhun.boatracing.integrations.mapengine.board.RenderBuffers;
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.profile.PlayerProfileManager;
 import dev.belikhun.boatracing.race.RaceManager;
@@ -24,23 +26,16 @@ import dev.belikhun.boatracing.integrations.mapengine.ui.UiRenderContext;
 import dev.belikhun.boatracing.integrations.mapengine.ui.UiRect;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.World;
 import org.bukkit.block.BlockFace;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.BlockVector;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
-import java.awt.GraphicsEnvironment;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -63,28 +58,10 @@ public final class LobbyBoardService {
 	private static final String ICON_INFO = "ⓘ";
 	private static final String ICON_CLOCK = "⏰";
 
-	// ===================== Render backbuffer reuse =====================
-	// Creating a full-size BufferedImage every tick is extremely allocation-heavy
-	// and causes GC/memory spikes.
-	// We keep 2 reusable backbuffers and alternate between them to avoid downstream
-	// code retaining the same
-	// image reference across ticks.
-	private final BufferedImage[] renderBuffers = new BufferedImage[2];
-	private int renderBufferW = -1;
-	private int renderBufferH = -1;
-	private int renderBufferCursor = 0;
+	private final RenderBuffers renderBuffers = new RenderBuffers();
 
 	private BufferedImage acquireRenderBuffer(int w, int h) {
-		int ww = Math.max(1, w);
-		int hh = Math.max(1, h);
-		if (ww != renderBufferW || hh != renderBufferH || renderBuffers[0] == null || renderBuffers[1] == null) {
-			renderBufferW = ww;
-			renderBufferH = hh;
-			renderBuffers[0] = new BufferedImage(ww, hh, BufferedImage.TYPE_INT_ARGB);
-			renderBuffers[1] = new BufferedImage(ww, hh, BufferedImage.TYPE_INT_ARGB);
-		}
-		renderBufferCursor = (renderBufferCursor + 1) & 1;
-		return renderBuffers[renderBufferCursor];
+		return renderBuffers.acquire(w, h);
 	}
 
 	// Inner padding for left track rows (moves the leading status dot away from the
@@ -116,9 +93,7 @@ public final class LobbyBoardService {
 	private final PlayerProfileManager profileManager;
 
 	private BukkitTask tickTask;
-
-	private IMapDisplay display;
-	private IDrawingSpace drawing;
+	private final MapEngineBoardDisplay boardDisplay = new MapEngineBoardDisplay();
 
 	private BoardPlacement placement;
 	private int visibleRadiusChunks = 12;
@@ -143,6 +118,7 @@ public final class LobbyBoardService {
 	// provide one.
 	private String fontFile;
 	private volatile Font boardFontBase;
+	private volatile Font boardFallbackFont;
 
 	// Cached, DOM-like UI tree to avoid rebuilding UI elements every tick.
 	// Rebuilt only when board size or font sizing changes.
@@ -205,6 +181,7 @@ public final class LobbyBoardService {
 		}
 		this.fontFile = ff;
 		this.boardFontBase = null;
+		this.boardFallbackFont = null;
 		tryLoadBoardFont();
 
 		// Config or font changes can affect layout; rebuild cached UI next render.
@@ -231,7 +208,7 @@ public final class LobbyBoardService {
 		}
 
 		ensureDisplay(api);
-		if (display == null || drawing == null) {
+		if (!boardDisplay.isReady()) {
 			dbg("start(): failed to create display/drawing");
 			return;
 		}
@@ -264,11 +241,7 @@ public final class LobbyBoardService {
 		spawnedTo.clear();
 
 		// best-effort destroy the display object (API varies between versions)
-		if (display != null) {
-			tryInvoke(display, "destroy");
-			display = null;
-		}
-		drawing = null;
+		boardDisplay.destroy();
 
 		// Drop cached UI tree so it can be rebuilt with a clean state next start.
 		invalidateUiCache();
@@ -323,96 +296,11 @@ public final class LobbyBoardService {
 	}
 
 	private void tryLoadBoardFont() {
-		// NOTE: We do not distribute any Minecraft font file. Admins can provide a
-		// TTF/OTF they have rights to use.
-		// This method searches in:
-		// 1) config path mapengine.lobby-board.font-file (relative to plugin data
-		// folder if not absolute)
-		// 2) plugins/BoatRacing/fonts/minecraft.ttf|otf
-		// 3) plugins/BoatRacing/minecraft.ttf|otf
-		// 4) bundled resources fonts/minecraft.ttf|otf (optional)
-
-		// Keep existing font if already loaded.
 		if (boardFontBase != null)
 			return;
-
-		List<java.util.function.Supplier<InputStream>> candidates = new ArrayList<>();
-
-		if (fontFile != null) {
-			candidates.add(() -> {
-				try {
-					File f = new File(fontFile);
-					if (!f.isAbsolute())
-						f = new File(plugin.getDataFolder(), fontFile);
-					if (!f.exists() || !f.isFile())
-						return null;
-					return new FileInputStream(f);
-				} catch (Throwable ignored) {
-					return null;
-				}
-			});
-		}
-
-		candidates.add(() -> {
-			try {
-				File f = new File(plugin.getDataFolder(), "fonts/minecraft.ttf");
-				if (!f.exists())
-					f = new File(plugin.getDataFolder(), "fonts/minecraft.otf");
-				if (!f.exists())
-					return null;
-				return new FileInputStream(f);
-			} catch (Throwable ignored) {
-				return null;
-			}
-		});
-		candidates.add(() -> {
-			try {
-				File f = new File(plugin.getDataFolder(), "minecraft.ttf");
-				if (!f.exists())
-					f = new File(plugin.getDataFolder(), "minecraft.otf");
-				if (!f.exists())
-					return null;
-				return new FileInputStream(f);
-			} catch (Throwable ignored) {
-				return null;
-			}
-		});
-		candidates.add(() -> {
-			try {
-				InputStream is = plugin.getResource("fonts/minecraft.ttf");
-				if (is == null)
-					is = plugin.getResource("fonts/minecraft.otf");
-				return is;
-			} catch (Throwable ignored) {
-				return null;
-			}
-		});
-
-		for (var sup : candidates) {
-			InputStream is = null;
-			try {
-				is = sup.get();
-				if (is == null)
-					continue;
-				Font f = Font.createFont(Font.TRUETYPE_FONT, is);
-				try {
-					GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(f);
-				} catch (Throwable ignored) {
-				}
-				boardFontBase = f;
-				dbg("Loaded board font: " + f.getFontName());
-				return;
-			} catch (Throwable t) {
-				dbg("Failed to load board font: "
-						+ (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
-			} finally {
-				try {
-					if (is != null)
-						is.close();
-				} catch (Throwable ignored) {
-				}
-			}
-		}
+		Font f = BoardFontLoader.tryLoadBoardFont(plugin, fontFile, debug ? this::dbg : null);
+		if (f != null)
+			boardFontBase = f;
 	}
 
 	private Font boardPlain(int size) {
@@ -489,7 +377,7 @@ public final class LobbyBoardService {
 			return;
 
 		ensureDisplay(api);
-		if (display == null || drawing == null)
+		if (!boardDisplay.isReady())
 			return;
 
 		// Always show preview to the admin who just placed it, regardless of
@@ -505,8 +393,7 @@ public final class LobbyBoardService {
 
 		try {
 			BufferedImage img = renderImage(placement.pixelWidth(), placement.pixelHeight());
-			drawing.image(img, 0, 0);
-			drawing.flush();
+			boardDisplay.renderAndFlush(img);
 		} catch (Throwable ignored) {
 		}
 	}
@@ -593,7 +480,7 @@ public final class LobbyBoardService {
 		}
 
 		ensureDisplay(api);
-		if (display == null || drawing == null)
+		if (!boardDisplay.isReady())
 			return;
 
 		// Determine eligible viewers.
@@ -606,7 +493,7 @@ public final class LobbyBoardService {
 			if (raceService != null && raceService.findRaceFor(p.getUniqueId()) != null)
 				continue;
 
-			if (!isWithinRadiusChunks(p, placement, visibleRadiusChunks))
+			if (!BoardViewers.isWithinRadiusChunks(p, placement, visibleRadiusChunks))
 				continue;
 			eligible.add(p.getUniqueId());
 		}
@@ -650,16 +537,15 @@ public final class LobbyBoardService {
 			final long t0 = doPerf ? System.nanoTime() : 0L;
 			BufferedImage img = renderImage(placement.pixelWidth(), placement.pixelHeight());
 			final long t1 = doPerf ? System.nanoTime() : 0L;
-			drawing.image(img, 0, 0);
+			boardDisplay.renderAndFlush(img);
 			final long t2 = doPerf ? System.nanoTime() : 0L;
-			drawing.flush();
-			final long t3 = doPerf ? System.nanoTime() : 0L;
+			final long t3 = t2;
 
 			if (doPerf) {
 				long tickTotalNs = t3 - t0;
 				long renderNs = t1 - t0;
 				long pushNs = t2 - t1;
-				long flushNs = t3 - t2;
+				long flushNs = 0L;
 				dbgPerf("perf: px=" + lastPerfW + "x" + lastPerfH
 						+ " render=" + fmtMs(renderNs)
 						+ " (collect=" + fmtMs(lastPerfCollectNs)
@@ -678,110 +564,19 @@ public final class LobbyBoardService {
 	}
 
 	private void ensureDisplay(MapEngineApi api) {
-		if (api == null)
-			return;
-		if (placement == null || !placement.isValid())
-			return;
-		if (display != null && drawing != null)
-			return;
-
-		try {
-			display = api.displayProvider().createBasic(placement.a, placement.b, placement.facing);
-			drawing = api.pipeline().createDrawingSpace(display);
-			try {
-				// Best for UI: crisp solids and stable text (avoid dithering artifacts).
-				drawing.ctx().converter(Converter.DIRECT);
-				applyPipelineToggles();
-			} catch (Throwable ignored) {
-			}
-		} catch (Throwable t) {
-			dbg("ensureDisplay(): failed: " + t.getClass().getSimpleName() + ": " + t.getMessage());
-			display = null;
-			drawing = null;
-		}
-	}
-
-	private void applyPipelineToggles() {
-		if (drawing == null)
-			return;
-		Object ctx;
-		try {
-			ctx = drawing.ctx();
-		} catch (Throwable ignored) {
-			return;
-		}
-
-		// Buffering: improves visual stability and reduces partial-frame flicker.
-		if (mapBuffering) {
-			try {
-				drawing.ctx().buffering(true);
-			} catch (Throwable ignored) {
-				tryInvoke(ctx, "buffering", true);
-				tryInvoke(ctx, "setBuffering", true);
-			}
-		}
-
-		// Bundling: when disabled, flushes are sent immediately rather than batched.
-		// Method names differ across MapEngine versions; try best-effort reflection.
-		if (!mapBundling) {
-			tryInvoke(ctx, "bundling", false);
-			tryInvoke(ctx, "setBundling", false);
-			tryInvoke(ctx, "bundle", false);
-			tryInvoke(ctx, "setBundle", false);
-			tryInvoke(ctx, "bundled", false);
-			tryInvoke(ctx, "setBundled", false);
-		}
+		boardDisplay.ensure(api, placement, mapBuffering, mapBundling);
 	}
 
 	private void spawnFor(Player p) {
 		if (p == null)
 			return;
-		if (display == null || drawing == null)
-			return;
-
-		// Different MapEngine versions may differ in method names/signatures; use
-		// best-effort reflection.
-		boolean spawnOk = false;
-		try {
-			// Prefer direct call (fast path)
-			display.spawn(p);
-			spawnOk = true;
-		} catch (Throwable t) {
-			// Fallbacks
-			tryInvoke(display, "spawn", p);
-			tryInvoke(display, "show", p);
-			tryInvoke(display, "spawnTo", p);
-			tryInvoke(display, "addViewer", p);
-		}
-
-		boolean recvOk = false;
-		try {
-			drawing.ctx().addReceiver(p);
-			recvOk = true;
-		} catch (Throwable t) {
-			tryInvoke(drawing.ctx(), "addReceiver", p);
-			tryInvoke(drawing.ctx(), "add", p);
-		}
-
-		dbgTick("spawnFor(" + p.getName() + "): spawnOk=" + spawnOk + " recvOk=" + recvOk);
+		boardDisplay.ensureViewer(p);
 	}
 
 	private void despawnFor(Player p) {
 		if (p == null)
 			return;
-		if (display == null || drawing == null)
-			return;
-
-		// Receiver removal name varies; try a few.
-		tryInvoke(drawing.ctx(), "removeReceiver", p);
-		tryInvoke(drawing.ctx(), "remove", p);
-
-		// Display despawn/destroy name varies; try a few.
-		tryInvoke(display, "destroy", p);
-		tryInvoke(display, "despawn", p);
-		tryInvoke(display, "remove", p);
-		tryInvoke(display, "hide", p);
-		tryInvoke(display, "removeViewer", p);
+		boardDisplay.removeViewer(p);
 	}
 
 	private void dbg(String msg) {
@@ -2114,27 +1909,7 @@ public final class LobbyBoardService {
 				} catch (Throwable ignored) {
 				}
 			}
-			if (mapTrack == null
-					|| !(mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)) {
-				if (tracks != null) {
-					for (TrackInfo ti : tracks) {
-						if (ti == null)
-							continue;
-						if (ti.status == TrackStatus.RUNNING || ti.status == TrackStatus.COUNTDOWN) {
-							mapTrack = ti;
-							try {
-								if (plugin != null && plugin.getRaceService() != null) {
-									mapRm = plugin.getRaceService().get(ti.trackName);
-								}
-							} catch (Throwable ignored) {
-							}
-							break;
-						}
-					}
-				}
-			}
-
-			boolean mapActive = !showCompletedResults
+			boolean mapActive = rightMap != null
 					&& mapTrack != null
 					&& (mapTrack.status == TrackStatus.RUNNING || mapTrack.status == TrackStatus.COUNTDOWN)
 					&& mapTrack.centerline != null && !mapTrack.centerline.isEmpty();
@@ -2201,28 +1976,31 @@ public final class LobbyBoardService {
 
 		void hide() {
 			block.style().display(false);
-			state.ti = null;
+			state.track = null;
 		}
 
-		void show(TrackInfo ti, int blockH, Color text, Color textDim, Color borderC) {
-			state.ti = ti;
-			state.blockH = Math.max(0, blockH);
-			block.style().heightPx(state.blockH).display(true);
-			// Outer background/border are driven by style for free.
-			Color rowAccent = accentForStatus(ti.status);
-			Color rowTint = mix(new Color(0x10, 0x11, 0x13), rowAccent, 0.22);
-			block.style().background(rowTint).border(mix(borderC, rowAccent, 0.10), Math.max(1, uiCache.border - 1));
+		void show(TrackInfo ti) {
+			block.style().display(true);
+			state.track = ti;
+		}
+
+		void show(TrackInfo ti, int heightPx, Color text, Color textDim, Color borderC) {
+			block.style().heightPx(Math.max(0, heightPx)).display(true);
+			state.track = ti;
 		}
 
 		private final class TrackSlotState {
-			TrackInfo ti;
-			int blockH;
+			private TrackInfo track;
 
 			void paint(UiRenderContext ctx, UiRect rect) {
 				if (ctx == null || ctx.g == null)
 					return;
+				TrackInfo ti = this.track;
 				if (ti == null)
 					return;
+				if (uiCache == null)
+					return;
+
 				Graphics2D g = ctx.g;
 
 				Font bodyFont = (uiCache != null ? uiCache.bodyFont : null);
@@ -2469,9 +2247,7 @@ public final class LobbyBoardService {
 
 			java.util.List<MiniDot> dots = java.util.Collections.emptyList();
 			try {
-				if (rm != null) {
-					dots = collectRacerDots(rm);
-				}
+				dots = collectRacerDots(rm);
 			} catch (Throwable ignored) {
 				dots = java.util.Collections.emptyList();
 			}
@@ -2479,11 +2255,10 @@ public final class LobbyBoardService {
 			Color borderC = uiCache != null ? uiCache.borderRef.get() : null;
 			Color textDim = uiCache != null ? uiCache.textDimRef.get() : null;
 			if (borderC == null)
-				borderC = new Color(0x3A, 0x3A, 0x3A);
+				borderC = new Color(0x2A, 0x2D, 0x33);
 			if (textDim == null)
 				textDim = new Color(0xA6, 0xA6, 0xA6);
 
-			// Only the live ranking minimap should have a thicker line.
 			float liveStroke = minimapStrokeFromBorder(border) * 1.28f;
 			if (liveStroke < 2.0f)
 				liveStroke = 2.0f;
@@ -3442,248 +3217,4 @@ public final class LobbyBoardService {
 		};
 	}
 
-	private static boolean isWithinRadiusChunks(Player p, BoardPlacement pl, int radiusChunks) {
-		if (p == null || pl == null || !pl.isValid())
-			return false;
-		World w = p.getWorld();
-		if (w == null || pl.world == null || !w.getName().equals(pl.world))
-			return false;
-
-		int pcx = p.getLocation().getBlockX() >> 4;
-		int pcz = p.getLocation().getBlockZ() >> 4;
-		int bcx = pl.centerBlockX() >> 4;
-		int bcz = pl.centerBlockZ() >> 4;
-		int dx = pcx - bcx;
-		int dz = pcz - bcz;
-		return (dx * dx + dz * dz) <= (radiusChunks * radiusChunks);
-	}
-
-	private static void tryInvoke(Object target, String method, Object... args) {
-		if (target == null || method == null)
-			return;
-		try {
-			Class<?>[] sig = new Class<?>[args.length];
-			for (int i = 0; i < args.length; i++)
-				sig[i] = args[i].getClass();
-
-			// Try exact match first
-			try {
-				var m = target.getClass().getMethod(method, sig);
-				m.invoke(target, args);
-				return;
-			} catch (Throwable ignored) {
-			}
-
-			// Fallback: match by name + arg count
-			for (var m : target.getClass().getMethods()) {
-				if (!m.getName().equals(method))
-					continue;
-				if (m.getParameterCount() != args.length)
-					continue;
-				m.invoke(target, args);
-				return;
-			}
-		} catch (Throwable ignored) {
-		}
-	}
-
-	public static final class BoardPlacement {
-		public final String world;
-		public final BlockVector a;
-		public final BlockVector b;
-		public final BlockFace facing;
-
-		private final int mapsWide;
-		private final int mapsHigh;
-
-		private BoardPlacement(String world, BlockVector a, BlockVector b, BlockFace facing, int mapsWide,
-				int mapsHigh) {
-			this.world = world;
-			this.a = a;
-			this.b = b;
-			this.facing = facing;
-			this.mapsWide = mapsWide;
-			this.mapsHigh = mapsHigh;
-		}
-
-		public boolean isValid() {
-			return world != null && !world.isBlank() && a != null && b != null && facing != null && mapsWide > 0
-					&& mapsHigh > 0;
-		}
-
-		public int pixelWidth() {
-			return mapsWide * 128;
-		}
-
-		public int pixelHeight() {
-			return mapsHigh * 128;
-		}
-
-		public int centerBlockX() {
-			return (a.getBlockX() + b.getBlockX()) / 2;
-		}
-
-		public int centerBlockZ() {
-			return (a.getBlockZ() + b.getBlockZ()) / 2;
-		}
-
-		public static BoardPlacement load(ConfigurationSection sec) {
-			if (sec == null)
-				return null;
-			ConfigurationSection p = sec.getConfigurationSection("placement");
-			if (p == null)
-				return null;
-			try {
-				String world = p.getString("world");
-				String facingRaw = p.getString("facing", "NORTH");
-				BlockFace facing;
-				try {
-					facing = BlockFace.valueOf(facingRaw.toUpperCase(Locale.ROOT));
-				} catch (Throwable ignored) {
-					facing = BlockFace.NORTH;
-				}
-
-				int ax = p.getInt("a.x");
-				int ay = p.getInt("a.y");
-				int az = p.getInt("a.z");
-				int bx = p.getInt("b.x");
-				int by = p.getInt("b.y");
-				int bz = p.getInt("b.z");
-
-				BlockVector a = new BlockVector(ax, ay, az);
-				BlockVector b = new BlockVector(bx, by, bz);
-
-				int mapsWide = p.getInt("maps.wide", 1);
-				int mapsHigh = p.getInt("maps.high", 1);
-				if (mapsWide <= 0 || mapsHigh <= 0) {
-					int[] computed = computeMaps(a, b, facing);
-					mapsWide = computed[0];
-					mapsHigh = computed[1];
-				}
-
-				BoardPlacement out = new BoardPlacement(world, a, b, facing, mapsWide, mapsHigh);
-				return out.isValid() ? out : null;
-			} catch (Throwable ignored) {
-				return null;
-			}
-		}
-
-		public void save(ConfigurationSection sec) {
-			if (sec == null)
-				return;
-			sec.set("world", world);
-			sec.set("facing", facing.name());
-
-			sec.set("a.x", a.getBlockX());
-			sec.set("a.y", a.getBlockY());
-			sec.set("a.z", a.getBlockZ());
-
-			sec.set("b.x", b.getBlockX());
-			sec.set("b.y", b.getBlockY());
-			sec.set("b.z", b.getBlockZ());
-
-			sec.set("maps.wide", mapsWide);
-			sec.set("maps.high", mapsHigh);
-		}
-
-		public static BoardPlacement fromSelection(World w, org.bukkit.util.BoundingBox box, BlockFace facing) {
-			if (w == null || box == null || facing == null)
-				return null;
-
-			BlockFace dir = normalizeCardinal(facing);
-			if (dir == null)
-				return null;
-
-			int minX = (int) Math.floor(Math.min(box.getMinX(), box.getMaxX()));
-			int maxX = (int) Math.floor(Math.max(box.getMinX(), box.getMaxX()));
-			int minY = (int) Math.floor(Math.min(box.getMinY(), box.getMaxY()));
-			int maxY = (int) Math.floor(Math.max(box.getMinY(), box.getMaxY()));
-			int minZ = (int) Math.floor(Math.min(box.getMinZ(), box.getMaxZ()));
-			int maxZ = (int) Math.floor(Math.max(box.getMinZ(), box.getMaxZ()));
-
-			// MapEngine requires the two points build a 2D box.
-			// We derive a flat plane based on the chosen facing:
-			// - NORTH/SOUTH: constant Z (pick the nearer edge)
-			// - EAST/WEST: constant X
-			int ax, ay, az, bx, by, bz;
-			if (dir == BlockFace.NORTH) {
-				int z = minZ;
-				ax = minX;
-				ay = minY;
-				az = z;
-				bx = maxX;
-				by = maxY;
-				bz = z;
-			} else if (dir == BlockFace.SOUTH) {
-				int z = maxZ;
-				ax = minX;
-				ay = minY;
-				az = z;
-				bx = maxX;
-				by = maxY;
-				bz = z;
-			} else if (dir == BlockFace.WEST) {
-				int x = minX;
-				ax = x;
-				ay = minY;
-				az = minZ;
-				bx = x;
-				by = maxY;
-				bz = maxZ;
-			} else { // EAST
-				int x = maxX;
-				ax = x;
-				ay = minY;
-				az = minZ;
-				bx = x;
-				by = maxY;
-				bz = maxZ;
-			}
-
-			// IMPORTANT: If the selection is filled with blocks (e.g., black concrete
-			// screen),
-			// placing the display ON the plane will embed it inside the blocks.
-			// Push the plane 1 block outward in the facing direction so it sits in front of
-			// the surface.
-			int offX = 0;
-			int offZ = 0;
-			if (dir == BlockFace.NORTH)
-				offZ = -1;
-			else if (dir == BlockFace.SOUTH)
-				offZ = 1;
-			else if (dir == BlockFace.WEST)
-				offX = -1;
-			else if (dir == BlockFace.EAST)
-				offX = 1;
-			ax += offX;
-			bx += offX;
-			az += offZ;
-			bz += offZ;
-
-			BlockVector a = new BlockVector(ax, ay, az);
-			BlockVector b = new BlockVector(bx, by, bz);
-			int[] maps = computeMaps(a, b, dir);
-			return new BoardPlacement(w.getName(), a, b, dir, maps[0], maps[1]);
-		}
-
-		private static int[] computeMaps(BlockVector a, BlockVector b, BlockFace facing) {
-			int wide;
-			int high;
-
-			if (facing == BlockFace.NORTH || facing == BlockFace.SOUTH) {
-				wide = Math.abs(a.getBlockX() - b.getBlockX()) + 1;
-				high = Math.abs(a.getBlockY() - b.getBlockY()) + 1;
-			} else {
-				wide = Math.abs(a.getBlockZ() - b.getBlockZ()) + 1;
-				high = Math.abs(a.getBlockY() - b.getBlockY()) + 1;
-			}
-
-			// Do not enforce an arbitrary size cap here.
-			// The placement selection determines the board size; MapEngine will be the
-			// practical limit.
-			wide = Math.max(1, wide);
-			high = Math.max(1, high);
-			return new int[] { wide, high };
-		}
-	}
 }

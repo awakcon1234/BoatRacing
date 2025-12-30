@@ -2,8 +2,10 @@ package dev.belikhun.boatracing.event;
 
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.event.storage.EventStorage;
+import dev.belikhun.boatracing.integrations.mapengine.EventBoardService;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.util.Text;
+import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -34,6 +36,7 @@ public class EventService {
 	private final BoatRacingPlugin plugin;
 	private final File dataFolder;
 	private final PodiumService podiumService;
+	private final EventBoardService eventBoardService;
 
 	private final Map<String, RaceEvent> eventsById = new HashMap<>();
 	private String activeEventId;
@@ -46,10 +49,20 @@ public class EventService {
 	private java.util.Set<java.util.UUID> currentTrackRoster = new java.util.LinkedHashSet<>();
 	private boolean trackWasRunning = false;
 
+	// Event phase scheduling (runtime-only; not persisted)
+	private static final int INTRO_SECONDS = 30;
+	private static final int FIRST_TRACK_WAIT_SECONDS = 60;
+	private static final int BREAK_SECONDS = 5 * 60;
+	private long introEndMillis = 0L;
+	private long lobbyWaitEndMillis = 0L;
+	private long breakEndMillis = 0L;
+	private boolean lobbyGatherDone = false;
+
 	public EventService(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
 		this.dataFolder = plugin.getDataFolder();
 		this.podiumService = new PodiumService(plugin);
+		this.eventBoardService = new EventBoardService(plugin, this);
 		this.activeEventId = null;
 		this.activeTrackName = null;
 	}
@@ -58,6 +71,11 @@ public class EventService {
 		loadAll();
 		String active = EventStorage.loadActive(dataFolder);
 		setActiveEvent(active);
+		try {
+			if (eventBoardService != null)
+				eventBoardService.reloadFromConfig();
+		} catch (Throwable ignored) {
+		}
 		ensureTickTask();
 	}
 
@@ -99,6 +117,28 @@ public class EventService {
 			EventStorage.saveActive(dataFolder, this.activeEventId);
 		} catch (Throwable ignored) {
 		}
+	}
+
+	/**
+	 * During a RUNNING event, all tracks in the pool are locked.
+	 * This prevents non-event races from being started on event tracks.
+	 */
+	public synchronized boolean isTrackLocked(String trackName) {
+		if (trackName == null || trackName.isBlank())
+			return false;
+		RaceEvent e = getActiveEvent();
+		if (e == null)
+			return false;
+		if (e.state != EventState.RUNNING)
+			return false;
+		if (e.trackPool == null || e.trackPool.isEmpty())
+			return false;
+		String tn = trackName.trim();
+		for (String s : e.trackPool) {
+			if (s != null && s.equalsIgnoreCase(tn))
+				return true;
+		}
+		return false;
 	}
 
 	public synchronized RaceEvent get(String id) {
@@ -155,6 +195,11 @@ public class EventService {
 			tickTaskId = -1;
 		}
 		try {
+			if (eventBoardService != null)
+				eventBoardService.stop();
+		} catch (Throwable ignored) {
+		}
+		try {
 			if (podiumService != null)
 				podiumService.clear();
 		} catch (Throwable ignored) {
@@ -202,6 +247,10 @@ public class EventService {
 		trackDeadlineMillis = 0L;
 		currentTrackRoster.clear();
 		trackWasRunning = false;
+		introEndMillis = 0L;
+		lobbyWaitEndMillis = 0L;
+		breakEndMillis = 0L;
+		lobbyGatherDone = false;
 		try {
 			if (podiumService != null)
 				podiumService.clear();
@@ -248,6 +297,10 @@ public class EventService {
 		trackDeadlineMillis = 0L;
 		currentTrackRoster.clear();
 		trackWasRunning = false;
+		introEndMillis = 0L;
+		lobbyWaitEndMillis = 0L;
+		breakEndMillis = 0L;
+		lobbyGatherDone = false;
 		return true;
 	}
 
@@ -381,6 +434,32 @@ public class EventService {
 		if (activeTrackName == null || activeTrackName.isBlank())
 			return;
 
+		long now = System.currentTimeMillis();
+
+		// Intro phase: just wait.
+		if (introEndMillis > 0L && now < introEndMillis)
+			return;
+
+		// After intro ends, gather everyone back to lobby then wait 60s before starting the first track.
+		if (introEndMillis > 0L && now >= introEndMillis && !lobbyGatherDone && e.currentTrackIndex == 0) {
+			try {
+				gatherEligibleToLobby();
+			} catch (Throwable ignored) {
+			}
+			lobbyGatherDone = true;
+			lobbyWaitEndMillis = now + (FIRST_TRACK_WAIT_SECONDS * 1000L);
+			broadcastToParticipants(e, "&e⌛ Đang chuẩn bị chặng 1. &7Bắt đầu sau &f"
+					+ Time.formatCountdownSeconds(FIRST_TRACK_WAIT_SECONDS) + "&7.");
+		}
+
+		// Pre-first-track waiting period.
+		if (lobbyWaitEndMillis > 0L && now < lobbyWaitEndMillis)
+			return;
+
+		// Between-track break.
+		if (breakEndMillis > 0L && now < breakEndMillis)
+			return;
+
 		RaceManager rm;
 		try {
 			rm = plugin.getRaceService().getOrCreate(activeTrackName);
@@ -390,7 +469,7 @@ public class EventService {
 		if (rm == null)
 			return;
 
-		// Start track immediately: skip waiting phase.
+		// Start track (after intro/lobby wait/break).
 		if (!trackCountdownStarted) {
 			try {
 				startTrackCountdownNow(e, rm);
@@ -444,8 +523,16 @@ public class EventService {
 		trackDeadlineMillis = 0L;
 		currentTrackRoster.clear();
 		trackWasRunning = false;
+		// Phase schedule
+		long now = System.currentTimeMillis();
+		introEndMillis = now + (INTRO_SECONDS * 1000L);
+		lobbyWaitEndMillis = 0L;
+		breakEndMillis = 0L;
+		lobbyGatherDone = false;
 		EventStorage.saveEvent(dataFolder, e);
 		broadcastToParticipants(e, "&eSự kiện &f" + safeName(e.title) + "&e đã bắt đầu!");
+		broadcastToParticipants(e, "&7⏳ Đang giới thiệu... bắt đầu sau &f" + Time.formatCountdownSeconds(INTRO_SECONDS)
+				+ "&7.");
 		return true;
 	}
 
@@ -494,6 +581,10 @@ public class EventService {
 		trackCountdownStarted = true;
 		trackWasRunning = false;
 		trackDeadlineMillis = 0L;
+		// Clear pre-start/break timers once a track countdown begins.
+		introEndMillis = 0L;
+		lobbyWaitEndMillis = 0L;
+		breakEndMillis = 0L;
 		broadcastToParticipants(e, "&eBắt đầu chặng: &f" + safeName(activeTrackName) + "&e.");
 	}
 
@@ -575,7 +666,10 @@ public class EventService {
 		trackWasRunning = false;
 		trackDeadlineMillis = 0L;
 		currentTrackRoster.clear();
-		broadcastToParticipants(e, "&eChuyển sang chặng tiếp theo: &f" + safeName(activeTrackName));
+		// Break time before next track.
+		breakEndMillis = System.currentTimeMillis() + (BREAK_SECONDS * 1000L);
+		broadcastToParticipants(e, "&e⏳ Nghỉ giải lao &f" + Time.formatCountdownSeconds(BREAK_SECONDS)
+				+ "&e. Chặng tiếp theo: &f" + safeName(activeTrackName));
 	}
 
 	private void finishEvent(RaceEvent e, String msg) {
@@ -584,15 +678,105 @@ public class EventService {
 		e.state = EventState.COMPLETED;
 		EventStorage.saveEvent(dataFolder, e);
 		broadcastToParticipants(e, msg);
+		try {
+			broadcastFinalRanking(e);
+		} catch (Throwable ignored) {
+		}
 		activeTrackName = null;
 		trackCountdownStarted = false;
 		trackWasRunning = false;
 		trackDeadlineMillis = 0L;
 		currentTrackRoster.clear();
+		introEndMillis = 0L;
+		lobbyWaitEndMillis = 0L;
+		breakEndMillis = 0L;
+		lobbyGatherDone = false;
 		try {
 			if (podiumService != null)
 				podiumService.spawnTop3(e);
 		} catch (Throwable ignored) {
+		}
+	}
+
+	private void gatherEligibleToLobby() {
+		if (plugin == null)
+			return;
+		RaceEvent e = getActiveEvent();
+		if (e == null)
+			return;
+		for (Player p : collectEligibleOnline(e)) {
+			if (p == null || !p.isOnline())
+				continue;
+			try {
+				plugin.getRaceService().leaveToLobby(p);
+			} catch (Throwable ignored) {
+			}
+		}
+	}
+
+	private void broadcastFinalRanking(RaceEvent e) {
+		if (e == null || e.participants == null)
+			return;
+		java.util.List<EventParticipant> list = new java.util.ArrayList<>(e.participants.values());
+		list.removeIf(p -> p == null || p.id == null || p.status == EventParticipantStatus.LEFT);
+		list.sort(java.util.Comparator
+				.comparingInt((EventParticipant p) -> p == null ? Integer.MIN_VALUE : p.pointsTotal).reversed()
+				.thenComparing(p -> p == null ? "" : (p.nameSnapshot == null ? "" : p.nameSnapshot),
+						String.CASE_INSENSITIVE_ORDER));
+
+		java.util.List<String> lines = new java.util.ArrayList<>();
+		lines.add("&6&l┏━━━━━━ &eXẾP HẠNG CHUNG CUỘC &6&l━━━━━━┓");
+		lines.add("&7Sự kiện: &f" + safeName(e.title) + " &8● &7Tổng chặng: &f" + (e.trackPool == null ? 0 : e.trackPool.size()));
+
+		int shown = 0;
+		for (EventParticipant ep : list) {
+			if (ep == null || ep.id == null)
+				continue;
+			shown++;
+			if (shown > 10)
+				break;
+			String name = (ep.nameSnapshot == null || ep.nameSnapshot.isBlank())
+					? Bukkit.getOfflinePlayer(ep.id).getName()
+					: ep.nameSnapshot;
+			if (name == null || name.isBlank())
+				name = "(không rõ)";
+			String display;
+			try {
+				var pm = plugin.getProfileManager();
+				display = (pm != null) ? pm.formatRacerLegacy(ep.id, name) : ("&f" + name);
+			} catch (Throwable ignored) {
+				display = "&f" + name;
+			}
+			String tag;
+			if (shown == 1)
+				tag = "&6#1";
+			else if (shown == 2)
+				tag = "&7#2";
+			else if (shown == 3)
+				tag = "&c#3";
+			else
+				tag = "&f#" + shown;
+
+			lines.add(tag + " &f" + display + " &8● &e" + Math.max(0, ep.pointsTotal) + " &7điểm");
+		}
+
+		if (shown == 0)
+			lines.add("&7Không có dữ liệu xếp hạng.");
+		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+
+		broadcastToParticipants(e, "&eBảng xếp hạng chung cuộc:");
+		for (UUID id : new java.util.ArrayList<>(e.participants.keySet())) {
+			try {
+				if (!isEligible(e, id))
+					continue;
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline())
+					continue;
+				for (String line : lines) {
+					Text.tell(p, line);
+				}
+			} catch (Throwable ignored) {
+			}
 		}
 	}
 

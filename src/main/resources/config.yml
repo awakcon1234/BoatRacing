@@ -100,6 +100,30 @@ racing:
           - "<gray>Hoàn thành: <white>%completed%"
           - "<gray>Chiến thắng: <white>%wins%"
           - "<gray>Thời gian đã đua: <white>%time_raced%"
+
+      # Event lobby (người chơi đã tham gia sự kiện nhưng hiện không ở trong cuộc đua)
+      # Templates: header/footer/ranking_item (multi-line) + title
+      # Event placeholders:
+      #   %event_id% %event_title% %event_state% %event_state_display%
+      #   %event_points% %event_position% %event_position_tag%
+      #   %event_participants% %event_track_total% %event_track_index% %event_track_name%
+      # Ranking item placeholders:
+      #   %rank_position% %rank_position_tag% %rank_points% %rank_racer_name% %rank_racer_display%
+      event_lobby:
+        title: "<gold>Sự kiện"
+        header:
+          - "<yellow>%event_title%"
+          - "<gray>Trạng thái: <white>%event_state_display%"
+          - "<gray>Bạn: %racer_display% <gray>●</gray> %event_position_tag% <gray>●</gray> <white>%event_points%</white> <gray>điểm</gray>"
+          - "<gray>Tổng tay đua: <white>%event_participants%"
+          - ""
+          - "<yellow>Bảng điểm"
+        ranking_item:
+          - "%rank_position_tag% %rank_racer_display%"
+          - "<gray>  điểm: <white>%rank_points%"
+        footer:
+          - ""
+          - "<gray>ℹ Track pool: <white>%event_track_total%"
       waiting:
         title: "<gold>Đang chờ"
         lines:
@@ -261,4 +285,34 @@ mapengine:
       bundling: false
 
     # Placement is written by the /boatracing board set command.
+    placement: {}
+
+  # Event board (MapEngine) (optional)
+  # Shows event scoreboard only to participants near the board.
+  event-board:
+    enabled: false
+
+    # Show the board only to nearby participants within this radius (in chunks).
+    visible-radius-chunks: 12
+
+    # How often to redraw the board (in server ticks). Default: 20 (1s)
+    update-ticks: 20
+
+    # Optional custom font file for MapEngine rendering.
+    # Same rules as lobby-board.font-file.
+    font-file: ""
+
+    # Font sizes (fallback is Monospaced).
+    font:
+      title-size: 18
+      body-size: 14
+
+    debug: false
+
+    pipeline:
+      buffering: true
+      bundling: false
+
+    # Placement is written manually by config for now.
+    # You can copy the structure from mapengine.lobby-board.placement.
     placement: {}

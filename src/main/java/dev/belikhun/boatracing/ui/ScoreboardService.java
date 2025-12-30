@@ -1,6 +1,11 @@
 package dev.belikhun.boatracing.ui;
 
 import dev.belikhun.boatracing.BoatRacingPlugin;
+import dev.belikhun.boatracing.event.EventParticipant;
+import dev.belikhun.boatracing.event.EventParticipantStatus;
+import dev.belikhun.boatracing.event.EventService;
+import dev.belikhun.boatracing.event.EventState;
+import dev.belikhun.boatracing.event.RaceEvent;
 import dev.belikhun.boatracing.profile.PlayerProfileManager;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
@@ -43,6 +48,7 @@ public class ScoreboardService {
 		boolean actionbarEnabled;
 		boolean needsSpeed;
 		boolean needsNeighbors;
+		boolean needsEventLobby;
 	}
 
 	private TemplateUsage usage = new TemplateUsage();
@@ -123,6 +129,22 @@ public class ScoreboardService {
 			try {
 				RaceManager rm = raceService.findRaceFor(p.getUniqueId());
 				if (rm == null) {
+					// Event-lobby scoreboard (participants in the active event who are not currently in a race)
+					if (usage != null && usage.needsEventLobby) {
+						RaceEvent active = null;
+						try {
+							EventService es = plugin != null ? plugin.getEventService() : null;
+							active = (es != null ? es.getActiveEvent() : null);
+						} catch (Throwable ignored) {
+							active = null;
+						}
+						if (active != null && isEventParticipant(active, p.getUniqueId())) {
+							setState(p, "EVENT");
+							applyEventLobbyBoard(p, active);
+							clearActionBar(p);
+							continue;
+						}
+					}
 					setState(p, "LOBBY");
 					applyLobbyBoard(p);
 					clearActionBar(p);
@@ -141,6 +163,194 @@ public class ScoreboardService {
 		// Prevent memory growth when players disconnect/reconnect.
 		if (onlineIds != null)
 			pruneOfflineCaches(onlineIds);
+	}
+
+	private static boolean isEventParticipant(RaceEvent e, java.util.UUID playerId) {
+		if (e == null || playerId == null)
+			return false;
+		try {
+			if (e.participants == null)
+				return false;
+			EventParticipant ep = e.participants.get(playerId);
+			if (ep == null)
+				return false;
+			return ep.status != null && ep.status != EventParticipantStatus.LEFT;
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	private static final class EventRankEntry {
+		final java.util.UUID id;
+		final String name;
+		final int points;
+		int position;
+
+		EventRankEntry(java.util.UUID id, String name, int points) {
+			this.id = id;
+			this.name = name;
+			this.points = points;
+		}
+	}
+
+	private static String eventStateDisplay(EventState st) {
+		if (st == null)
+			return "-";
+		return switch (st) {
+			case DRAFT -> "Nháp";
+			case REGISTRATION -> "Đang đăng ký";
+			case RUNNING -> "Đang chạy";
+			case COMPLETED -> "Đã kết thúc";
+			case CANCELLED -> "Đã hủy";
+		};
+	}
+
+	private void applyEventLobbyBoard(Player p, RaceEvent e) {
+		Sidebar sb = ensureSidebar(p);
+		if (sb == null || p == null || e == null)
+			return;
+
+		// Build ranking snapshot (points DESC)
+		java.util.List<EventRankEntry> ranking = new java.util.ArrayList<>();
+		try {
+			if (e.participants != null) {
+				for (var en : e.participants.entrySet()) {
+					java.util.UUID id = en.getKey();
+					EventParticipant ep = en.getValue();
+					if (id == null || ep == null)
+						continue;
+					if (ep.status == EventParticipantStatus.LEFT)
+						continue;
+					String n = (ep.nameSnapshot == null || ep.nameSnapshot.isBlank()) ? nameOf(id) : ep.nameSnapshot;
+					ranking.add(new EventRankEntry(id, n, ep.pointsTotal));
+				}
+			}
+		} catch (Throwable ignored) {
+			// keep empty
+		}
+
+		ranking.sort((a, b) -> {
+			int pa = a == null ? 0 : a.points;
+			int pb = b == null ? 0 : b.points;
+			int c = Integer.compare(pb, pa);
+			if (c != 0)
+				return c;
+			String na = a == null || a.name == null ? "" : a.name;
+			String nb = b == null || b.name == null ? "" : b.name;
+			c = na.compareToIgnoreCase(nb);
+			if (c != 0)
+				return c;
+			java.util.UUID ua = a == null ? null : a.id;
+			java.util.UUID ub = b == null ? null : b.id;
+			if (ua == null && ub == null)
+				return 0;
+			if (ua == null)
+				return 1;
+			if (ub == null)
+				return -1;
+			return ua.compareTo(ub);
+		});
+
+		for (int i = 0; i < ranking.size(); i++) {
+			EventRankEntry it = ranking.get(i);
+			if (it != null)
+				it.position = i + 1;
+		}
+
+		int viewerPoints = 0;
+		int viewerPos = 0;
+		try {
+			if (e.participants != null) {
+				EventParticipant self = e.participants.get(p.getUniqueId());
+				if (self != null)
+					viewerPoints = Math.max(0, self.pointsTotal);
+			}
+		} catch (Throwable ignored) {
+			viewerPoints = 0;
+		}
+		for (EventRankEntry it : ranking) {
+			if (it != null && p.getUniqueId().equals(it.id)) {
+				viewerPos = it.position;
+				break;
+			}
+		}
+
+		PlayerProfileManager.Profile prof = pm != null ? pm.get(p.getUniqueId()) : null;
+		java.util.Map<String, String> ph = new java.util.HashMap<>();
+		ph.put("racer_name", p.getName());
+		ph.put("racer_display", racerDisplay(p.getUniqueId(), p.getName()));
+		ph.put("racer_color", prof != null ? ColorTranslator.miniColorTag(prof.color) : "<white>");
+		ph.put("icon", prof != null && !empty(prof.icon) ? prof.icon : "-");
+		ph.put("number", prof != null && prof.number > 0 ? String.valueOf(prof.number) : "-");
+		ph.put("completed", prof != null ? String.valueOf(prof.completed) : "0");
+		ph.put("wins", prof != null ? String.valueOf(prof.wins) : "0");
+		ph.put("time_raced", prof != null ? Time.formatDurationShort(prof.timeRacedMillis) : "-");
+
+		String eventId = (e.id == null || e.id.isBlank()) ? "-" : e.id;
+		String eventTitle = (e.title == null || e.title.isBlank()) ? "(không rõ)" : e.title;
+		String stateText = eventStateDisplay(e.state);
+		ph.put("event_id", eventId);
+		ph.put("event_title", eventTitle);
+		ph.put("event_state", e.state == null ? "-" : e.state.name());
+		ph.put("event_state_display", stateText);
+		ph.put("event_points", String.valueOf(Math.max(0, viewerPoints)));
+		ph.put("event_position", viewerPos > 0 ? String.valueOf(viewerPos) : "-");
+		ph.put("event_position_tag", viewerPos > 0 ? colorizePlacementTag(viewerPos) : "<gray>-</gray>");
+		ph.put("event_participants", String.valueOf(ranking.size()));
+		ph.put("event_track_total", String.valueOf(e.trackPool == null ? 0 : e.trackPool.size()));
+		ph.put("event_track_index", String.valueOf(Math.max(0, e.currentTrackIndex) + 1));
+		ph.put("event_track_name", safeStr(e.currentTrackName()));
+
+		Component title = parse(p, cfgString("racing.ui.templates.event_lobby.title", "<gold>Sự kiện"), ph);
+
+		java.util.List<String> headerTpl = cfgStringList("racing.ui.templates.event_lobby.header", java.util.List.of());
+		java.util.List<String> itemTpl = cfgStringList("racing.ui.templates.event_lobby.ranking_item", java.util.List.of());
+		java.util.List<String> footerTpl = cfgStringList("racing.ui.templates.event_lobby.footer", java.util.List.of());
+
+		java.util.List<Component> out = new java.util.ArrayList<>();
+		out.addAll(parseLines(p, headerTpl, ph));
+
+		int maxLines = 15;
+		try {
+			maxLines = sb.maxLines();
+		} catch (Throwable ignored) {
+			maxLines = 15;
+		}
+		int headerLines = out.size();
+		int footerLines = footerTpl == null ? 0 : footerTpl.size();
+		int itemLines = Math.max(1, itemTpl == null ? 0 : itemTpl.size());
+		int availableForItems = Math.max(0, maxLines - headerLines - footerLines);
+		int maxItems = itemLines <= 0 ? 0 : (availableForItems / itemLines);
+		if (maxItems < 0)
+			maxItems = 0;
+
+		int shown = 0;
+		for (EventRankEntry it : ranking) {
+			if (it == null)
+				continue;
+			if (maxItems > 0 && shown >= maxItems)
+				break;
+
+			java.util.Map<String, String> iph = new java.util.HashMap<>(ph);
+			iph.put("rank_position", String.valueOf(it.position));
+			iph.put("rank_position_tag", colorizePlacementTag(it.position));
+			iph.put("rank_points", String.valueOf(Math.max(0, it.points)));
+			iph.put("rank_racer_name", it.name == null ? "(không rõ)" : it.name);
+			iph.put("rank_racer_display", racerDisplay(it.id, it.name));
+
+			out.addAll(parseLines(p, itemTpl, iph));
+			shown++;
+		}
+
+		out.addAll(parseLines(p, footerTpl, ph));
+		applySidebarComponents(p, sb, title, out);
+	}
+
+	private static String safeStr(String s) {
+		if (s == null)
+			return "-";
+		String t = s.trim();
+		return t.isEmpty() ? "-" : t;
 	}
 
 	private void pruneOfflineCaches(java.util.Set<java.util.UUID> onlineIds) {
@@ -1434,8 +1644,17 @@ public class ScoreboardService {
 		} catch (Throwable ignored) {
 		}
 
+		try {
+			pool.add(cfgString("racing.ui.templates.event_lobby.title", ""));
+			pool.addAll(cfgStringList("racing.ui.templates.event_lobby.header", java.util.List.of()));
+			pool.addAll(cfgStringList("racing.ui.templates.event_lobby.ranking_item", java.util.List.of()));
+			pool.addAll(cfgStringList("racing.ui.templates.event_lobby.footer", java.util.List.of()));
+		} catch (Throwable ignored) {
+		}
+
 		boolean needsSpeed = false;
 		boolean needsNeighbors = false;
+		boolean needsEventLobby = false;
 		for (String s : pool) {
 			if (s == null)
 				continue;
@@ -1443,10 +1662,13 @@ public class ScoreboardService {
 				needsSpeed = true;
 			if (s.contains("%ahead_") || s.contains("%behind_"))
 				needsNeighbors = true;
+			if (s.contains("%event_") || s.contains("%rank_"))
+				needsEventLobby = true;
 		}
 
 		u.needsSpeed = u.actionbarEnabled && needsSpeed;
 		u.needsNeighbors = needsNeighbors;
+		u.needsEventLobby = needsEventLobby;
 		return u;
 	}
 }

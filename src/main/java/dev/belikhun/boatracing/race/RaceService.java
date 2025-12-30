@@ -111,6 +111,16 @@ public class RaceService {
 	 */
 	public synchronized boolean join(String trackName, org.bukkit.entity.Player p) {
 		if (p == null) return false;
+		// If an event is running, lock event tracks from manual joining.
+		try {
+			var es = plugin != null ? plugin.getEventService() : null;
+			if (es != null && es.isTrackLocked(trackName)) {
+				Text.msg(p, "&c❌ Đường đua này đang được khóa cho sự kiện.");
+				p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+				return false;
+			}
+		} catch (Throwable ignored) {
+		}
 		RaceManager rm = getOrCreate(trackName);
 		if (rm == null) return false;
 

@@ -127,7 +127,7 @@ public class RaceManager {
 	private java.util.List<String> buildResultsTop3BoardLines(java.util.List<ParticipantState> standings) {
 		java.util.List<String> lines = new java.util.ArrayList<>();
 		String track = safeTrackName();
-		lines.add("&6&l┏━━━━━━━━━━━━━━━━━━━━━━ &eBẢNG XẾP HẠNG &6&l━━━━━━━━━━━━━━━━━━━━━━┓");
+		lines.add("&6&l┏━━━━━━ &eBẢNG XẾP HẠNG &6&l━━━━━━┓");
 		lines.add("&7Đường đua: &f" + track + " &8● &7Số vòng: &f" + getTotalLaps());
 		lines.add("&eTop 3");
 
@@ -151,14 +151,14 @@ public class RaceManager {
 		if (shown == 0) {
 			lines.add("&7Không có dữ liệu xếp hạng.");
 		}
-		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
 		return lines;
 	}
 
 	private java.util.List<String> buildResultsRestBoardLines(java.util.List<ParticipantState> standings) {
 		java.util.List<String> lines = new java.util.ArrayList<>();
 		String track = safeTrackName();
-		lines.add("&6&l┏━━━━━━━━━━━━━━━━━━━━━━ &eXẾP HẠNG #4+ &6&l━━━━━━━━━━━━━━━━━━━━━━┓");
+		lines.add("&6&l┏━━━━━━ &eXẾP HẠNG #4+ &6&l━━━━━━┓");
 		lines.add("&7Đường đua: &f" + track + " &8● &7⌚ &f" + Time.formatStopwatchMillis(getRaceElapsedMillis()));
 
 		java.util.List<String> entries = new java.util.ArrayList<>();
@@ -180,7 +180,7 @@ public class RaceManager {
 
 		if (entries.isEmpty()) {
 			lines.add("&7Không có tay đua nào ngoài top 3.");
-			lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+			lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
 			return lines;
 		}
 
@@ -194,7 +194,7 @@ public class RaceManager {
 				lines.add(a);
 		}
 
-		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
 		return lines;
 	}
 
