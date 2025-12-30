@@ -225,9 +225,14 @@ public class CinematicCameraService {
 			return la.clone();
 		}
 
+		// durationTicks == 0 is a hard cut: teleport immediately to the next keyframe.
+		if (a.durationTicks <= 0) {
+			return lb.clone();
+		}
+
 		int dur = Math.max(1, a.durationTicks);
 		double raw = Math.max(0.0, Math.min(1.0, (double) local / (double) dur));
-		double u = easeInOut(raw);
+		double u = (seq.linearEasing ? raw : easeInOut(raw));
 
 		double x = la.getX() + (lb.getX() - la.getX()) * u;
 		double y = la.getY() + (lb.getY() - la.getY()) * u;

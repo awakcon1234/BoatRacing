@@ -7,10 +7,16 @@ import java.util.List;
 public class CinematicSequence {
 	public final List<CinematicKeyframe> keyframes;
 	public final List<CinematicSoundEvent> soundEvents;
+	public final boolean linearEasing;
 
 	public CinematicSequence(List<CinematicKeyframe> keyframes, List<CinematicSoundEvent> soundEvents) {
+		this(keyframes, soundEvents, false);
+	}
+
+	public CinematicSequence(List<CinematicKeyframe> keyframes, List<CinematicSoundEvent> soundEvents, boolean linearEasing) {
 		this.keyframes = (keyframes == null) ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(keyframes));
 		this.soundEvents = (soundEvents == null) ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(soundEvents));
+		this.linearEasing = linearEasing;
 	}
 
 	public int totalTicks() {

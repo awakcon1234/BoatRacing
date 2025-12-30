@@ -3054,9 +3054,10 @@ public class RaceManager {
 
 	private int introSegmentTicks() {
 		try {
-			return Math.max(10, plugin != null ? plugin.getConfig().getInt("racing.intro.segment-ticks", 60) : 60);
+			// A longer, slower fly-by looks more cinematic. Users can override in config.
+			return Math.max(40, plugin != null ? plugin.getConfig().getInt("racing.intro.segment-ticks", 140) : 140);
 		} catch (Throwable ignored) {
-			return 60;
+			return 140;
 		}
 	}
 
@@ -3147,9 +3148,25 @@ public class RaceManager {
 			return null;
 		Random rnd = new Random();
 		int points = Math.max(1, introPoints());
-		int segTicks = Math.max(10, introSegmentTicks());
+		int flyTicks = Math.max(10, introSegmentTicks());
+		int teleportTicks = 0; // 0 tick = hard cut/teleport
 		double radius = introRadius();
 		double height = introHeight();
+
+		java.util.List<Location> centerline = null;
+		try {
+			centerline = trackConfig != null ? trackConfig.getCenterline() : null;
+		} catch (Throwable ignored) {
+			centerline = null;
+		}
+
+		Location startCenter = null;
+		try {
+			startCenter = trackConfig != null ? trackConfig.getStartCenter() : null;
+		} catch (Throwable ignored) {
+			startCenter = null;
+		}
+		boolean hasStartCenter = startCenter != null && startCenter.getWorld() != null;
 
 		java.util.List<Location> pick = new java.util.ArrayList<>(targets);
 		java.util.Collections.shuffle(pick, rnd);
@@ -3157,17 +3174,82 @@ public class RaceManager {
 			pick = pick.subList(0, points);
 
 		java.util.List<CinematicKeyframe> keys = new java.util.ArrayList<>();
-		for (Location t : pick) {
+		for (int i = 0; i < pick.size(); i++) {
+			Location t = pick.get(i);
 			if (t == null || t.getWorld() == null)
 				continue;
 
-			double a1 = rnd.nextDouble() * Math.PI * 2.0;
-			double a2 = a1 + (Math.PI * (0.35 + rnd.nextDouble() * 0.5));
-			double r1 = radius * (0.75 + rnd.nextDouble() * 0.5);
-			double r2 = radius * (0.75 + rnd.nextDouble() * 0.5);
+			// Compute a preferred movement direction (along the track if possible) so the
+			// fly-by has real translation, not just camera rotation.
+			org.bukkit.util.Vector forward = null;
+			try {
+				if (centerline != null && centerline.size() >= 2) {
+					int best = -1;
+					double bestD = Double.POSITIVE_INFINITY;
+					for (int ci = 0; ci < centerline.size(); ci++) {
+						Location cl = centerline.get(ci);
+						if (cl == null || cl.getWorld() == null)
+							continue;
+						if (!cl.getWorld().equals(t.getWorld()))
+							continue;
+						double d2;
+						try {
+							d2 = cl.distanceSquared(t);
+						} catch (Throwable ignored2) {
+							d2 = Double.POSITIVE_INFINITY;
+						}
+						if (d2 < bestD) {
+							bestD = d2;
+							best = ci;
+						}
+					}
+					if (best >= 0) {
+						int a = Math.max(0, best - 2);
+						int b = Math.min(centerline.size() - 1, best + 2);
+						Location la = centerline.get(a);
+						Location lb = centerline.get(b);
+						if (la != null && lb != null && la.getWorld() != null && lb.getWorld() != null
+								&& la.getWorld().equals(lb.getWorld()) && la.getWorld().equals(t.getWorld())) {
+							org.bukkit.util.Vector v = lb.toVector().subtract(la.toVector());
+							v.setY(0);
+							if (v.lengthSquared() > 0.0001) {
+								forward = v.normalize();
+							}
+						}
+					}
+				}
+			} catch (Throwable ignored) {
+				forward = null;
+			}
+			if (forward == null) {
+				double a = rnd.nextDouble() * Math.PI * 2.0;
+				forward = new org.bukkit.util.Vector(Math.cos(a), 0, Math.sin(a));
+			}
 
-			Location camA = t.clone().add(Math.cos(a1) * r1, height, Math.sin(a1) * r1);
-			Location camB = t.clone().add(Math.cos(a2) * r2, height * 0.85, Math.sin(a2) * r2);
+			double dolly = Math.max(2.0, Math.min(9.0, radius * 0.40)) * (0.85 + rnd.nextDouble() * 0.30);
+
+			// Create a slow, close "fly-by" around the same anchor point:
+			// pointA -> pointB (small orbit delta + slightly different height/radius).
+			double a1 = rnd.nextDouble() * Math.PI * 2.0;
+			double delta = (rnd.nextBoolean() ? 1.0 : -1.0) * (Math.PI * (0.06 + rnd.nextDouble() * 0.08));
+			double a2 = a1 + delta;
+
+			double r1 = radius * (0.90 + rnd.nextDouble() * 0.20);
+			double r2 = r1 * (0.96 + rnd.nextDouble() * 0.08);
+			double h1 = height * (0.92 + rnd.nextDouble() * 0.12);
+			double h2 = h1 * (0.96 + rnd.nextDouble() * 0.08);
+
+			Location camA = t.clone().add(Math.cos(a1) * r1, h1, Math.sin(a1) * r1);
+			Location camB = t.clone().add(Math.cos(a2) * r2, h2, Math.sin(a2) * r2);
+
+			// Add a subtle translation along the track direction (dolly move) to avoid
+			// a pure "swing".
+			try {
+				camA.add(-forward.getX() * dolly * 0.35, 0.0, -forward.getZ() * dolly * 0.35);
+				camB.add(forward.getX() * dolly, 0.0, forward.getZ() * dolly);
+			} catch (Throwable ignored) {
+			}
+
 			float[] ap = CinematicCameraService.lookAt(camA, t);
 			float[] bp = CinematicCameraService.lookAt(camB, t);
 			camA.setYaw(ap[0]);
@@ -3175,15 +3257,32 @@ public class RaceManager {
 			camB.setYaw(bp[0]);
 			camB.setPitch(bp[1]);
 
-			int half = Math.max(5, segTicks / 2);
-			keys.add(new CinematicKeyframe(camA, half));
-			keys.add(new CinematicKeyframe(camB, half));
+			boolean last = (i == pick.size() - 1);
+			int durA = flyTicks;
+			int durB = last ? (hasStartCenter ? teleportTicks : 0) : teleportTicks;
+			keys.add(new CinematicKeyframe(camA, durA));
+			keys.add(new CinematicKeyframe(camB, durB));
 		}
 
 		if (keys.size() < 2)
 			return null;
 
-		keys.add(new CinematicKeyframe(keys.get(keys.size() - 1).location.clone(), 0));
+		// Final cut to start area, then a short hold before starting countdown.
+		if (hasStartCenter) {
+			double a = rnd.nextDouble() * Math.PI * 2.0;
+			double r = Math.max(6.0, radius * 0.85);
+			double h = Math.max(4.0, height * 0.95);
+			Location startCam = startCenter.clone().add(Math.cos(a) * r, h, Math.sin(a) * r);
+			float[] sp = CinematicCameraService.lookAt(startCam, startCenter);
+			startCam.setYaw(sp[0]);
+			startCam.setPitch(sp[1]);
+
+			int holdTicks = Math.max(6, Math.min(20, flyTicks / 4));
+			keys.add(new CinematicKeyframe(startCam, holdTicks));
+			keys.add(new CinematicKeyframe(startCam.clone(), 0));
+		} else {
+			keys.add(new CinematicKeyframe(keys.get(keys.size() - 1).location.clone(), 0));
+		}
 
 		java.util.List<dev.belikhun.boatracing.cinematic.CinematicSoundEvent> snd = java.util.Collections.emptyList();
 		try {
@@ -3193,7 +3292,7 @@ public class RaceManager {
 			}
 		} catch (Throwable ignored) {
 		}
-		return new CinematicSequence(keys, snd);
+		return new CinematicSequence(keys, snd, true);
 	}
 
 	public boolean startIntroThenCountdown(java.util.List<Player> racers, Consumer<java.util.List<Player>> onCountdownStarted) {
