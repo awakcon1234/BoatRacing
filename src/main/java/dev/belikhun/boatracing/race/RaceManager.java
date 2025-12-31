@@ -3293,10 +3293,37 @@ public class RaceManager {
 		try {
 			boolean soundEnabled = plugin != null && plugin.getConfig().getBoolean("racing.intro.sound.enabled", true);
 			if (soundEnabled) {
-				snd = CinematicCameraService.defaultArcadeIntroTune();
+				snd = dev.belikhun.boatracing.cinematic.CinematicMusicService.defaultArcadeIntroTune();
 			}
 		} catch (Throwable ignored) {
 		}
+
+		// Ensure the camera sequence is long enough to cover the music + a small buffer.
+		// If the generated path is too short (e.g. few track points), extend the final hold.
+		int musicDuration = 0;
+		for (dev.belikhun.boatracing.cinematic.CinematicSoundEvent e : snd) {
+			if (e.atTick > musicDuration)
+				musicDuration = e.atTick;
+		}
+
+		if (musicDuration > 0) {
+			int camDuration = 0;
+			for (CinematicKeyframe k : keys) {
+				camDuration += k.durationTicks;
+			}
+
+			// Target: Music end + 20 ticks (1s) buffer
+			int targetDuration = musicDuration + 20;
+
+			if (camDuration < targetDuration) {
+				int needed = targetDuration - camDuration;
+				if (!keys.isEmpty()) {
+					CinematicKeyframe lastK = keys.remove(keys.size() - 1);
+					keys.add(new CinematicKeyframe(lastK.location, lastK.durationTicks + needed));
+				}
+			}
+		}
+
 		return new CinematicSequence(keys, snd, true);
 	}
 
