@@ -305,6 +305,17 @@ public class CinematicCameraService {
 		}
 	}
 
+	/**
+	 * Stop all currently running cinematics.
+	 *
+	 * Intended for plugin shutdown to avoid leaving players in spectator mode.
+	 */
+	public synchronized void stopAll(boolean restoreMode) {
+		for (String id : new HashSet<>(runningById.keySet())) {
+			stopSequenceInternal(id, restoreMode, false);
+		}
+	}
+
 	private void removePlayerFromRunning(Running r, UUID playerId, boolean restoreMode) {
 		if (r == null || playerId == null)
 			return;

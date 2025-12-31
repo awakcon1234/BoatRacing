@@ -446,6 +446,49 @@ public class BoatRacingPlugin extends JavaPlugin {
 		getLogger().info("BoatRacing enabled");
 	}
 
+	@Override
+	public void onDisable() {
+		// Best-effort cleanup so races don't leave runtime artifacts behind (barriers,
+		// holograms, spawned boats, start lights, tasks) when the server stops.
+		try {
+			if (eventService != null)
+				eventService.stop();
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (raceService != null)
+				raceService.stopAll(true);
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (cinematicCameraService != null)
+				cinematicCameraService.stopAll(true);
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (hotbarService != null)
+				hotbarService.stop();
+		} catch (Throwable ignored) {
+		}
+		try {
+			if (scoreboardService != null)
+				scoreboardService.stop();
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (lobbyBoardService != null)
+				lobbyBoardService.stop();
+		} catch (Throwable ignored) {
+		}
+
+		getLogger().info("BoatRacing disabled");
+		instance = null;
+	}
+
 	// Merge default config.yml values into the existing config without overwriting
 	// user changes
 	private void mergeConfigDefaults() {
