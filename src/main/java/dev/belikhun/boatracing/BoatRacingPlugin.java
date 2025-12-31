@@ -423,6 +423,40 @@ public class BoatRacingPlugin extends JavaPlugin {
 						raceService.restorePendingLobbyTeleport(p);
 				} catch (Throwable ignored) {
 				}
+
+				// Ensure non-admin players always spawn at lobby (world spawn) and are in Adventure.
+				// Delayed by 1 tick so it doesn't fight with pending restore flows above.
+				try {
+					boolean isAdmin = p.isOp()
+							|| p.hasPermission("boatracing.admin")
+							|| p.hasPermission("boatracing.setup")
+							|| p.hasPermission("boatracing.event.admin")
+							|| p.hasPermission("boatracing.race.admin")
+							|| p.hasPermission("boatracing.*");
+					if (!isAdmin) {
+						Bukkit.getScheduler().runTaskLater(BoatRacingPlugin.this, () -> {
+							try {
+								if (!p.isOnline())
+									return;
+								try {
+									if (p.isInsideVehicle())
+										p.leaveVehicle();
+								} catch (Throwable ignored) {
+								}
+								org.bukkit.Location spawn = (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null);
+								if (spawn != null)
+									p.teleport(spawn);
+								try {
+									p.setGameMode(org.bukkit.GameMode.ADVENTURE);
+								} catch (Throwable ignored) {
+								}
+								p.setFallDistance(0f);
+							} catch (Throwable ignored) {
+							}
+						}, 1L);
+					}
+				} catch (Throwable ignored) {
+				}
 			}
 		}, this);
 

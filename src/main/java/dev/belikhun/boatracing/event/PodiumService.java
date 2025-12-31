@@ -204,15 +204,21 @@ public class PodiumService {
 		try {
 			if (Bukkit.getPluginManager().isPluginEnabled("FancyNpcs")) {
 				String name = (p.nameSnapshot == null || p.nameSnapshot.isBlank()) ? "(không rõ)" : p.nameSnapshot;
-				String line1;
+				String line1Mini;
+				String line1Legacy;
 				try {
 					PlayerProfileManager pm = plugin.getProfileManager();
-					line1 = (pm != null) ? pm.formatRacerMini(id, name) : ("<white>" + name);
+					line1Mini = (pm != null) ? pm.formatRacerMini(id, name) : ("<white>" + name);
+					line1Legacy = (pm != null) ? pm.formatRacerLegacy(id, name) : ("&f" + name);
 				} catch (Throwable ignored) {
-					line1 = "<white>" + name;
+					line1Mini = "<white>" + name;
+					line1Legacy = "&f" + name;
 				}
-				String line2 = "<yellow>" + p.pointsTotal + " <gray>điểm";
-				String display = line1 + "\n" + line2;
+				String line2Legacy = "&e" + p.pointsTotal + " &7điểm";
+
+				// Hide the NPC's own name tag and render our own multi-line TextDisplay.
+				// FancyNpcs supports the special token "<empty>" for an empty name tag.
+				String display = "<empty>";
 
 				String npcName = "br-event-podium-" + System.currentTimeMillis() + "-" + index;
 				String npcId = FancyNpcsApi.spawnPlayerNpc(
@@ -225,6 +231,8 @@ public class PodiumService {
 				);
 				if (npcId != null && !npcId.isBlank()) {
 					spawnedFancyNpcIds.add(npcId);
+					// Lower by 1 block compared to the previous placement.
+					spawnNpcFrontTextBlock(loc, line1Legacy + "\n" + line2Legacy, 0.35, 0.38, 0.95f);
 					return;
 				}
 			}
@@ -265,7 +273,7 @@ public class PodiumService {
 
 		spawned.add(as.getUniqueId());
 
-		// TextDisplay nameplate (2 lines)
+		// TextDisplay nameplate (2 lines) - use 2 separate displays to guarantee line breaks.
 		String name = (p.nameSnapshot == null || p.nameSnapshot.isBlank()) ? "(không rõ)" : p.nameSnapshot;
 		String line1;
 		try {
@@ -274,10 +282,86 @@ public class PodiumService {
 		} catch (Throwable ignored) {
 			line1 = "&f" + name;
 		}
-		String line2 = "&e" + p.pointsTotal + " &7điểm";
-		final String nameplate = line1 + "\n" + line2;
+		spawnNameLine(loc, line1, 1.60);
+		spawnPointsLine(loc, "&e" + p.pointsTotal + " &7điểm", 1.25);
+	}
 
-		Location tl = loc.clone().add(0.0, 1.6, 0.0);
+	private void spawnNpcFrontTextBlock(Location base, String legacyMultiline, double yOffset, double forward, float scale) {
+		if (base == null || base.getWorld() == null)
+			return;
+
+		org.bukkit.Location dirLoc = base.clone();
+		dirLoc.setPitch(0.0f);
+		org.bukkit.util.Vector fv;
+		try {
+			fv = dirLoc.getDirection().normalize().multiply(forward);
+		} catch (Throwable ignored) {
+			fv = new org.bukkit.util.Vector(0, 0, 0);
+		}
+
+		Location tl = base.clone().add(fv).add(0.0, yOffset, 0.0);
+		try {
+			TextDisplay td = tl.getWorld().spawn(tl, TextDisplay.class, d -> {
+				try {
+					d.getPersistentDataContainer().set(podiumKey, PersistentDataType.BYTE, (byte) 1);
+				} catch (Throwable ignored) {
+				}
+				// Fixed: don't face the camera; face the same direction as the NPC.
+				try {
+					d.setRotation(base.getYaw(), 0.0f);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.text(Text.c(legacyMultiline));
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setBillboard(org.bukkit.entity.Display.Billboard.FIXED);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setSeeThrough(true);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setDefaultBackground(false);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setViewRange(256.0f);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setShadowed(false);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setTransformation(new org.bukkit.util.Transformation(
+							new org.joml.Vector3f(0, 0, 0),
+							new org.joml.Quaternionf(),
+							new org.joml.Vector3f(scale, scale, scale),
+							new org.joml.Quaternionf()
+					));
+				} catch (Throwable ignored) {
+				}
+			});
+			spawned.add(td.getUniqueId());
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private void spawnNameLine(Location base, String legacy, double yOffset) {
+		spawnTextLine(base, legacy, yOffset, 1.00f);
+	}
+
+	private void spawnPointsLine(Location base, String legacy, double yOffset) {
+		spawnTextLine(base, legacy, yOffset, 0.90f);
+	}
+
+	private void spawnTextLine(Location base, String legacy, double yOffset, float scale) {
+		if (base == null || base.getWorld() == null)
+			return;
+		Location tl = base.clone().add(0.0, yOffset, 0.0);
 		try {
 			TextDisplay td = tl.getWorld().spawn(tl, TextDisplay.class, d -> {
 				try {
@@ -285,7 +369,7 @@ public class PodiumService {
 				} catch (Throwable ignored) {
 				}
 				try {
-					d.text(Text.c(nameplate));
+					d.text(Text.c(legacy));
 				} catch (Throwable ignored) {
 				}
 				try {
@@ -301,7 +385,21 @@ public class PodiumService {
 				} catch (Throwable ignored) {
 				}
 				try {
-					d.setViewRange(48.0f);
+					// 16 chunks = 256 blocks
+					d.setViewRange(256.0f);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setShadowed(false);
+				} catch (Throwable ignored) {
+				}
+				try {
+					d.setTransformation(new org.bukkit.util.Transformation(
+							new org.joml.Vector3f(0, 0, 0),
+							new org.joml.Quaternionf(),
+							new org.joml.Vector3f(scale, scale, scale),
+							new org.joml.Quaternionf()
+					));
 				} catch (Throwable ignored) {
 				}
 			});

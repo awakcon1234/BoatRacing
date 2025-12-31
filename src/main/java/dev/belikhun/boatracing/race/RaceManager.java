@@ -2682,10 +2682,20 @@ public class RaceManager {
 					postFinishCleanupEndMillis = (sec > 0) ? (System.currentTimeMillis() + (sec * 1000L)) : 0L;
 
 					if (sec <= 0) {
-						try {
-							stop(false);
-						} catch (Throwable ignored) {
-						}
+						// IMPORTANT: Don't stop immediately.
+						// EventService ticks every 20 ticks (1s) and detects completion via
+						// areAllParticipantsFinished(). If we stop(false) right away here, we clear
+						// participants before EventService can award points / advance track / teleport.
+						final long delayTicks = 40L; // 2 seconds => guarantees at least one EventService tick
+						postFinishCleanupEndMillis = System.currentTimeMillis() + (delayTicks * 50L);
+						postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+							try {
+								stop(false);
+							} catch (Throwable ignored) {
+							}
+							postFinishCleanupEndMillis = 0L;
+							postFinishCleanupTask = null;
+						}, delayTicks);
 					} else {
 						postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
 							try {

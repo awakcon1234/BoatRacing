@@ -96,6 +96,20 @@ public class EventService {
 		} catch (Throwable ignored) {
 		}
 		ensureTickTask();
+
+		// Auto-spawn podium after restart if the active event is already completed.
+		try {
+			RaceEvent e = getActiveEvent();
+			if (e != null && e.state == EventState.COMPLETED && podiumService != null) {
+				Bukkit.getScheduler().runTask(plugin, () -> {
+					try {
+						podiumService.spawnTop3(e);
+					} catch (Throwable ignored) {
+					}
+				});
+			}
+		} catch (Throwable ignored) {
+		}
 	}
 
 	public PodiumService getPodiumService() {
