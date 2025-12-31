@@ -594,27 +594,30 @@ public class EventService {
 			broadcastToParticipants(e, "&e⚠ Track này thiếu vị trí xuất phát. &7Ưu tiên theo thứ tự đăng ký.");
 		}
 
-		java.util.List<Player> placed = rm.placeAtStartsWithBoats(ordered);
-		if (placed.isEmpty()) {
-			broadcastToParticipants(e, "&c❌ Không thể đặt người chơi vào vị trí xuất phát.");
-			return;
-		}
+		boolean ok = rm.startIntroThenCountdown(ordered, (placed) -> {
+			if (placed == null || placed.isEmpty()) {
+				broadcastToParticipants(e, "&c❌ Không thể đặt người chơi vào vị trí xuất phát.");
+				return;
+			}
 
-		currentTrackRoster.clear();
-		for (Player p : placed) {
-			if (p != null)
-				currentTrackRoster.add(p.getUniqueId());
-		}
+			currentTrackRoster.clear();
+			for (Player p : placed) {
+				if (p != null)
+					currentTrackRoster.add(p.getUniqueId());
+			}
 
-		rm.startLightsCountdown(placed);
-		trackCountdownStarted = true;
-		trackWasRunning = false;
-		trackDeadlineMillis = 0L;
-		// Clear pre-start/break timers once a track countdown begins.
-		introEndMillis = 0L;
-		lobbyWaitEndMillis = 0L;
-		breakEndMillis = 0L;
-		broadcastToParticipants(e, "&eBắt đầu chặng: &f" + safeName(activeTrackName) + "&e.");
+			trackCountdownStarted = true;
+			trackWasRunning = false;
+			trackDeadlineMillis = 0L;
+			// Clear pre-start/break timers once a track countdown begins.
+			introEndMillis = 0L;
+			lobbyWaitEndMillis = 0L;
+			breakEndMillis = 0L;
+			broadcastToParticipants(e, "&eBắt đầu chặng: &f" + safeName(activeTrackName) + "&e.");
+		});
+		if (!ok) {
+			broadcastToParticipants(e, "&c❌ Không thể bắt đầu giới thiệu đường đua.");
+		}
 	}
 
 	private void finishTrack(RaceEvent e, RaceManager rm, boolean timedOut) {

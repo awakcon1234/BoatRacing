@@ -4,6 +4,8 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.track.TrackConfig;
 import dev.belikhun.boatracing.util.Text;
 
+import org.bukkit.Bukkit;
+
 import java.io.File;
 import java.util.*;
 
@@ -16,6 +18,7 @@ public class RaceService {
 
 	private final Map<String, RaceManager> raceByTrack = new HashMap<>();
 	private final Map<UUID, String> trackByPlayer = new HashMap<>();
+	private final Set<UUID> pendingLobbyTeleport = new HashSet<>();
 
 	private int defaultLaps = 3;
 
@@ -147,7 +150,58 @@ public class RaceService {
 		if (rm == null) return false;
 		boolean changed = rm.handleRacerDisconnect(playerId);
 		if (changed) trackByPlayer.remove(playerId);
+		// If they disconnected while involved, teleport them back to lobby on next join.
+		try {
+			if (playerId != null)
+				pendingLobbyTeleport.add(playerId);
+		} catch (Throwable ignored) {
+		}
 		return changed;
+	}
+
+	/**
+	 * If a player disconnected while in a race/intro, they can't be teleported immediately.
+	 * On next join, force them back to their world spawn (lobby).
+	 */
+	public void restorePendingLobbyTeleport(org.bukkit.entity.Player p) {
+		if (p == null)
+			return;
+		UUID id = p.getUniqueId();
+		if (id == null)
+			return;
+
+		boolean shouldTeleport;
+		synchronized (this) {
+			shouldTeleport = pendingLobbyTeleport.remove(id);
+		}
+		if (!shouldTeleport)
+			return;
+		if (plugin == null)
+			return;
+
+		try {
+			Bukkit.getScheduler().runTask(plugin, () -> {
+				try {
+					if (!p.isOnline())
+						return;
+					try {
+						if (p.isInsideVehicle())
+							p.leaveVehicle();
+					} catch (Throwable ignored) {
+					}
+					org.bukkit.Location spawn = (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null);
+					if (spawn != null)
+						p.teleport(spawn);
+					p.setFallDistance(0f);
+				} catch (Throwable ignored) {
+				}
+			});
+		} catch (Throwable ignored) {
+			// If scheduling failed, re-add so we try again next join.
+			synchronized (this) {
+				pendingLobbyTeleport.add(id);
+			}
+		}
 	}
 
 	/**

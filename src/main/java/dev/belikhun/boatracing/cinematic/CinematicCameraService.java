@@ -49,6 +49,7 @@ public class CinematicCameraService {
 
 	private final Map<String, Running> runningById = new HashMap<>();
 	private final Map<UUID, String> idByPlayer = new HashMap<>();
+	private final Map<UUID, GameMode> pendingRestoreGameModes = new HashMap<>();
 
 	public CinematicCameraService(Plugin plugin) {
 		this.plugin = plugin;
@@ -319,7 +320,32 @@ public class CinematicCameraService {
 						p.setGameMode(gm);
 				} catch (Throwable ignored) {
 				}
+			} else {
+				// If the player disconnected while in spectator, their gamemode persists.
+				// Restore it safely on next join.
+				if (gm != null)
+					pendingRestoreGameModes.put(playerId, gm);
 			}
+		}
+	}
+
+	/**
+	 * Restore a player's previous gamemode if they disconnected mid-cinematic.
+	 */
+	public synchronized void restorePendingGameMode(Player player) {
+		if (player == null)
+			return;
+		UUID id = player.getUniqueId();
+		if (id == null)
+			return;
+		GameMode gm = pendingRestoreGameModes.remove(id);
+		if (gm == null)
+			return;
+		try {
+			player.setGameMode(gm);
+		} catch (Throwable ignored) {
+			// If we fail, keep the entry so we can try again next join.
+			pendingRestoreGameModes.put(id, gm);
 		}
 	}
 
@@ -369,17 +395,77 @@ public class CinematicCameraService {
 	}
 
 	public static List<CinematicSoundEvent> defaultMarioKartInspiredJingle() {
-		// Not a copy of any melody; just an upbeat ascending jingle.
+		// Original 8-bit/chiptune-style intro cue (not based on any existing melody).
+		// Uses a simple, memorable motif + bass + light beat.
 		List<CinematicSoundEvent> out = new ArrayList<>();
-		Sound s = Sound.BLOCK_NOTE_BLOCK_BELL;
-		float v = 0.9f;
-		float[] pitches = new float[] { 0.75f, 0.84f, 0.94f, 1.06f, 1.19f, 1.33f };
-		int tick = 0;
-		for (float p : pitches) {
-			out.add(new CinematicSoundEvent(tick, s, v, p));
-			tick += 4;
+
+		final float master = 0.85f;
+		final Sound lead = Sound.BLOCK_NOTE_BLOCK_BIT;
+		final Sound leadAccent = Sound.BLOCK_NOTE_BLOCK_PLING;
+		final Sound bass = Sound.BLOCK_NOTE_BLOCK_BASS;
+		final Sound hat = Sound.BLOCK_NOTE_BLOCK_HAT;
+		final Sound snare = Sound.BLOCK_NOTE_BLOCK_SNARE;
+
+		// 16th grid. 20 ticks = 1 second.
+		final int step = 2; // 2 ticks per 16th
+		final int barLen = 16 * step;
+		final int bars = 4;
+
+		// Lightweight beat: hats on 8ths, snare on 2 & 4.
+		for (int bar = 0; bar < bars; bar++) {
+			int base = bar * barLen;
+			for (int s = 0; s < 16; s++) {
+				int t = base + s * step;
+				if ((s % 2) == 0) {
+					float v = master * (0.18f + ((s % 4) == 0 ? 0.06f : 0.0f));
+					out.add(new CinematicSoundEvent(t, hat, v, 1.65f));
+				}
+			}
+			out.add(new CinematicSoundEvent(base + 4 * step, snare, master * 0.32f, 1.20f));
+			out.add(new CinematicSoundEvent(base + 12 * step, snare, master * 0.32f, 1.20f));
 		}
-		out.add(new CinematicSoundEvent(tick + 2, Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 1.7f));
+
+		// Bass on beats (1, 3) with a small walk.
+		float[] bassBeat = new float[] { 0.63f, 0.63f, 0.71f, 0.63f };
+		for (int bar = 0; bar < bars; bar++) {
+			int base = bar * barLen;
+			out.add(new CinematicSoundEvent(base + 0 * step, bass, master * 0.40f, bassBeat[bar % bassBeat.length]));
+			out.add(new CinematicSoundEvent(base + 8 * step, bass, master * 0.40f, 0.63f));
+			out.add(new CinematicSoundEvent(base + 10 * step, bass, master * 0.26f, 0.71f));
+		}
+
+		// Lead motif (minor-ish, arcade vibe). Notes are pitch ratios.
+		// Each entry: pitch, lengthSteps.
+		final float[][] motif = new float[][] {
+				{ 1.00f, 2 }, { 1.19f, 2 }, { 1.33f, 2 }, { 1.19f, 2 },
+				{ 1.06f, 4 }, { 0.94f, 2 }, { 1.06f, 2 },
+				{ 1.33f, 2 }, { 1.50f, 2 }, { 1.59f, 4 },
+				{ 1.50f, 2 }, { 1.33f, 2 }, { 1.19f, 4 }
+		};
+
+		int tick = step * 2; // slight delay before melody
+		for (int bar = 0; bar < bars; bar++) {
+			int base = bar * barLen;
+			int t = base + tick;
+			for (int i = 0; i < motif.length; i++) {
+				float p = motif[i][0];
+				int len = (int) motif[i][1];
+				float v = master * 0.46f;
+				out.add(new CinematicSoundEvent(t, lead, v, p));
+				if ((i % 4) == 0)
+					out.add(new CinematicSoundEvent(t, leadAccent, master * 0.18f, Math.min(2.0f, p * 1.5f)));
+				t += len * step;
+				if (t >= base + barLen)
+					break;
+			}
+		}
+
+		// Ending stinger (short rising cue).
+		int end = bars * barLen;
+		out.add(new CinematicSoundEvent(end - 6, leadAccent, master * 0.55f, 1.33f));
+		out.add(new CinematicSoundEvent(end - 4, leadAccent, master * 0.60f, 1.50f));
+		out.add(new CinematicSoundEvent(end - 2, leadAccent, master * 0.65f, 1.78f));
+
 		return out;
 	}
 

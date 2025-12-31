@@ -400,6 +400,27 @@ public class BoatRacingPlugin extends JavaPlugin {
 			}
 		}, this);
 
+		// Restore gamemode if a player disconnected mid-cinematic intro (spectator
+		// persists across reconnects).
+		Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+			@org.bukkit.event.EventHandler
+			public void onJoin(org.bukkit.event.player.PlayerJoinEvent e) {
+				org.bukkit.entity.Player p = e.getPlayer();
+				if (p == null)
+					return;
+				try {
+					if (cinematicCameraService != null)
+						cinematicCameraService.restorePendingGameMode(p);
+				} catch (Throwable ignored) {
+				}
+				try {
+					if (raceService != null)
+						raceService.restorePendingLobbyTeleport(p);
+				} catch (Throwable ignored) {
+				}
+			}
+		}, this);
+
 		// Prevent our race fireworks from damaging racers.
 		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.race.RaceFireworkListener(this), this);
 
