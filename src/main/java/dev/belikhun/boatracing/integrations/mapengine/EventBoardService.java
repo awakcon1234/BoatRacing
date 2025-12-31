@@ -444,12 +444,12 @@ public final class EventBoardService {
 		}
 
 		for (UUID id : eligible) {
-			if (spawnedTo.contains(id))
-				continue;
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
 			try {
+				// Re-ensure viewer even if already spawned. Teleports/world loads can cause
+				// MapEngine to miss the first spawn; this keeps boards reliable.
 				boardDisplay.ensureViewer(p);
 				spawnedTo.add(id);
 			} catch (Throwable ignored) {

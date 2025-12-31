@@ -516,12 +516,12 @@ public final class LobbyBoardService {
 
 		// Spawn to new eligible viewers.
 		for (UUID id : eligible) {
-			if (spawnedTo.contains(id))
-				continue;
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
 			try {
+				// Re-ensure viewer even if already spawned. Teleports/world loads can cause
+				// MapEngine to miss the first spawn; this keeps boards reliable.
 				spawnFor(p);
 			} catch (Throwable ignored) {
 			}

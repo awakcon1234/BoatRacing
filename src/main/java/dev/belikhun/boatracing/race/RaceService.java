@@ -184,6 +184,24 @@ public class RaceService {
 				try {
 					if (!p.isOnline())
 						return;
+
+					// Safety: ensure the player is fully removed from any race/intro state.
+					// If they are still considered "involved", lobby/event MapEngine boards will
+					// intentionally skip spawning to them.
+					try {
+						synchronized (RaceService.this) {
+							RaceManager rm = findRaceFor(id);
+							if (rm != null) {
+								try {
+									rm.handleRacerDisconnect(id);
+								} catch (Throwable ignored) {
+								}
+							}
+							trackByPlayer.remove(id);
+						}
+					} catch (Throwable ignored) {
+					}
+
 					try {
 						if (p.isInsideVehicle())
 							p.leaveVehicle();
@@ -202,6 +220,15 @@ public class RaceService {
 				pendingLobbyTeleport.add(id);
 			}
 		}
+	}
+
+	/**
+	 * Debug helper: whether this player is queued to be teleported to lobby on next join.
+	 */
+	public synchronized boolean isPendingLobbyTeleport(UUID playerId) {
+		if (playerId == null)
+			return false;
+		return pendingLobbyTeleport.contains(playerId);
 	}
 
 	/**

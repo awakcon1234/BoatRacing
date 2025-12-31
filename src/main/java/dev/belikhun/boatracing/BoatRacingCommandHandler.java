@@ -35,9 +35,123 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 			return true;
 
 		if (args.length == 0) {
-			Text.msg(p, "&cCách dùng: /" + label + " profile|race|setup|event|reload|version");
+			Text.msg(p, "&cCách dùng: /" + label + " profile|race|setup|event|reload|version|debug");
 			return true;
 		}
+
+		// /boatracing debug ...
+		if (args[0].equalsIgnoreCase("debug")) {
+			if (!p.hasPermission("boatracing.admin")) {
+				Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+				return true;
+			}
+			if (args.length == 1 || args[1].equalsIgnoreCase("help")) {
+				Text.msg(p, "&eLệnh debug:");
+				Text.tell(p, "&7 - &f/" + label + " debug player <tên> &7(Xem trạng thái runtime của người chơi)");
+				return true;
+			}
+			if (args[1].equalsIgnoreCase("player")) {
+				if (args.length < 3) {
+					Text.msg(p, "&cCách dùng: /" + label + " debug player <tên>");
+					return true;
+				}
+				String targetName = args[2];
+				Player t = Bukkit.getPlayerExact(targetName);
+				if (t == null)
+					t = Bukkit.getPlayer(targetName);
+				if (t == null || !t.isOnline()) {
+					Text.msg(p, "&cKhông tìm thấy người chơi đang online: &f" + targetName);
+					return true;
+				}
+
+				java.util.UUID tid = t.getUniqueId();
+				Text.msg(p, "&eDebug người chơi:");
+				Text.tell(p, "&7● &fTên: &e" + t.getName() + " &8(&7UUID: &f" + tid + "&8)");
+				try {
+					String w = (t.getWorld() != null ? t.getWorld().getName() : "(không rõ)");
+					Text.tell(p, "&7● &fThế giới: &e" + w + " &8● &7Chế độ: &f" + t.getGameMode().name());
+				} catch (Throwable ignored) {
+				}
+				try {
+					Text.tell(p, "&7● &fVị trí: &f" + dev.belikhun.boatracing.util.Text.fmtPos(t.getLocation()));
+				} catch (Throwable ignored) {
+				}
+
+				// Cinematic state
+				try {
+					var cam = plugin.getCinematicCameraService();
+					boolean camRun = cam != null && cam.isRunningFor(tid);
+					Text.tell(p, "&7● &fCinematic: " + (camRun ? "&a✔ Đang chạy" : "&c❌ Không"));
+				} catch (Throwable ignored) {
+				}
+
+				// Race state
+				Text.msg(p, "&eTrạng thái đua:");
+				try {
+					var rs = plugin.getRaceService();
+					boolean pendingLobby = rs != null && rs.isPendingLobbyTeleport(tid);
+					Text.tell(p, "&7● &fChờ teleport về sảnh: " + (pendingLobby ? "&a✔" : "&c❌"));
+				} catch (Throwable ignored) {
+				}
+
+				try {
+					var rs = plugin.getRaceService();
+					RaceManager rm = (rs != null ? rs.findRaceFor(tid) : null);
+					if (rm == null) {
+						Text.tell(p, "&7● &fĐang tham gia: &c❌ Không");
+						Text.tell(p, "&7● &fGhi chú: &7Nếu bảng sảnh không hiện, kiểm tra MapEngine + vị trí/placement/world.");
+						return true;
+					}
+
+					String trackName = null;
+					try {
+						trackName = (rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null);
+					} catch (Throwable ignored2) {
+						trackName = null;
+					}
+					if (trackName == null || trackName.isBlank()) trackName = "(không rõ)";
+
+					Text.tell(p, "&7● &fĐang tham gia: &a✔");
+					Text.tell(p, "&7● &fĐường đua: &e" + trackName);
+
+					String phase;
+					if (rm.isRunning()) phase = "&aĐang đua";
+					else if (rm.isIntroActive()) phase = "&dIntro";
+					else if (rm.isCountdownActiveFor(tid)) phase = "&eĐếm ngược";
+					else if (rm.isRegistering()) phase = "&bĐăng ký";
+					else if (rm.isAnyCountdownActive()) phase = "&eĐếm ngược";
+					else phase = "&7Nhàn rỗi";
+					Text.tell(p, "&7● &fGiai đoạn: " + phase);
+
+					boolean reg = false;
+					try { reg = rm.getRegistered().contains(tid); } catch (Throwable ignored2) { reg = false; }
+					Text.tell(p, "&7● &fĐã đăng ký: " + (reg ? "&a✔" : "&c❌"));
+					Text.tell(p, "&7● &fĐếm ngược (người này): " + (rm.isCountdownActiveFor(tid) ? "&a✔" : "&c❌"));
+					Text.tell(p, "&7● &fChặn rời thuyền: " + (rm.shouldPreventBoatExit(tid) ? "&a✔" : "&c❌"));
+
+					RaceManager.ParticipantState st = null;
+					try { st = rm.peekParticipantState(tid); } catch (Throwable ignored2) { st = null; }
+					if (st != null) {
+						Text.tell(p, "&7● &fLap: &e" + st.currentLap + "&7/&e" + rm.getTotalLaps()
+								+ " &8● &7Checkpoint kế: &e" + (st.nextCheckpointIndex + 1)
+								+ " &8● &7Phạt: &e" + st.penaltySeconds + "s");
+						Text.tell(p, "&7● &fHoàn thành: " + (st.finished ? ("&a✔ #" + st.finishPosition) : "&c❌"));
+						try {
+							Text.tell(p, "&7● &fQuãng đường: &e" + String.format(java.util.Locale.ROOT, "%.1f", st.distanceBlocks) + "&7 blocks");
+						} catch (Throwable ignored2) {
+						}
+					}
+				} catch (Throwable t2) {
+					Text.tell(p, "&cLỗi khi đọc trạng thái đua: &f" + (t2.getMessage() == null ? t2.getClass().getSimpleName() : t2.getMessage()));
+				}
+
+				return true;
+			}
+
+			Text.msg(p, "&cLệnh debug không rõ. Dùng: /" + label + " debug help");
+			return true;
+		}
+		// end debug
 
 		// /boatracing event ...
 		if (args[0].equalsIgnoreCase("event")) {
@@ -860,6 +974,8 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 			root.add("event");
 			root.add("race");
 			root.add("scoreboard");
+			if (sender.hasPermission("boatracing.admin"))
+				root.add("debug");
 			if (sender.hasPermission("boatracing.setup"))
 				root.add("setup");
 			if (sender.hasPermission("boatracing.admin"))
@@ -871,6 +987,25 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 			if (sender.hasPermission("boatracing.version"))
 				root.add("version");
 			return root.stream().filter(s -> s.startsWith(pref)).toList();
+		}
+
+		if (args.length == 2 && args[0].equalsIgnoreCase("debug")) {
+			if (!sender.hasPermission("boatracing.admin"))
+				return java.util.Collections.emptyList();
+			String pref2 = args[1] == null ? "" : args[1].toLowerCase();
+			return java.util.List.of("help", "player").stream().filter(s -> s.startsWith(pref2)).toList();
+		}
+		if (args.length == 3 && args[0].equalsIgnoreCase("debug") && args[1].equalsIgnoreCase("player")) {
+			if (!sender.hasPermission("boatracing.admin"))
+				return java.util.Collections.emptyList();
+			String pref3 = args[2] == null ? "" : args[2].toLowerCase();
+			java.util.List<String> names = new java.util.ArrayList<>();
+			for (org.bukkit.entity.Player pl : org.bukkit.Bukkit.getOnlinePlayers()) {
+				if (pl == null)
+					continue;
+				names.add(pl.getName());
+			}
+			return names.stream().filter(s -> s.toLowerCase().startsWith(pref3)).toList();
 		}
 
 		if (args.length >= 2 && args[0].equalsIgnoreCase("event")) {

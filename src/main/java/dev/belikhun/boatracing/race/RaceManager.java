@@ -2391,6 +2391,15 @@ public class RaceManager {
 		return participants.get(uuid);
 	}
 
+	/**
+	 * Debug helper: returns the current participant state if present, without creating one.
+	 */
+	public ParticipantState peekParticipantState(UUID uuid) {
+		if (uuid == null)
+			return null;
+		return participants.get(uuid);
+	}
+
 	// test helper: add a participant without needing a Player or a running race
 	void addParticipantForTests(UUID uuid) {
 		participants.put(uuid, new ParticipantState(uuid));
