@@ -3,11 +3,20 @@ package dev.belikhun.boatracing.event;
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.event.storage.EventStorage;
 import dev.belikhun.boatracing.integrations.mapengine.EventBoardService;
+import dev.belikhun.boatracing.integrations.mapengine.OpeningTitlesBoardService;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
+import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.entity.Player;
+
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+import net.kyori.adventure.title.Title;
+
+import java.time.Duration;
 
 import java.io.File;
 import java.util.Collection;
@@ -24,6 +33,7 @@ import java.util.UUID;
  * will be implemented in follow-up steps.
  */
 public class EventService {
+	private static final LegacyComponentSerializer TITLE_LEGACY = LegacyComponentSerializer.legacySection();
 	public enum TrackPoolResult {
 		OK,
 		NO_SUCH_EVENT,
@@ -37,6 +47,8 @@ public class EventService {
 	private final File dataFolder;
 	private final PodiumService podiumService;
 	private final EventBoardService eventBoardService;
+	private final OpeningTitlesBoardService openingTitlesBoardService;
+	private final OpeningTitlesController openingTitlesController;
 
 	private final Map<String, RaceEvent> eventsById = new HashMap<>();
 	private String activeEventId;
@@ -63,6 +75,8 @@ public class EventService {
 		this.dataFolder = plugin.getDataFolder();
 		this.podiumService = new PodiumService(plugin);
 		this.eventBoardService = new EventBoardService(plugin, this);
+		this.openingTitlesBoardService = new OpeningTitlesBoardService(plugin);
+		this.openingTitlesController = new OpeningTitlesController(plugin, this, openingTitlesBoardService);
 		this.activeEventId = null;
 		this.activeTrackName = null;
 	}
@@ -76,6 +90,11 @@ public class EventService {
 				eventBoardService.reloadFromConfig();
 		} catch (Throwable ignored) {
 		}
+		try {
+			if (openingTitlesBoardService != null)
+				openingTitlesBoardService.reloadFromConfig();
+		} catch (Throwable ignored) {
+		}
 		ensureTickTask();
 	}
 
@@ -85,6 +104,70 @@ public class EventService {
 
 	public EventBoardService getEventBoardService() {
 		return eventBoardService;
+	}
+
+	public OpeningTitlesBoardService getOpeningTitlesBoardService() {
+		return openingTitlesBoardService;
+	}
+
+	public boolean isOpeningTitlesRunning() {
+		try {
+			return openingTitlesController != null && openingTitlesController.isRunning();
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	public boolean startOpeningTitlesNow() {
+		RaceEvent e = getActiveEvent();
+		if (e == null)
+			return false;
+		// Avoid breaking a running track/countdown.
+		try {
+			if (activeTrackName != null || trackCountdownStarted)
+				return false;
+		} catch (Throwable ignored) {
+		}
+		try {
+			if (openingTitlesController != null)
+				openingTitlesController.start(e, () -> {
+				});
+			return true;
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	public void stopOpeningTitlesNow(boolean restorePlayers) {
+		try {
+			if (openingTitlesController != null)
+				openingTitlesController.stop(restorePlayers);
+		} catch (Throwable ignored) {
+		}
+		try {
+			if (openingTitlesBoardService != null)
+				openingTitlesBoardService.stop();
+		} catch (Throwable ignored) {
+		}
+	}
+
+	public void previewOpeningTitlesBoard(Player p) {
+		if (p == null)
+			return;
+		try {
+			if (openingTitlesBoardService != null)
+				openingTitlesBoardService.previewTo(p);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	public void restorePendingOpeningTitles(Player p) {
+		if (openingTitlesController == null || p == null)
+			return;
+		try {
+			openingTitlesController.restorePending(p);
+		} catch (Throwable ignored) {
+		}
 	}
 
 	// ===================== Runtime snapshot getters (for UI/boards) =====================
@@ -222,6 +305,16 @@ public class EventService {
 			} catch (Throwable ignored) {
 			}
 			tickTaskId = -1;
+		}
+		try {
+			if (openingTitlesController != null)
+				openingTitlesController.stop(true);
+		} catch (Throwable ignored) {
+		}
+		try {
+			if (openingTitlesBoardService != null)
+				openingTitlesBoardService.stop();
+		} catch (Throwable ignored) {
 		}
 		try {
 			if (eventBoardService != null)
@@ -463,6 +556,13 @@ public class EventService {
 		if (activeTrackName == null || activeTrackName.isBlank())
 			return;
 
+		// Opening titles (per-tick runtime). When active, block the normal pre-track timers.
+		try {
+			if (openingTitlesController != null && openingTitlesController.isRunning() && e.currentTrackIndex == 0)
+				return;
+		} catch (Throwable ignored) {
+		}
+
 		long now = System.currentTimeMillis();
 
 		// Intro phase: just wait.
@@ -557,14 +657,48 @@ public class EventService {
 		trackWasRunning = false;
 		// Phase schedule
 		long now = System.currentTimeMillis();
-		introEndMillis = now + (INTRO_SECONDS * 1000L);
 		lobbyWaitEndMillis = 0L;
 		breakEndMillis = 0L;
 		lobbyGatherDone = false;
+
+		boolean useOpeningTitles = false;
+		try {
+			useOpeningTitles = plugin.getConfig().getBoolean("event.opening-titles.enabled", false) && e.currentTrackIndex == 0;
+		} catch (Throwable ignored) {
+			useOpeningTitles = false;
+		}
+
+		if (useOpeningTitles) {
+			introEndMillis = 0L;
+			try {
+				gatherEligibleToLobby();
+			} catch (Throwable ignored) {
+			}
+			try {
+				if (openingTitlesController != null)
+					openingTitlesController.start(e, () -> {
+						// After titles: ensure everyone is in lobby, then start track countdown.
+						try {
+							gatherEligibleToLobby();
+						} catch (Throwable ignored) {
+						}
+						lobbyGatherDone = true;
+						introEndMillis = 0L;
+						lobbyWaitEndMillis = 0L;
+					});
+			} catch (Throwable ignored) {
+			}
+		} else {
+			introEndMillis = now + (INTRO_SECONDS * 1000L);
+		}
 		EventStorage.saveEvent(dataFolder, e);
 		broadcastToParticipants(e, "&eSự kiện &f" + safeName(e.title) + "&e đã bắt đầu!");
-		broadcastToParticipants(e, "&7⏳ Đang giới thiệu... bắt đầu sau &f" + Time.formatCountdownSeconds(INTRO_SECONDS)
-				+ "&7.");
+		if (!useOpeningTitles) {
+			broadcastToParticipants(e, "&7⏳ Đang giới thiệu... bắt đầu sau &f" + Time.formatCountdownSeconds(INTRO_SECONDS)
+					+ "&7.");
+		} else {
+			broadcastToParticipants(e, "&7⏳ Đang giới thiệu... &fchuẩn bị chặng 1&7.");
+		}
 		return true;
 	}
 
@@ -710,6 +844,11 @@ public class EventService {
 	private void finishEvent(RaceEvent e, String msg) {
 		if (e == null)
 			return;
+		try {
+			if (openingTitlesController != null)
+				openingTitlesController.stop(true);
+		} catch (Throwable ignored) {
+		}
 		e.state = EventState.COMPLETED;
 		EventStorage.saveEvent(dataFolder, e);
 		broadcastToParticipants(e, msg);
@@ -818,6 +957,719 @@ public class EventService {
 				}
 			} catch (Throwable ignored) {
 			}
+		}
+	}
+
+	// ===================== Opening titles runtime =====================
+	private static final class OpeningTitlesController {
+		private enum Phase {
+			WELCOME_FLYBY,
+			INTRO_GAP,
+			RACERS,
+			OUTRO
+		}
+
+		private final BoatRacingPlugin plugin;
+		private final EventService eventService;
+		private final OpeningTitlesBoardService board;
+
+		private org.bukkit.scheduler.BukkitTask cameraTask;
+		private final java.util.Set<Integer> scheduledTaskIds = new java.util.HashSet<>();
+
+		private final java.util.Map<UUID, GameMode> savedModes = new java.util.HashMap<>();
+		private final java.util.Map<UUID, Location> savedLocations = new java.util.HashMap<>();
+		private final java.util.Map<UUID, GameMode> pendingRestoreModes = new java.util.HashMap<>();
+		private final java.util.Map<UUID, Location> pendingRestoreLocations = new java.util.HashMap<>();
+
+		private volatile boolean running = false;
+		private volatile UUID featuredRacer;
+		private volatile Phase phase;
+
+		private long phaseStartMs;
+		private long phaseDurationMs;
+		private java.util.List<Location> flybyPoints = java.util.Collections.emptyList();
+		private Location flybyCenter;
+		private Location fixedCamera;
+		private Location stageLocation;
+
+		private int welcomeSeconds;
+		private int introGapSeconds;
+		private int perRacerSeconds;
+
+		private java.util.List<UUID> racerOrder = java.util.Collections.emptyList();
+		private int racerIndex = 0;
+		private Runnable onComplete;
+
+		OpeningTitlesController(BoatRacingPlugin plugin, EventService eventService, OpeningTitlesBoardService board) {
+			this.plugin = plugin;
+			this.eventService = eventService;
+			this.board = board;
+		}
+
+		boolean isRunning() {
+			return running;
+		}
+
+		void restorePending(Player p) {
+			if (p == null)
+				return;
+			UUID id = p.getUniqueId();
+			if (id == null)
+				return;
+			GameMode gm = pendingRestoreModes.remove(id);
+			Location loc = pendingRestoreLocations.remove(id);
+			try {
+				if (gm != null)
+					p.setGameMode(gm);
+			} catch (Throwable ignored) {
+				if (gm != null)
+					pendingRestoreModes.put(id, gm);
+			}
+			try {
+				if (loc != null && loc.getWorld() != null)
+					p.teleport(loc);
+			} catch (Throwable ignored) {
+				if (loc != null)
+					pendingRestoreLocations.put(id, loc);
+			}
+		}
+
+		void start(RaceEvent e, Runnable onComplete) {
+			if (plugin == null || eventService == null)
+				return;
+			if (e == null)
+				return;
+			if (running)
+				stop(true);
+
+			this.onComplete = onComplete;
+			this.racerIndex = 0;
+			this.featuredRacer = null;
+
+			loadConfig();
+			loadStageAndCamera();
+			buildRacerOrder(e);
+
+			// Start MapEngine board if available (optional).
+			try {
+				if (board != null)
+					board.start();
+			} catch (Throwable ignored) {
+			}
+			try {
+				if (board != null)
+					board.showFavicon();
+			} catch (Throwable ignored) {
+			}
+
+			running = true;
+			startCameraTask();
+			beginWelcome(e);
+		}
+
+		void stop(boolean restorePlayers) {
+			running = false;
+
+			if (cameraTask != null) {
+				try {
+					cameraTask.cancel();
+				} catch (Throwable ignored) {
+				}
+				cameraTask = null;
+			}
+
+			for (Integer id : new java.util.HashSet<>(scheduledTaskIds)) {
+				try {
+					Bukkit.getScheduler().cancelTask(id);
+				} catch (Throwable ignored) {
+				}
+			}
+			scheduledTaskIds.clear();
+
+			try {
+				if (board != null) {
+					board.setViewers(java.util.Collections.emptySet());
+					board.stop();
+				}
+			} catch (Throwable ignored) {
+			}
+
+			if (restorePlayers) {
+				restoreAllPlayers();
+			} else {
+				// Even when not explicitly restoring, keep pending restore safe.
+				flushPendingRestoreFromSaved();
+			}
+		}
+
+		private void loadConfig() {
+			welcomeSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.welcome-seconds", 6), 1, 60);
+			introGapSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.intro-gap-seconds", 2), 0, 30);
+			perRacerSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.per-racer-seconds", 3), 1, 30);
+		}
+
+		private void loadStageAndCamera() {
+			stageLocation = readLocation("mapengine.opening-titles.stage");
+			fixedCamera = readLocation("mapengine.opening-titles.camera");
+			if (fixedCamera == null) {
+				Player any = firstOnline();
+				if (any != null)
+					fixedCamera = any.getLocation().clone();
+			}
+		}
+
+		private Location readLocation(String path) {
+			try {
+				var sec = plugin.getConfig().getConfigurationSection(path);
+				if (sec == null)
+					return null;
+				String worldName = sec.getString("world", "");
+				if (worldName == null || worldName.isBlank())
+					return null;
+				org.bukkit.World w = Bukkit.getWorld(worldName);
+				if (w == null)
+					return null;
+				double x = sec.getDouble("x", 0.0);
+				double y = sec.getDouble("y", 0.0);
+				double z = sec.getDouble("z", 0.0);
+				float yaw = (float) sec.getDouble("yaw", 0.0);
+				float pitch = (float) sec.getDouble("pitch", 0.0);
+				return new Location(w, x, y, z, yaw, pitch);
+			} catch (Throwable ignored) {
+				return null;
+			}
+		}
+
+		private void buildRacerOrder(RaceEvent e) {
+			if (e == null || e.participants == null || e.participants.isEmpty()) {
+				racerOrder = java.util.Collections.emptyList();
+				return;
+			}
+			java.util.List<UUID> ids = new java.util.ArrayList<>(e.participants.keySet());
+			ids.removeIf(id -> id == null || !eventService.isEligible(e, id));
+			java.util.Collections.shuffle(ids);
+			racerOrder = ids;
+		}
+
+		private void beginWelcome(RaceEvent e) {
+			phase = Phase.WELCOME_FLYBY;
+			phaseStartMs = System.currentTimeMillis();
+			phaseDurationMs = welcomeSeconds * 1000L;
+			flybyCenter = guessLobbyCenter();
+			flybyPoints = buildFlybyPoints();
+
+			showTitleToAudience(e,
+					cfgText("event.opening-titles.text.welcome_title", "Chào mừng!"),
+					cfgText("event.opening-titles.text.welcome_subtitle", "%event_title%"),
+					welcomeSeconds);
+			try {
+				if (board != null)
+					board.showFavicon();
+			} catch (Throwable ignored) {
+			}
+
+			scheduleLater(welcomeSeconds * 20L, () -> beginIntroGap(e));
+		}
+
+		private void beginIntroGap(RaceEvent e) {
+			if (!running)
+				return;
+			phase = Phase.INTRO_GAP;
+			phaseStartMs = System.currentTimeMillis();
+			phaseDurationMs = introGapSeconds * 1000L;
+
+			showTitleToAudience(e,
+					cfgText("event.opening-titles.text.racers_intro_title", ""),
+					cfgText("event.opening-titles.text.racers_intro_subtitle", "Đây là những gương mặt sẽ tranh tài hôm nay"),
+					Math.max(1, introGapSeconds));
+
+			try {
+				if (board != null)
+					board.showFavicon();
+			} catch (Throwable ignored) {
+			}
+
+			scheduleLater(Math.max(0, introGapSeconds) * 20L, () -> beginNextRacer(e));
+		}
+
+		private void beginNextRacer(RaceEvent e) {
+			if (!running)
+				return;
+			phase = Phase.RACERS;
+
+			Player featured = pickNextFeaturedOnline(e);
+			if (featured == null) {
+				beginOutro(e);
+				return;
+			}
+
+			featuredRacer = featured.getUniqueId();
+			moveFeaturedToStage(featured);
+
+			String display = buildRacerDisplay(featured.getUniqueId(), featured.getName());
+			String title = cfgText("event.opening-titles.text.racer_card_title", "");
+			String subtitleTpl = cfgText("event.opening-titles.text.racer_card_subtitle", "%racer_display%");
+			String subtitle = subtitleTpl.replace("%racer_display%", display);
+			showTitleToAudience(e, title, subtitle, perRacerSeconds);
+
+			try {
+				if (board != null)
+					board.showRacer(featured.getUniqueId(), featured.getName());
+			} catch (Throwable ignored) {
+			}
+
+			scheduleLater(perRacerSeconds * 20L, () -> endRacerAndContinue(e, featured.getUniqueId()));
+		}
+
+		private void endRacerAndContinue(RaceEvent e, UUID racerId) {
+			if (!running)
+				return;
+			try {
+				Player p = (racerId != null) ? Bukkit.getPlayer(racerId) : null;
+				if (p != null && p.isOnline()) {
+					try {
+						p.setGameMode(GameMode.SPECTATOR);
+					} catch (Throwable ignored) {
+					}
+					try {
+						if (fixedCamera != null && fixedCamera.getWorld() != null)
+							p.teleport(fixedCamera);
+					} catch (Throwable ignored) {
+					}
+				}
+			} catch (Throwable ignored) {
+			}
+
+			featuredRacer = null;
+			scheduleLater(1L, () -> beginNextRacer(e));
+		}
+
+		private void beginOutro(RaceEvent e) {
+			if (!running)
+				return;
+			phase = Phase.OUTRO;
+			featuredRacer = null;
+			phaseStartMs = System.currentTimeMillis();
+			phaseDurationMs = 2000L;
+
+			showTitleToAudience(e,
+					cfgText("event.opening-titles.text.outro_title", "Bắt đầu thôi!"),
+					cfgText("event.opening-titles.text.outro_subtitle", "Đang chuẩn bị chặng đua đầu tiên…"),
+					2);
+			try {
+				if (board != null)
+					board.showFavicon();
+			} catch (Throwable ignored) {
+			}
+
+			scheduleLater(40L, this::finish);
+		}
+
+		private void finish() {
+			if (!running)
+				return;
+			running = false;
+			if (cameraTask != null) {
+				try {
+					cameraTask.cancel();
+				} catch (Throwable ignored) {
+				}
+				cameraTask = null;
+			}
+			for (Integer id : new java.util.HashSet<>(scheduledTaskIds)) {
+				try {
+					Bukkit.getScheduler().cancelTask(id);
+				} catch (Throwable ignored) {
+				}
+			}
+			scheduledTaskIds.clear();
+
+			try {
+				if (board != null) {
+					board.setViewers(java.util.Collections.emptySet());
+					board.stop();
+				}
+			} catch (Throwable ignored) {
+			}
+
+			restoreAllPlayers();
+			try {
+				if (onComplete != null)
+					onComplete.run();
+			} catch (Throwable ignored) {
+			}
+			onComplete = null;
+		}
+
+		private void startCameraTask() {
+			if (cameraTask != null) {
+				try {
+					cameraTask.cancel();
+				} catch (Throwable ignored) {
+				}
+				cameraTask = null;
+			}
+			cameraTask = Bukkit.getScheduler().runTaskTimer(plugin, this::cameraTick, 1L, 1L);
+		}
+
+		private void cameraTick() {
+			if (!running)
+				return;
+			if (plugin == null)
+				return;
+
+			java.util.Set<UUID> audience = collectAudience();
+			try {
+				if (board != null)
+					board.setViewers(audience);
+			} catch (Throwable ignored) {
+			}
+
+			Location cam = computeCameraLocation();
+			if (cam == null || cam.getWorld() == null)
+				return;
+
+			UUID featured = featuredRacer;
+			for (UUID id : audience) {
+				if (id == null)
+					continue;
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline())
+					continue;
+
+				// Save original state once.
+				savedModes.putIfAbsent(id, safeGameMode(p));
+				savedLocations.putIfAbsent(id, safeLocation(p));
+
+				// Featured racer has control: do not lock their camera during showcase.
+				if (featured != null && featured.equals(id) && phase == Phase.RACERS)
+					continue;
+
+				try {
+					if (p.isInsideVehicle())
+						p.leaveVehicle();
+				} catch (Throwable ignored) {
+				}
+				try {
+					if (p.getGameMode() != GameMode.SPECTATOR)
+						p.setGameMode(GameMode.SPECTATOR);
+				} catch (Throwable ignored) {
+				}
+				try {
+					p.teleport(cam);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+
+		private java.util.Set<UUID> collectAudience() {
+			java.util.Set<UUID> out = new java.util.HashSet<>();
+			try {
+				if (plugin == null || plugin.getRaceService() == null)
+					return out;
+				for (Player p : Bukkit.getOnlinePlayers()) {
+					if (p == null || !p.isOnline())
+						continue;
+					UUID id = p.getUniqueId();
+					if (id == null)
+						continue;
+					// Lobby = not in any race.
+					if (plugin.getRaceService().findRaceFor(id) != null)
+						continue;
+					out.add(id);
+				}
+			} catch (Throwable ignored) {
+			}
+			return out;
+		}
+
+		private Location computeCameraLocation() {
+			if (phase == Phase.WELCOME_FLYBY) {
+				return sampleFlyby();
+			}
+			return fixedCamera;
+		}
+
+		private Location sampleFlyby() {
+			if (flybyPoints == null || flybyPoints.size() < 2)
+				return fixedCamera;
+			long now = System.currentTimeMillis();
+			long dur = Math.max(1L, phaseDurationMs);
+			double t = Math.max(0.0, Math.min(1.0, (double) (now - phaseStartMs) / (double) dur));
+			int segs = flybyPoints.size() - 1;
+			double x = t * segs;
+			int i = Math.max(0, Math.min(segs - 1, (int) Math.floor(x)));
+			double u = x - i;
+
+			Location a = flybyPoints.get(i);
+			Location b = flybyPoints.get(i + 1);
+			if (a == null || b == null)
+				return fixedCamera;
+			if (a.getWorld() == null || b.getWorld() == null || !a.getWorld().equals(b.getWorld()))
+				return a.clone();
+
+			double px = a.getX() + (b.getX() - a.getX()) * u;
+			double py = a.getY() + (b.getY() - a.getY()) * u;
+			double pz = a.getZ() + (b.getZ() - a.getZ()) * u;
+			Location out = new Location(a.getWorld(), px, py, pz, a.getYaw(), a.getPitch());
+
+			try {
+				if (flybyCenter != null) {
+					float[] ang = dev.belikhun.boatracing.cinematic.CinematicCameraService.lookAt(out, flybyCenter);
+					out.setYaw(ang[0]);
+					out.setPitch(ang[1]);
+				}
+			} catch (Throwable ignored) {
+			}
+
+			return out;
+		}
+
+		private Location guessLobbyCenter() {
+			Player any = firstOnline();
+			if (any != null) {
+				try {
+					Location spawn = any.getWorld() != null ? any.getWorld().getSpawnLocation() : null;
+					if (spawn != null)
+						return spawn;
+				} catch (Throwable ignored) {
+				}
+				try {
+					return any.getLocation().clone();
+				} catch (Throwable ignored) {
+				}
+			}
+			try {
+				org.bukkit.World w = Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().get(0);
+				if (w != null)
+					return w.getSpawnLocation();
+			} catch (Throwable ignored) {
+			}
+			return null;
+		}
+
+		private java.util.List<Location> buildFlybyPoints() {
+			Location center = flybyCenter;
+			if (center == null || center.getWorld() == null)
+				return java.util.Collections.emptyList();
+			double radius = plugin.getConfig().getDouble("event.opening-titles.lobby-camera.radius", 16.0);
+			double height = plugin.getConfig().getDouble("event.opening-titles.lobby-camera.height", 12.0);
+			int points = 4;
+			try {
+				java.util.List<?> raw = plugin.getConfig().getList("event.opening-titles.lobby-camera.points");
+				if (raw != null && !raw.isEmpty()) {
+					// If admins filled explicit points, ignore for now (future extension).
+				}
+			} catch (Throwable ignored) {
+			}
+
+			java.util.List<Location> out = new java.util.ArrayList<>();
+			for (int i = 0; i <= points; i++) {
+				double ang = (Math.PI * 2.0) * ((double) i / (double) points);
+				double x = center.getX() + Math.cos(ang) * radius;
+				double z = center.getZ() + Math.sin(ang) * radius;
+				double y = center.getY() + height;
+				out.add(new Location(center.getWorld(), x, y, z, 0.0f, 0.0f));
+			}
+			return out;
+		}
+
+		private Player pickNextFeaturedOnline(RaceEvent e) {
+			if (racerOrder == null || racerOrder.isEmpty())
+				return null;
+			for (; racerIndex < racerOrder.size(); racerIndex++) {
+				UUID id = racerOrder.get(racerIndex);
+				Player p = (id != null) ? Bukkit.getPlayer(id) : null;
+				if (p == null || !p.isOnline())
+					continue;
+				racerIndex++;
+				return p;
+			}
+			return null;
+		}
+
+		private void moveFeaturedToStage(Player p) {
+			if (p == null)
+				return;
+			try {
+				savedModes.putIfAbsent(p.getUniqueId(), safeGameMode(p));
+				savedLocations.putIfAbsent(p.getUniqueId(), safeLocation(p));
+			} catch (Throwable ignored) {
+			}
+			try {
+				if (p.isInsideVehicle())
+					p.leaveVehicle();
+			} catch (Throwable ignored) {
+			}
+			try {
+				p.setGameMode(GameMode.ADVENTURE);
+			} catch (Throwable ignored) {
+			}
+			try {
+				Location st = stageLocation;
+				if (st != null && st.getWorld() != null)
+					p.teleport(st);
+			} catch (Throwable ignored) {
+			}
+		}
+
+		private void showTitleToAudience(RaceEvent e, String title, String subtitle, int seconds) {
+			java.util.Set<UUID> audience = collectAudience();
+			String t = expandEventTitle(e, title);
+			String sub = expandEventTitle(e, subtitle);
+			int fadeIn = 10;
+			int fadeOut = 10;
+			int stay = Math.max(20, seconds * 20 - fadeIn - fadeOut);
+			String tColored = Text.colorize(t);
+			String subColored = Text.colorize(sub);
+			for (UUID id : audience) {
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline())
+					continue;
+				try {
+					showLegacyTitle(p, tColored, subColored, fadeIn, stay, fadeOut);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+
+		private static void showLegacyTitle(Player p, String titleLegacy, String subtitleLegacy, int fadeInTicks,
+				int stayTicks, int fadeOutTicks) {
+			if (p == null)
+				return;
+			try {
+				Component title = (titleLegacy == null || titleLegacy.isBlank())
+						? Component.empty()
+						: TITLE_LEGACY.deserialize(titleLegacy);
+				Component subtitle = (subtitleLegacy == null || subtitleLegacy.isBlank())
+						? Component.empty()
+						: TITLE_LEGACY.deserialize(subtitleLegacy);
+
+				Title.Times times = Title.Times.times(
+						Duration.ofMillis(Math.max(0L, fadeInTicks) * 50L),
+						Duration.ofMillis(Math.max(0L, stayTicks) * 50L),
+						Duration.ofMillis(Math.max(0L, fadeOutTicks) * 50L));
+
+				p.showTitle(Title.title(title, subtitle, times));
+			} catch (Throwable ignored) {
+			}
+		}
+
+		private String cfgText(String path, String def) {
+			try {
+				String s = plugin.getConfig().getString(path);
+				return (s == null) ? def : s;
+			} catch (Throwable ignored) {
+				return def;
+			}
+		}
+
+		private String expandEventTitle(RaceEvent e, String raw) {
+			String out = raw == null ? "" : raw;
+			String title = (e == null) ? "" : eventService.safeName(e.title);
+			out = out.replace("%event_title%", title);
+			return out;
+		}
+
+		private String buildRacerDisplay(UUID id, String name) {
+			try {
+				var pm = plugin.getProfileManager();
+				if (pm != null)
+					return pm.formatRacerLegacy(id, name);
+			} catch (Throwable ignored) {
+			}
+			return "&f" + (name == null ? "(không rõ)" : name);
+		}
+
+		private void restoreAllPlayers() {
+			for (UUID id : new java.util.HashSet<>(savedModes.keySet())) {
+				GameMode gm = savedModes.get(id);
+				Location loc = savedLocations.get(id);
+				Player p = Bukkit.getPlayer(id);
+				if (p != null && p.isOnline()) {
+					try {
+						if (gm != null)
+							p.setGameMode(gm);
+					} catch (Throwable ignored) {
+					}
+					try {
+						if (loc != null && loc.getWorld() != null)
+							p.teleport(loc);
+					} catch (Throwable ignored) {
+					}
+				} else {
+					if (gm != null)
+						pendingRestoreModes.put(id, gm);
+					if (loc != null)
+						pendingRestoreLocations.put(id, loc);
+				}
+			}
+			savedModes.clear();
+			savedLocations.clear();
+		}
+
+		private void flushPendingRestoreFromSaved() {
+			for (UUID id : new java.util.HashSet<>(savedModes.keySet())) {
+				GameMode gm = savedModes.get(id);
+				Location loc = savedLocations.get(id);
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline()) {
+					if (gm != null)
+						pendingRestoreModes.put(id, gm);
+					if (loc != null)
+						pendingRestoreLocations.put(id, loc);
+				}
+			}
+			savedModes.clear();
+			savedLocations.clear();
+		}
+
+		private void scheduleLater(long ticks, Runnable r) {
+			if (!running)
+				return;
+			try {
+				int id = Bukkit.getScheduler().runTaskLater(plugin, () -> {
+					try {
+						if (running)
+							r.run();
+					} catch (Throwable ignored) {
+					}
+				}, Math.max(1L, ticks)).getTaskId();
+				scheduledTaskIds.add(id);
+			} catch (Throwable ignored) {
+			}
+		}
+
+		private Player firstOnline() {
+			try {
+				for (Player p : Bukkit.getOnlinePlayers()) {
+					if (p != null && p.isOnline())
+						return p;
+				}
+			} catch (Throwable ignored) {
+			}
+			return null;
+		}
+
+		private static GameMode safeGameMode(Player p) {
+			try {
+				return p.getGameMode();
+			} catch (Throwable ignored) {
+				return GameMode.SURVIVAL;
+			}
+		}
+
+		private static Location safeLocation(Player p) {
+			try {
+				Location l = p.getLocation();
+				return l == null ? null : l.clone();
+			} catch (Throwable ignored) {
+				return null;
+			}
+		}
+
+		private static int clamp(int v, int min, int max) {
+			return Math.max(min, Math.min(max, v));
 		}
 	}
 

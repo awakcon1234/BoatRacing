@@ -414,6 +414,11 @@ public class BoatRacingPlugin extends JavaPlugin {
 				} catch (Throwable ignored) {
 				}
 				try {
+					if (eventService != null)
+						eventService.restorePendingOpeningTitles(p);
+				} catch (Throwable ignored) {
+				}
+				try {
 					if (raceService != null)
 						raceService.restorePendingLobbyTeleport(p);
 				} catch (Throwable ignored) {

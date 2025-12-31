@@ -3,6 +3,40 @@ player-actions:
   # Allow non-admin players to perform these actions
   allow-set-boat: true
   allow-set-number: true
+
+# Event opening titles (F1-style)
+event:
+  opening-titles:
+    # Enable the event opening titles sequence.
+    enabled: false
+
+    # Welcome fly-by length (seconds)
+    welcome-seconds: 6
+
+    # Delay before the first racer after the intro subtitle (seconds)
+    intro-gap-seconds: 2
+
+    # How long each racer is featured (seconds)
+    per-racer-seconds: 3
+
+    # Lobby fly-by camera defaults (used if no explicit points are provided)
+    lobby-camera:
+      radius: 16.0
+      height: 12.0
+      points: []
+
+    # Titles/subtitles (MiniMessage-like strings are NOT parsed here; use legacy &-colors in code if needed).
+    # Placeholders used by the implementation:
+    #   %event_title% %racer_display%
+    text:
+      welcome_title: "Chào mừng!"
+      welcome_subtitle: "%event_title%"
+      racers_intro_title: ""
+      racers_intro_subtitle: "Đây là những gương mặt sẽ tranh tài hôm nay"
+      racer_card_title: ""
+      racer_card_subtitle: "%racer_display%"
+      outro_title: "Bắt đầu thôi!"
+      outro_subtitle: "Đang chuẩn bị chặng đua đầu tiên…"
 racing:
   laps: 3
   registration-seconds: 30
@@ -330,3 +364,49 @@ mapengine:
     # Placement is written manually by config for now.
     # You can copy the structure from mapengine.lobby-board.placement.
     placement: {}
+
+  # Opening titles board (MapEngine) (optional)
+  # Used during event opening titles to display server favicon and per-racer cards.
+  opening-titles:
+    enabled: false
+
+    # Stage spawn for featured racer (used by Event opening titles)
+    stage:
+      world: world
+      x: 0
+      y: 100
+      z: 0
+      yaw: 180
+      pitch: 0
+
+    # Camera viewing position for the audience (fixed)
+    camera:
+      world: world
+      x: 0
+      y: 102
+      z: -8
+      yaw: 0
+      pitch: 10
+
+    # How often to redraw the board (in server ticks). For ~20fps, set 1.
+    update-ticks: 1
+
+    # Optional custom font file for MapEngine rendering.
+    # Same rules as lobby-board.font-file.
+    font-file: ""
+
+    # Font sizes (fallback is Monospaced).
+    font:
+      title-size: 18
+      body-size: 14
+
+    debug: false
+
+    pipeline:
+      buffering: true
+      bundling: false
+
+    # Placement is written manually by config for now.
+    # You can copy the structure from mapengine.lobby-board.placement.
+    board:
+      placement: {}

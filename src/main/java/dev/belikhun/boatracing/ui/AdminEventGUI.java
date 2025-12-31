@@ -9,6 +9,7 @@ import net.wesjd.anvilgui.AnvilGUI;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Location;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -21,6 +22,7 @@ import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -35,6 +37,7 @@ public class AdminEventGUI implements Listener {
 	private static final Component TITLE_TRACKS = Text.title("Track pool");
 	private static final Component TITLE_TRACK_ADD = Text.title("Thêm track");
 	private static final Component TITLE_TRACK_REMOVE = Text.title("Xóa track");
+	private static final Component TITLE_OPENING = Text.title("Mở đầu sự kiện");
 
 	private final BoatRacingPlugin plugin;
 	private final NamespacedKey KEY_ACTION;
@@ -51,6 +54,17 @@ public class AdminEventGUI implements Listener {
 		START,
 		CANCEL,
 		TRACK_POOL,
+		OPENING_MENU,
+		OPENING_START,
+		OPENING_STOP,
+		OPENING_STAGE_SET,
+		OPENING_STAGE_CLEAR,
+		OPENING_CAMERA_SET,
+		OPENING_CAMERA_CLEAR,
+		OPENING_BOARD_SET,
+		OPENING_BOARD_PREVIEW,
+		OPENING_BOARD_STATUS,
+		OPENING_BOARD_CLEAR,
 		TRACK_ADD,
 		TRACK_REMOVE,
 		BACK,
@@ -156,6 +170,13 @@ public class AdminEventGUI implements Listener {
 						"&eBấm: &fMở track pool"
 				), true, null));
 
+		inv.setItem(24, buttonWithLore(Material.NETHER_STAR, Text.item("&b&lMở đầu sự kiện"), Action.OPENING_MENU,
+				List.of(
+						"&7Quản lý intro kiểu F1 (fly-by + giới thiệu tay đua).",
+						" ",
+						"&eBấm: &fMở cấu hình / điều khiển"
+				), true, null));
+
 		inv.setItem(23, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), Action.REFRESH,
 				List.of("&7Cập nhật thông tin."), true, null));
 
@@ -164,6 +185,143 @@ public class AdminEventGUI implements Listener {
 
 		p.openInventory(inv);
 		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
+	}
+
+	private void openOpeningMenu(Player p) {
+		if (!hasPerm(p)) {
+			Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+			return;
+		}
+		EventService svc = svc();
+		if (svc == null) {
+			Text.msg(p, "&cTính năng sự kiện đang bị tắt.");
+			return;
+		}
+
+		int size = 27;
+		Inventory inv = Bukkit.createInventory(null, size, TITLE_OPENING);
+		ItemStack filler = pane(Material.GRAY_STAINED_GLASS_PANE);
+		for (int i = 0; i < size; i++)
+			inv.setItem(i, filler);
+
+		inv.setItem(10, openingStatusCard(p));
+
+		inv.setItem(12, buttonWithLore(Material.LIME_WOOL, Text.item("&a&lBắt đầu"), Action.OPENING_START,
+				List.of(
+						"&7Chạy mở đầu sự kiện cho người chơi trong sảnh.",
+						"&8Không khuyến khích khi đang đếm ngược/chạy chặng.",
+						" ",
+						"&eBấm: &fBắt đầu"
+				), true, null));
+
+		inv.setItem(13, buttonWithLore(Material.RED_WOOL, Text.item("&c&lDừng"), Action.OPENING_STOP,
+				List.of(
+						"&7Dừng mở đầu và khôi phục người chơi.",
+						" ",
+						"&eBấm: &fDừng"
+				), true, null));
+
+		inv.setItem(14, buttonWithLore(Material.ARMOR_STAND, Text.item("&e&lSân khấu"), Action.OPENING_STAGE_SET,
+				List.of(
+						"&7Đặt vị trí sân khấu (nơi tay đua được giới thiệu).",
+						" ",
+						"&eBấm: &fĐặt theo vị trí hiện tại"
+				), true, null));
+
+		inv.setItem(15, buttonWithLore(Material.BARRIER, Text.item("&7&lXóa sân khấu"), Action.OPENING_STAGE_CLEAR,
+				List.of(
+						"&7Xóa vị trí sân khấu đã lưu.",
+						" ",
+						"&eBấm: &fXóa"
+				), true, null));
+
+		inv.setItem(16, buttonWithLore(Material.SPYGLASS, Text.item("&b&lCamera"), Action.OPENING_CAMERA_SET,
+				List.of(
+						"&7Đặt vị trí camera cố định khi giới thiệu.",
+						" ",
+						"&eBấm: &fĐặt theo vị trí hiện tại"
+				), true, null));
+
+		inv.setItem(21, buttonWithLore(Material.BARRIER, Text.item("&7&lXóa camera"), Action.OPENING_CAMERA_CLEAR,
+				List.of(
+						"&7Xóa vị trí camera đã lưu.",
+						" ",
+						"&eBấm: &fXóa"
+				), true, null));
+
+		inv.setItem(22, buttonWithLore(Material.ITEM_FRAME, Text.item("&d&lBảng mở đầu"), Action.OPENING_BOARD_SET,
+				List.of(
+						"&7Đặt bảng MapEngine theo selection hiện tại.",
+						"&8Bỏ trống hướng: tự chọn theo vị trí của bạn.",
+						" ",
+						"&eBấm: &fĐặt bảng (auto)"
+				), true, null));
+
+		inv.setItem(23, buttonWithLore(Material.MAP, Text.item("&e&lXem trước"), Action.OPENING_BOARD_PREVIEW,
+				List.of(
+						"&7Xem trước UI bảng mở đầu ngay.",
+						" ",
+						"&eBấm: &fXem trước"
+				), true, null));
+
+		inv.setItem(24, buttonWithLore(Material.PAPER, Text.item("&f&lTrạng thái bảng"), Action.OPENING_BOARD_STATUS,
+				List.of(
+						"&7Hiển thị trạng thái bảng mở đầu.",
+						" ",
+						"&eBấm: &fXem trạng thái"
+				), true, null));
+
+		inv.setItem(25, buttonWithLore(Material.RED_CONCRETE, Text.item("&c&lXóa bảng"), Action.OPENING_BOARD_CLEAR,
+				List.of(
+						"&7Xóa vị trí bảng mở đầu (MapEngine).",
+						" ",
+						"&eBấm: &fXóa"
+				), true, null));
+
+		inv.setItem(18, buttonWithLore(Material.ARROW, Text.item("&7&lTrở về"), Action.BACK,
+				List.of("&7Về quản lý sự kiện."), true, null));
+		inv.setItem(26, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
+				List.of("&7Đóng."), true, null));
+
+		p.openInventory(inv);
+		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
+	}
+
+	private ItemStack openingStatusCard(Player p) {
+		EventService svc = svc();
+		ItemStack it = new ItemStack(Material.PAPER);
+		ItemMeta im = it.getItemMeta();
+		if (im != null) {
+			im.displayName(Text.item("&f&lTrạng thái mở đầu"));
+			List<String> lore = new ArrayList<>();
+			boolean running = false;
+			try {
+				running = (svc != null && svc.isOpeningTitlesRunning());
+			} catch (Throwable ignored) {
+				running = false;
+			}
+			lore.add("&7Đang chạy: " + (running ? "&a✔" : "&c❌"));
+
+			Location stage = readLocation("mapengine.opening-titles.stage");
+			Location cam = readLocation("mapengine.opening-titles.camera");
+			lore.add(" ");
+			lore.add("&7Sân khấu: " + (stage == null ? "&cChưa đặt" : "&a" + fmt(stage)));
+			lore.add("&7Camera: " + (cam == null ? "&cChưa đặt" : "&a" + fmt(cam)));
+
+			try {
+				var bs = (svc != null ? svc.getOpeningTitlesBoardService() : null);
+				if (bs != null) {
+					lore.add(" ");
+					lore.add("&7Bảng: " + bs.placementSummary());
+				}
+			} catch (Throwable ignored) {
+			}
+
+			im.lore(Text.lore(lore));
+			im.addItemFlags(ItemFlag.values());
+			it.setItemMeta(im);
+		}
+		return it;
 	}
 
 	private ItemStack statusCard(Player p) {
@@ -429,7 +587,8 @@ public class AdminEventGUI implements Listener {
 		boolean inTracks = title.equals(Text.plain(TITLE_TRACKS));
 		boolean inAdd = title.equals(Text.plain(TITLE_TRACK_ADD));
 		boolean inRemove = title.equals(Text.plain(TITLE_TRACK_REMOVE));
-		if (!inMain && !inPick && !inTracks && !inAdd && !inRemove)
+		boolean inOpening = title.equals(Text.plain(TITLE_OPENING));
+		if (!inMain && !inPick && !inTracks && !inAdd && !inRemove && !inOpening)
 			return;
 
 		e.setCancelled(true);
@@ -474,6 +633,8 @@ public class AdminEventGUI implements Listener {
 					open(p);
 				else if (inAdd || inRemove)
 					openTrackPool(p);
+				else if (inOpening)
+					open(p);
 				else
 					open(p);
 			}
@@ -495,6 +656,93 @@ public class AdminEventGUI implements Listener {
 			case START -> doStart(p);
 			case CANCEL -> doCancel(p);
 			case TRACK_POOL -> openTrackPool(p);
+			case OPENING_MENU -> openOpeningMenu(p);
+			case OPENING_START -> {
+				EventService svc = svc();
+				if (svc == null)
+					return;
+				boolean ok = svc.startOpeningTitlesNow();
+				Text.msg(p, ok ? "&aĐã bắt đầu mở đầu sự kiện." : "&cKhông thể bắt đầu lúc này. &7(Hãy đảm bảo chưa có chặng đang chạy/đếm ngược.)");
+				openOpeningMenu(p);
+			}
+			case OPENING_STOP -> {
+				EventService svc = svc();
+				if (svc != null)
+					svc.stopOpeningTitlesNow(true);
+				Text.msg(p, "&aĐã dừng mở đầu sự kiện.");
+				openOpeningMenu(p);
+			}
+			case OPENING_STAGE_SET -> {
+				writeLocation("mapengine.opening-titles.stage", p.getLocation());
+				Text.msg(p, "&aĐã đặt sân khấu mở đầu tại: &f" + fmt(p.getLocation()));
+				openOpeningMenu(p);
+			}
+			case OPENING_STAGE_CLEAR -> {
+				clearLocation("mapengine.opening-titles.stage");
+				Text.msg(p, "&aĐã xóa vị trí sân khấu mở đầu.");
+				openOpeningMenu(p);
+			}
+			case OPENING_CAMERA_SET -> {
+				writeLocation("mapengine.opening-titles.camera", p.getLocation());
+				Text.msg(p, "&aĐã đặt camera mở đầu tại: &f" + fmt(p.getLocation()));
+				openOpeningMenu(p);
+			}
+			case OPENING_CAMERA_CLEAR -> {
+				clearLocation("mapengine.opening-titles.camera");
+				Text.msg(p, "&aĐã xóa vị trí camera mở đầu.");
+				openOpeningMenu(p);
+			}
+			case OPENING_BOARD_SET -> {
+				EventService svc = svc();
+				if (svc == null) {
+					openOpeningMenu(p);
+					return;
+				}
+				var bs = svc.getOpeningTitlesBoardService();
+				if (bs == null) {
+					Text.msg(p, "&cTính năng bảng mở đầu đang bị tắt.");
+					openOpeningMenu(p);
+					return;
+				}
+				var sel = dev.belikhun.boatracing.track.SelectionUtils.getSelectionDetailed(p);
+				if (sel == null) {
+					Text.msg(p, "&cKhông phát hiện selection. Dùng wand để chọn 2 góc trước.");
+					openOpeningMenu(p);
+					return;
+				}
+				boolean ok = bs.setPlacementFromSelection(p, sel.box, null);
+				Text.msg(p, ok ? "&aĐã đặt bảng mở đầu." : "&cKhông thể đặt bảng. Hãy chọn vùng phẳng (2D) phù hợp và thử lại.");
+				openOpeningMenu(p);
+			}
+			case OPENING_BOARD_PREVIEW -> {
+				EventService svc = svc();
+				if (svc != null)
+					svc.previewOpeningTitlesBoard(p);
+				Text.msg(p, "&aĐã gửi bản xem trước bảng mở đầu.");
+				openOpeningMenu(p);
+			}
+			case OPENING_BOARD_STATUS -> {
+				EventService svc = svc();
+				var bs = (svc != null ? svc.getOpeningTitlesBoardService() : null);
+				if (bs == null) {
+					Text.msg(p, "&cTính năng bảng mở đầu đang bị tắt.");
+					openOpeningMenu(p);
+					return;
+				}
+				for (String line : bs.statusLines()) {
+					Text.msg(p, line);
+				}
+				p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
+				openOpeningMenu(p);
+			}
+			case OPENING_BOARD_CLEAR -> {
+				EventService svc = svc();
+				var bs = (svc != null ? svc.getOpeningTitlesBoardService() : null);
+				if (bs != null)
+					bs.clearPlacement();
+				Text.msg(p, "&aĐã xóa vị trí bảng mở đầu.");
+				openOpeningMenu(p);
+			}
 			case TRACK_ADD -> {
 				if (inTracks) {
 					openTrackAddPicker(p);
@@ -521,9 +769,64 @@ public class AdminEventGUI implements Listener {
 				|| title.equals(Text.plain(TITLE_PICK))
 				|| title.equals(Text.plain(TITLE_TRACKS))
 				|| title.equals(Text.plain(TITLE_TRACK_ADD))
-				|| title.equals(Text.plain(TITLE_TRACK_REMOVE))) {
+				|| title.equals(Text.plain(TITLE_TRACK_REMOVE))
+				|| title.equals(Text.plain(TITLE_OPENING))) {
 			e.setCancelled(true);
 		}
+	}
+
+	private void writeLocation(String path, Location loc) {
+		if (plugin == null || path == null || path.isBlank() || loc == null || loc.getWorld() == null)
+			return;
+		ConfigurationSection sec = plugin.getConfig().createSection(path);
+		sec.set("world", loc.getWorld().getName());
+		sec.set("x", loc.getX());
+		sec.set("y", loc.getY());
+		sec.set("z", loc.getZ());
+		sec.set("yaw", (double) loc.getYaw());
+		sec.set("pitch", (double) loc.getPitch());
+		plugin.saveConfig();
+	}
+
+	private void clearLocation(String path) {
+		if (plugin == null || path == null || path.isBlank())
+			return;
+		plugin.getConfig().set(path, null);
+		plugin.saveConfig();
+	}
+
+	private Location readLocation(String path) {
+		if (plugin == null || path == null || path.isBlank())
+			return null;
+		try {
+			ConfigurationSection sec = plugin.getConfig().getConfigurationSection(path);
+			if (sec == null)
+				return null;
+			String worldName = sec.getString("world", "");
+			if (worldName == null || worldName.isBlank())
+				return null;
+			org.bukkit.World w = Bukkit.getWorld(worldName);
+			if (w == null)
+				return null;
+			double x = sec.getDouble("x", 0.0);
+			double y = sec.getDouble("y", 0.0);
+			double z = sec.getDouble("z", 0.0);
+			float yaw = (float) sec.getDouble("yaw", 0.0);
+			float pitch = (float) sec.getDouble("pitch", 0.0);
+			return new Location(w, x, y, z, yaw, pitch);
+		} catch (Throwable ignored) {
+			return null;
+		}
+	}
+
+	private static String fmt(Location loc) {
+		if (loc == null || loc.getWorld() == null)
+			return "(không rõ)";
+		return loc.getWorld().getName() + " &7(" + String.format(java.util.Locale.ROOT, "%.2f", loc.getX())
+				+ ", " + String.format(java.util.Locale.ROOT, "%.2f", loc.getY())
+				+ ", " + String.format(java.util.Locale.ROOT, "%.2f", loc.getZ()) + ")"
+				+ " &8● &7yaw &f" + String.format(java.util.Locale.ROOT, "%.1f", loc.getYaw())
+				+ "&7, pitch &f" + String.format(java.util.Locale.ROOT, "%.1f", loc.getPitch());
 	}
 
 	private void beginCreateEvent(Player p) {
