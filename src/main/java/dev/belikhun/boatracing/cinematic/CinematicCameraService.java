@@ -256,8 +256,14 @@ public class CinematicCameraService {
 			if (p == null || !p.isOnline())
 				continue;
 			try {
-				p.playSound(p.getLocation(), sound, volume, pitch);
-			} catch (Throwable ignored) {
+				// Play sound attached to the player entity so it follows them
+				p.playSound(p, sound, volume, pitch);
+			} catch (Throwable t) {
+				// Fallback
+				try {
+					p.playSound(p.getLocation(), sound, volume, pitch);
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 	}
