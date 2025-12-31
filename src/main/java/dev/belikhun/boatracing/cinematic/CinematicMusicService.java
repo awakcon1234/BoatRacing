@@ -27,9 +27,11 @@ public class CinematicMusicService {
 	private static IntroTune cachedEthereal;
 	private static IntroTune cachedCyberpunk;
 	private static IntroTune cachedWestern;
+	private static IntroTune cachedMystery;
+	private static IntroTune cachedIndustrial;
 
 	public static IntroTune getRandomIntroTune() {
-		int pick = ThreadLocalRandom.current().nextInt(8);
+		int pick = ThreadLocalRandom.current().nextInt(10);
 		switch (pick) {
 			case 0: return introTuneNeoClassical();
 			case 1: return introTuneEpic();
@@ -39,6 +41,8 @@ public class CinematicMusicService {
 			case 5: return introTuneEthereal();
 			case 6: return introTuneCyberpunk();
 			case 7: return introTuneWestern();
+			case 8: return introTuneMystery();
+			case 9: return introTuneIndustrial();
 			default: return introTuneNeoClassical();
 		}
 	}
@@ -412,7 +416,7 @@ public class CinematicMusicService {
 		// Cmaj7: C E G B
 		// Fmaj7: F A C E
 
-		for (int bar = 0; bar < 5; bar++) {
+		for (int bar = 0; bar < 4; bar++) {
 			int barOffset = bar * 16 * step;
 			boolean isC = (bar % 2 == 0);
 
@@ -441,7 +445,24 @@ public class CinematicMusicService {
 			addSound(out, barOffset, bell, master * 0.6f, isC ? Pitches.C5 : Pitches.F5 > 2.0f ? Pitches.F4 : Pitches.F5);
 		}
 
-		int end = 5 * 16 * step;
+		// Outro: Resolve to C (8 steps)
+		int outroStart = 4 * 16 * step;
+		for (int i = 0; i < 8; i++) {
+			int t = outroStart + (i * step);
+			// Final Cmaj7 strum
+			if (i == 0) {
+				addSound(out, t, harp, master * 0.6f, Pitches.C4);
+				addSound(out, t, harp, master * 0.6f, Pitches.E4);
+				addSound(out, t, harp, master * 0.6f, Pitches.G4);
+				addSound(out, t, harp, master * 0.6f, Pitches.B4);
+			}
+			// Single chime
+			if (i == 4) {
+				addSound(out, t, chime, master * 0.8f, Pitches.C5);
+			}
+		}
+
+		int end = outroStart + (8 * step);
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, chime, master, Pitches.C5);
 		return cachedEthereal = new IntroTune("Ethereal Dream", out);
@@ -462,7 +483,7 @@ public class CinematicMusicService {
 		// Dm - Bb - C - Am
 		float[] roots = {Pitches.D4, Pitches.Bb3, Pitches.C4, Pitches.A3};
 
-		for (int bar = 0; bar < 10; bar++) {
+		for (int bar = 0; bar < 9; bar++) {
 			int barOffset = bar * 16 * step;
 			float r = roots[bar % 4];
 
@@ -484,7 +505,7 @@ public class CinematicMusicService {
 			}
 		}
 
-		int end = 10 * 16 * step;
+		int end = 9 * 16 * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		return cachedCyberpunk = new IntroTune("Cyberpunk 2077", out);
 	}
@@ -533,6 +554,96 @@ public class CinematicMusicService {
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, banjo, master, Pitches.E4);
 		return cachedWestern = new IntroTune("Wild West", out);
+	}
+
+	public static IntroTune introTuneMystery() {
+		if (cachedMystery != null) return cachedMystery;
+		List<CinematicSoundEvent> out = new ArrayList<>();
+		final float master = 0.85f;
+		final Sound piano = Sound.BLOCK_NOTE_BLOCK_HARP;
+		final Sound bass = Sound.BLOCK_NOTE_BLOCK_BASS;
+
+		// Tempo: Slow (step 4)
+		final int step = 4;
+
+		// Key: Gm
+		// Progression: Gm - Eb - Cm - D
+		float[] roots = {Pitches.G3, Pitches.Ds4, Pitches.C4, Pitches.D4};
+
+		// 4 bars of 16 steps = 64 steps = 256 ticks.
+		for (int bar = 0; bar < 4; bar++) {
+			int barOffset = bar * 16 * step;
+			float r = roots[bar];
+
+			// Bass drone
+			addSound(out, barOffset, bass, master * 0.7f, r);
+			addSound(out, barOffset + (8 * step), bass, master * 0.6f, r);
+
+			// Piano melody (arpeggiated slowly)
+			float[] notes;
+			switch(bar) {
+				case 0: notes = new float[]{Pitches.G3, Pitches.Bb3, Pitches.D4, Pitches.G4}; break; // Gm
+				case 1: notes = new float[]{Pitches.Ds4, Pitches.G4, Pitches.Bb4, Pitches.Ds5}; break; // Eb
+				case 2: notes = new float[]{Pitches.C4, Pitches.Ds4, Pitches.G4, Pitches.C5}; break; // Cm
+				case 3: notes = new float[]{Pitches.D4, Pitches.Fs4, Pitches.A4, Pitches.D5}; break; // D
+				default: notes = new float[]{Pitches.G3, Pitches.Bb3, Pitches.D4, Pitches.G4};
+			}
+
+			// Play notes at 0, 4, 8, 12
+			for(int i=0; i<4; i++) {
+				addSound(out, barOffset + (i * 4 * step), piano, master * 0.8f, notes[i]);
+			}
+		}
+
+		int end = 64 * step;
+		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
+		addSound(out, end, piano, master, Pitches.G3);
+
+		return cachedMystery = new IntroTune("Mystery", out);
+	}
+
+	public static IntroTune introTuneIndustrial() {
+		if (cachedIndustrial != null) return cachedIndustrial;
+		List<CinematicSoundEvent> out = new ArrayList<>();
+		final float master = 0.85f;
+		final Sound kick = Sound.BLOCK_NOTE_BLOCK_BASEDRUM;
+		final Sound snare = Sound.BLOCK_NOTE_BLOCK_SNARE;
+		final Sound hat = Sound.BLOCK_NOTE_BLOCK_HAT;
+		final Sound bit = Sound.BLOCK_NOTE_BLOCK_BIT;
+
+		// Tempo: Medium-Fast (step 3)
+		final int step = 3;
+
+		// 6 bars of 16 steps = 96 steps * 3 = 288 ticks.
+		for (int bar = 0; bar < 6; bar++) {
+			int barOffset = bar * 16 * step;
+
+			for (int i = 0; i < 16; i++) {
+				int t = barOffset + (i * step);
+
+				// Industrial Beat
+				// Kick on 0, 4, 8, 12 (Four on floor)
+				if (i % 4 == 0) addSound(out, t, kick, master * 0.9f, 0.8f);
+
+				// Snare/Clang on 4, 12
+				if (i % 8 == 4) {
+					addSound(out, t, snare, master * 0.9f, 0.6f);
+					if (bar % 2 == 1) addSound(out, t, bit, master * 0.5f, 0.5f); // Low bit noise
+				}
+
+				// Hi-hats 16ths
+				addSound(out, t, hat, master * 0.4f, 1.5f);
+
+				// Metallic rhythm
+				if (i == 2 || i == 6 || i == 10 || i == 14) {
+					addSound(out, t, bit, master * 0.3f, 2.0f);
+				}
+			}
+		}
+
+		int end = 96 * step;
+		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
+		return cachedIndustrial = new IntroTune("Industrial Zone", out);
 	}
 
 	public static Sound parseSound(String name) {
