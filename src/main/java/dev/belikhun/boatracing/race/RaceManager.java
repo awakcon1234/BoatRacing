@@ -3062,12 +3062,8 @@ public class RaceManager {
 	}
 
 	private int introSegmentTicks() {
-		try {
-			// A longer, slower fly-by looks more cinematic. Users can override in config.
-			return Math.max(40, plugin != null ? plugin.getConfig().getInt("racing.intro.segment-ticks", 140) : 140);
-		} catch (Throwable ignored) {
-			return 140;
-		}
+		// Hardcoded to 75 ticks to match the 14.4s music loop (4 points * 75 ticks + hold = ~315 ticks)
+		return 75;
 	}
 
 	private double introRadius() {
@@ -3297,7 +3293,7 @@ public class RaceManager {
 		try {
 			boolean soundEnabled = plugin != null && plugin.getConfig().getBoolean("racing.intro.sound.enabled", true);
 			if (soundEnabled) {
-				snd = CinematicCameraService.defaultMarioKartInspiredJingle();
+				snd = CinematicCameraService.defaultArcadeIntroTune();
 			}
 		} catch (Throwable ignored) {
 		}

@@ -14,10 +14,6 @@ racing:
     # Number of camera points (keyframes groups) to show.
     points: 4
 
-    # Duration per point segment (ticks). Total intro length scales with points.
-    # Recommended: 60 (3 seconds)
-    segment-ticks: 60
-
     # Camera orbit parameters
     radius: 16.0
     height: 12.0
