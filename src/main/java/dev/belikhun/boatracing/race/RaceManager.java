@@ -3148,7 +3148,7 @@ public class RaceManager {
 		return dedup;
 	}
 
-	private CinematicSequence buildIntroSequence(java.util.List<Location> targets) {
+	private CinematicSequence buildIntroSequence(java.util.List<Location> targets, java.util.List<Player> audience) {
 		if (targets == null || targets.isEmpty())
 			return null;
 		Random rnd = new Random();
@@ -3293,7 +3293,19 @@ public class RaceManager {
 		try {
 			boolean soundEnabled = plugin != null && plugin.getConfig().getBoolean("racing.intro.sound.enabled", true);
 			if (soundEnabled) {
-				snd = dev.belikhun.boatracing.cinematic.CinematicMusicService.defaultArcadeIntroTune();
+				var tune = dev.belikhun.boatracing.cinematic.CinematicMusicService.defaultArcadeIntroTune();
+				snd = tune.events;
+				if (audience != null && tune.name != null) {
+					String msg = "&7♪ Đang phát: &f" + tune.name;
+					for (Player p : audience) {
+						try {
+							Text.msg(p, msg);
+							p.sendActionBar(net.kyori.adventure.text.Component.text("♪ " + tune.name)
+									.color(net.kyori.adventure.text.format.NamedTextColor.AQUA));
+						} catch (Throwable ignored) {
+						}
+					}
+				}
 			}
 		} catch (Throwable ignored) {
 		}
@@ -3408,7 +3420,7 @@ public class RaceManager {
 			introPlayers.add(p.getUniqueId());
 		}
 
-		CinematicSequence seq = buildIntroSequence(introCandidateTargets());
+		CinematicSequence seq = buildIntroSequence(introCandidateTargets(), introPlayersList);
 		if (seq == null) {
 			introPlayers.clear();
 			introEndMillis = 0L;

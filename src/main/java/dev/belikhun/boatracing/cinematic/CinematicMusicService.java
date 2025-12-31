@@ -9,8 +9,27 @@ import java.util.concurrent.ThreadLocalRandom;
 
 public class CinematicMusicService {
 
-	public static List<CinematicSoundEvent> getRandomIntroTune() {
-		int pick = ThreadLocalRandom.current().nextInt(6);
+	public static class IntroTune {
+		public final String name;
+		public final List<CinematicSoundEvent> events;
+
+		public IntroTune(String name, List<CinematicSoundEvent> events) {
+			this.name = name;
+			this.events = events;
+		}
+	}
+
+	private static IntroTune cachedNeoClassical;
+	private static IntroTune cachedEpic;
+	private static IntroTune cachedFunky;
+	private static IntroTune cachedUndertale;
+	private static IntroTune cachedRetro;
+	private static IntroTune cachedEthereal;
+	private static IntroTune cachedCyberpunk;
+	private static IntroTune cachedWestern;
+
+	public static IntroTune getRandomIntroTune() {
+		int pick = ThreadLocalRandom.current().nextInt(8);
 		switch (pick) {
 			case 0: return introTuneNeoClassical();
 			case 1: return introTuneEpic();
@@ -18,15 +37,18 @@ public class CinematicMusicService {
 			case 3: return introTuneUndertale();
 			case 4: return introTuneRetro();
 			case 5: return introTuneEthereal();
+			case 6: return introTuneCyberpunk();
+			case 7: return introTuneWestern();
 			default: return introTuneNeoClassical();
 		}
 	}
 
-	public static List<CinematicSoundEvent> defaultArcadeIntroTune() {
+	public static IntroTune defaultArcadeIntroTune() {
 		return getRandomIntroTune();
 	}
 
-	public static List<CinematicSoundEvent> introTuneNeoClassical() {
+	public static IntroTune introTuneNeoClassical() {
+		if (cachedNeoClassical != null) return cachedNeoClassical;
 		// "Neo-Classical Speed" - High tempo arpeggios
 		List<CinematicSoundEvent> out = new ArrayList<>();
 
@@ -124,10 +146,11 @@ public class CinematicMusicService {
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, lead, master, Pitches.Fs4);
 
-		return out;
+		return cachedNeoClassical = new IntroTune("Neo-Classical Speed", out);
 	}
 
-	public static List<CinematicSoundEvent> introTuneEpic() {
+	public static IntroTune introTuneEpic() {
+		if (cachedEpic != null) return cachedEpic;
 		// "Epic Orchestral" - Slower, heavy hits
 		List<CinematicSoundEvent> out = new ArrayList<>();
 		final float master = 0.85f;
@@ -193,10 +216,11 @@ public class CinematicMusicService {
 		int end = outroStart + (8 * step);
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 
-		return out;
+		return cachedEpic = new IntroTune("Epic Orchestral", out);
 	}
 
-	public static List<CinematicSoundEvent> introTuneFunky() {
+	public static IntroTune introTuneFunky() {
+		if (cachedFunky != null) return cachedFunky;
 		List<CinematicSoundEvent> out = new ArrayList<>();
 		final float master = 0.85f;
 		final Sound bass = Sound.BLOCK_NOTE_BLOCK_BASS; // Slap bass feel
@@ -253,12 +277,13 @@ public class CinematicMusicService {
 		int end = outroStart + (16 * step);
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 
-		return out;
+		return cachedFunky = new IntroTune("Funky Slap", out);
 	}
 
 
 
-	public static List<CinematicSoundEvent> introTuneUndertale() {
+	public static IntroTune introTuneUndertale() {
+		if (cachedUndertale != null) return cachedUndertale;
 		List<CinematicSoundEvent> out = new ArrayList<>();
 		final float master = 0.85f;
 		final Sound lead = Sound.BLOCK_NOTE_BLOCK_BIT; // 8-bit sound
@@ -312,10 +337,11 @@ public class CinematicMusicService {
 
 		int end = 4 * loopLen * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
-		return out;
+		return cachedUndertale = new IntroTune("Megalovania", out);
 	}
 
-	public static List<CinematicSoundEvent> introTuneRetro() {
+	public static IntroTune introTuneRetro() {
+		if (cachedRetro != null) return cachedRetro;
 		List<CinematicSoundEvent> out = new ArrayList<>();
 		final float master = 0.85f;
 		final Sound lead = Sound.BLOCK_NOTE_BLOCK_BIT;
@@ -368,10 +394,11 @@ public class CinematicMusicService {
 		int end = 64 * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, lead, master, Pitches.C5);
-		return out;
+		return cachedRetro = new IntroTune("Retro 8-Bit", out);
 	}
 
-	public static List<CinematicSoundEvent> introTuneEthereal() {
+	public static IntroTune introTuneEthereal() {
+		if (cachedEthereal != null) return cachedEthereal;
 		List<CinematicSoundEvent> out = new ArrayList<>();
 		final float master = 0.85f;
 		final Sound chime = Sound.BLOCK_NOTE_BLOCK_CHIME;
@@ -417,7 +444,95 @@ public class CinematicMusicService {
 		int end = 64 * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, chime, master, Pitches.C5);
-		return out;
+		return cachedEthereal = new IntroTune("Ethereal Dream", out);
+	}
+
+	public static IntroTune introTuneCyberpunk() {
+		if (cachedCyberpunk != null) return cachedCyberpunk;
+		List<CinematicSoundEvent> out = new ArrayList<>();
+		final float master = 0.85f;
+		final Sound lead = Sound.BLOCK_NOTE_BLOCK_BIT;
+		final Sound bass = Sound.BLOCK_NOTE_BLOCK_BASS;
+		final Sound kick = Sound.BLOCK_NOTE_BLOCK_BASEDRUM;
+		final Sound snare = Sound.BLOCK_NOTE_BLOCK_SNARE;
+
+		// Tempo: Fast (150bpm)
+		final int step = 2;
+
+		// Dm - Bb - C - Am
+		float[] roots = {Pitches.D4, Pitches.Bb3, Pitches.C4, Pitches.A3};
+
+		for (int bar = 0; bar < 4; bar++) {
+			int barOffset = bar * 16 * step;
+			float r = roots[bar];
+
+			for (int i = 0; i < 16; i++) {
+				int t = barOffset + (i * step);
+
+				// Driving Bass (16th notes)
+				addSound(out, t, bass, master * 0.7f, r / 2.0f < 0.5f ? r : r / 2.0f);
+
+				// Lead: Syncopated stabs
+				if (i == 0 || i == 3 || i == 6 || i == 10 || i == 12) {
+					addSound(out, t, lead, master * 0.6f, r);
+					addSound(out, t, lead, master * 0.4f, r * 1.5f); // Fifth
+				}
+
+				// Drums: Four-on-the-floor
+				if (i % 4 == 0) addSound(out, t, kick, master * 0.9f, 1.0f);
+				if (i % 8 == 4) addSound(out, t, snare, master * 0.8f, 1.0f);
+			}
+		}
+
+		int end = 64 * step;
+		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
+		return cachedCyberpunk = new IntroTune("Cyberpunk 2077", out);
+	}
+
+	public static IntroTune introTuneWestern() {
+		if (cachedWestern != null) return cachedWestern;
+		List<CinematicSoundEvent> out = new ArrayList<>();
+		final float master = 0.85f;
+		final Sound banjo = Sound.BLOCK_NOTE_BLOCK_PLING; // Banjo-ish
+		final Sound bass = Sound.BLOCK_NOTE_BLOCK_BASS;
+		final Sound hat = Sound.BLOCK_NOTE_BLOCK_HAT;
+
+		// Tempo: Medium (100bpm)
+		final int step = 3;
+
+		// E - A - B7 - E
+		float[] roots = {Pitches.E4, Pitches.A3, Pitches.B3, Pitches.E4};
+
+		for (int bar = 0; bar < 4; bar++) {
+			int barOffset = bar * 16 * step;
+			float r = roots[bar];
+
+			for (int i = 0; i < 16; i++) {
+				int t = barOffset + (i * step);
+
+				// Galloping Bass: 1 & a 2 & a ...
+				// 0, 2, 3, 4, 6, 7, 8...
+				if (i % 4 != 1) {
+					addSound(out, t, bass, master * 0.6f, r);
+				}
+
+				// Banjo Melody: Arpeggios
+				if (i % 2 == 0) {
+					float note = r;
+					if (i % 4 == 2) note = r * 1.5f; // Fifth
+					if (i % 8 == 4) note = r * 2.0f; // Octave
+					addSound(out, t, banjo, master * 0.7f, note);
+				}
+
+				// Shaker
+				if (i % 2 == 0) addSound(out, t, hat, master * 0.3f, 1.2f);
+			}
+		}
+
+		int end = 64 * step;
+		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
+		addSound(out, end, banjo, master, Pitches.E4);
+		return cachedWestern = new IntroTune("Wild West", out);
 	}
 
 	public static Sound parseSound(String name) {
