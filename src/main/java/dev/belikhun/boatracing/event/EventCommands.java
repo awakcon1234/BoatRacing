@@ -27,6 +27,124 @@ public final class EventCommands {
 
 		String sub = args[1].toLowerCase();
 		switch (sub) {
+			case "podium" -> {
+				if (!p.hasPermission("boatracing.event.admin")) {
+					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+					return true;
+				}
+				if (args.length == 2 || args[2].equalsIgnoreCase("help")) {
+					Text.msg(p, "&eBục trao giải (kết thúc sự kiện):");
+					Text.tell(p, "&7 - &f/" + label + " event podium set [base|top1|top2|top3] &7(Lấy vị trí hiện tại)");
+					Text.tell(p, "&7 - &f/" + label + " event podium clear [base|top1|top2|top3|all]");
+					Text.tell(p, "&7 - &f/" + label + " event podium status");
+					Text.tell(p, "&7 - &f/" + label + " event podium spawn &7(Spawn top 3 ngay bây giờ)");
+					return true;
+				}
+
+				String act = args[2].toLowerCase();
+				switch (act) {
+					case "set" -> {
+						String which = (args.length >= 4 ? (args[3] == null ? "" : args[3].toLowerCase()) : "base");
+						String path = switch (which) {
+							case "base", "" -> "event.podium.location";
+							case "top1" -> "event.podium.positions.top1";
+							case "top2" -> "event.podium.positions.top2";
+							case "top3" -> "event.podium.positions.top3";
+							default -> null;
+						};
+						if (path == null) {
+							Text.msg(p, "&cVị trí không hợp lệ. Dùng: base|top1|top2|top3");
+							return true;
+						}
+						writeLocation(plugin, path, p.getLocation());
+						String labelPos = switch (which) {
+							case "top1" -> "Top 1";
+							case "top2" -> "Top 2";
+							case "top3" -> "Top 3";
+							default -> "Bục (base)";
+						};
+						Text.msg(p, "&aĐã đặt vị trí &f" + labelPos + "&a tại: &f" + fmt(p.getLocation()));
+						return true;
+					}
+					case "clear" -> {
+						String which = (args.length >= 4 ? (args[3] == null ? "" : args[3].toLowerCase()) : "base");
+						if (which.isBlank())
+							which = "base";
+						if (which.equals("all")) {
+							clearLocation(plugin, "event.podium.location");
+							clearLocation(plugin, "event.podium.positions.top1");
+							clearLocation(plugin, "event.podium.positions.top2");
+							clearLocation(plugin, "event.podium.positions.top3");
+							try {
+								if (svc.getPodiumService() != null)
+									svc.getPodiumService().clear();
+							} catch (Throwable ignored) {
+							}
+							Text.msg(p, "&aĐã xóa toàn bộ cấu hình bục trao giải.");
+							return true;
+						}
+
+						String path = switch (which) {
+							case "base" -> "event.podium.location";
+							case "top1" -> "event.podium.positions.top1";
+							case "top2" -> "event.podium.positions.top2";
+							case "top3" -> "event.podium.positions.top3";
+							default -> null;
+						};
+						if (path == null) {
+							Text.msg(p, "&cVị trí không hợp lệ. Dùng: base|top1|top2|top3|all");
+							return true;
+						}
+						clearLocation(plugin, path);
+						try {
+							if (svc.getPodiumService() != null)
+								svc.getPodiumService().clear();
+						} catch (Throwable ignored) {
+						}
+						Text.msg(p, "&aĐã xóa vị trí &f" + which + "&a của bục trao giải.");
+						return true;
+					}
+					case "status" -> {
+						Location base = readLocation(plugin, "event.podium.location");
+						Location t1 = readLocation(plugin, "event.podium.positions.top1");
+						Location t2 = readLocation(plugin, "event.podium.positions.top2");
+						Location t3 = readLocation(plugin, "event.podium.positions.top3");
+						Text.msg(p, "&eBục trao giải:");
+						Text.tell(p, "&7● Base: " + (base == null ? "&cChưa đặt (dùng world spawn)" : "&a" + fmt(base)));
+						Text.tell(p, "&7● Top 1: " + (t1 == null ? "&7(tự động theo base)" : "&a" + fmt(t1)));
+						Text.tell(p, "&7● Top 2: " + (t2 == null ? "&7(tự động theo base)" : "&a" + fmt(t2)));
+						Text.tell(p, "&7● Top 3: " + (t3 == null ? "&7(tự động theo base)" : "&a" + fmt(t3)));
+						boolean hasFancy = false;
+						try {
+							hasFancy = org.bukkit.Bukkit.getPluginManager().isPluginEnabled("FancyNpcs");
+						} catch (Throwable ignored) {
+							hasFancy = false;
+						}
+						Text.tell(p, "&7● FancyNpcs: " + (hasFancy ? "&a✔" : "&c❌"));
+						return true;
+					}
+					case "spawn" -> {
+						RaceEvent e = svc.getActiveEvent();
+						if (e == null) {
+							Text.msg(p, "&cKhông có sự kiện đang hoạt động để spawn bục trao giải.");
+							return true;
+						}
+						try {
+							if (svc.getPodiumService() != null)
+								svc.getPodiumService().spawnTop3(e);
+							Text.msg(p, "&aĐã spawn bục trao giải (Top 3). ");
+						} catch (Throwable t) {
+							Text.msg(p, "&cKhông thể spawn bục: " + (t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage()));
+						}
+						return true;
+					}
+					default -> {
+						Text.msg(p, "&cKhông rõ lệnh. Dùng: /" + label + " event podium help");
+						return true;
+					}
+				}
+			}
 			case "opening" -> {
 				if (!p.hasPermission("boatracing.event.admin")) {
 					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
@@ -455,6 +573,7 @@ public final class EventCommands {
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event track add|remove|list");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event board set|status|clear");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event opening ...");
+			Text.tell(p, "&8Quản trị:&7 /" + label + " event podium set|clear|status|spawn");
 		}
 	}
 

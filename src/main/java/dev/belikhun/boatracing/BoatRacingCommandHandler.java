@@ -1024,12 +1024,26 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 					subs.add("track");
 					subs.add("board");
 					subs.add("opening");
+					subs.add("podium");
 				}
 				String pref2 = args[1] == null ? "" : args[1].toLowerCase();
 				return subs.stream().filter(s -> s.startsWith(pref2)).toList();
 			}
 			if (!sender.hasPermission("boatracing.event.admin"))
 				return java.util.Collections.emptyList();
+			if (args.length == 3 && args[1].equalsIgnoreCase("podium")) {
+				String pref3 = args[2] == null ? "" : args[2].toLowerCase();
+				return java.util.List.of("help", "set", "clear", "status", "spawn")
+						.stream().filter(s -> s.startsWith(pref3)).toList();
+			}
+			if (args.length == 4 && args[1].equalsIgnoreCase("podium") && args[2].equalsIgnoreCase("set")) {
+				String pref4 = args[3] == null ? "" : args[3].toLowerCase();
+				return java.util.List.of("base", "top1", "top2", "top3").stream().filter(s -> s.startsWith(pref4)).toList();
+			}
+			if (args.length == 4 && args[1].equalsIgnoreCase("podium") && args[2].equalsIgnoreCase("clear")) {
+				String pref4 = args[3] == null ? "" : args[3].toLowerCase();
+				return java.util.List.of("base", "top1", "top2", "top3", "all").stream().filter(s -> s.startsWith(pref4)).toList();
+			}
 			if (args.length == 3 && args[1].equalsIgnoreCase("opening")) {
 				String pref3 = args[2] == null ? "" : args[2].toLowerCase();
 				return java.util.List.of("help", "status", "start", "stop", "stage", "camera", "board")

@@ -15,6 +15,7 @@ import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.SkullMeta;
 import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -54,15 +55,12 @@ public class PodiumService {
 		}
 		spawned.clear();
 
-		// Best-effort sweep around spawn (covers reloads)
+		// Best-effort sweep across all worlds (covers reloads + custom podium locations)
 		try {
 			for (World w : Bukkit.getWorlds()) {
 				if (w == null)
 					continue;
-				Location s = w.getSpawnLocation();
-				if (s == null)
-					continue;
-				for (Entity e : w.getNearbyEntities(s, 16, 16, 16)) {
+				for (Entity e : w.getEntities()) {
 					try {
 						if (e == null)
 							continue;
@@ -82,17 +80,7 @@ public class PodiumService {
 			return;
 		clear();
 
-		World w = Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().get(0);
-		try {
-			if (w == null)
-				w = Bukkit.getWorld("world");
-		} catch (Throwable ignored) {
-
-		}
-		if (w == null)
-			return;
-
-		Location spawn = w.getSpawnLocation();
+		Location spawn = readPodiumBase();
 		if (spawn == null)
 			return;
 
@@ -116,23 +104,81 @@ public class PodiumService {
 		if (top.isEmpty())
 			return;
 
-		// Simple layout around spawn (no fancy podium blocks).
-		// 1st: center, 2nd: left, 3rd: right
+		// Positions:
+		// - If top1/top2/top3 are configured, use them exactly.
+		// - Otherwise fall back to a simple layout around base and snap to surface.
 		Location base = spawn.clone().add(0.5, 0.0, 0.5);
-		Location first = base.clone().add(0.0, 0.0, 2.0);
-		Location second = base.clone().add(-1.5, 0.0, 2.0);
-		Location third = base.clone().add(1.5, 0.0, 2.0);
+		Location first = readConfigured("event.podium.positions.top1");
+		Location second = readConfigured("event.podium.positions.top2");
+		Location third = readConfigured("event.podium.positions.top3");
 
-		// Adjust Y to surface.
-		first = snapToSurface(first);
-		second = snapToSurface(second);
-		third = snapToSurface(third);
+		if (first == null)
+			first = snapToSurface(base.clone().add(0.0, 0.0, 2.0));
+		if (second == null)
+			second = snapToSurface(base.clone().add(-1.5, 0.0, 2.0));
+		if (third == null)
+			third = snapToSurface(base.clone().add(1.5, 0.0, 2.0));
 
 		spawnOne(top, 0, first);
 		if (top.size() >= 2)
 			spawnOne(top, 1, second);
 		if (top.size() >= 3)
 			spawnOne(top, 2, third);
+	}
+
+	private Location readConfigured(String path) {
+		if (plugin == null || path == null || path.isBlank())
+			return null;
+		try {
+			ConfigurationSection sec = plugin.getConfig().getConfigurationSection(path);
+			if (sec == null)
+				return null;
+			String worldName = sec.getString("world", "");
+			if (worldName == null || worldName.isBlank())
+				return null;
+			World w = Bukkit.getWorld(worldName);
+			if (w == null)
+				return null;
+			double x = sec.getDouble("x", 0.0);
+			double y = sec.getDouble("y", 0.0);
+			double z = sec.getDouble("z", 0.0);
+			float yaw = (float) sec.getDouble("yaw", 0.0);
+			float pitch = (float) sec.getDouble("pitch", 0.0);
+			return new Location(w, x, y, z, yaw, pitch);
+		} catch (Throwable ignored) {
+			return null;
+		}
+	}
+
+	private Location readPodiumBase() {
+		try {
+			ConfigurationSection sec = plugin.getConfig().getConfigurationSection("event.podium.location");
+			if (sec != null) {
+				String worldName = sec.getString("world", "");
+				if (worldName != null && !worldName.isBlank()) {
+					World w = Bukkit.getWorld(worldName);
+					if (w != null) {
+						double x = sec.getDouble("x", 0.0);
+						double y = sec.getDouble("y", 0.0);
+						double z = sec.getDouble("z", 0.0);
+						float yaw = (float) sec.getDouble("yaw", 0.0);
+						float pitch = (float) sec.getDouble("pitch", 0.0);
+						return new Location(w, x, y, z, yaw, pitch);
+					}
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+
+		World w = Bukkit.getWorlds().isEmpty() ? null : Bukkit.getWorlds().get(0);
+		try {
+			if (w == null)
+				w = Bukkit.getWorld("world");
+		} catch (Throwable ignored) {
+		}
+		if (w == null)
+			return null;
+		return w.getSpawnLocation();
 	}
 
 	private Location snapToSurface(Location l) {
