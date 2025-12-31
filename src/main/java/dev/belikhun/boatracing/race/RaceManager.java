@@ -3406,17 +3406,13 @@ public class RaceManager {
 		this.registering = false;
 		this.waitingEndMillis = 0L;
 
-		String track = safeTrackName();
 		for (Player p : introPlayersList) {
 			try {
 				if (p.isInsideVehicle())
 					p.leaveVehicle();
 			} catch (Throwable ignored) {
 			}
-			try {
-				Text.msg(p, "&e⏳ Đang giới thiệu đường đua: &f" + track);
-			} catch (Throwable ignored) {
-			}
+
 			introPlayers.add(p.getUniqueId());
 		}
 

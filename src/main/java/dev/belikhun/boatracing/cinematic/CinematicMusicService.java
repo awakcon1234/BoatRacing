@@ -303,14 +303,14 @@ public class CinematicMusicService {
 		// Length of one loop iteration in steps
 		int loopLen = 24;
 
-		for (int bar = 0; bar < 4; bar++) {
+		for (int bar = 0; bar < 6; bar++) {
 			int barOffset = bar * loopLen * step;
 
 			for (int i = 0; i < offsets.length; i++) {
 				int t = barOffset + (offsets[i] * step);
 				float pitch;
 				if (i < 2) {
-					pitch = roots[bar];
+					pitch = roots[bar % 4];
 				} else {
 					// Fixed melody tail
 					switch(i) {
@@ -335,7 +335,7 @@ public class CinematicMusicService {
 			}
 		}
 
-		int end = 4 * loopLen * step;
+		int end = 6 * loopLen * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		return cachedUndertale = new IntroTune("Megalovania", out);
 	}
@@ -357,11 +357,11 @@ public class CinematicMusicService {
 		float[] thirds = {Pitches.E4, Pitches.C4, Pitches.A4, Pitches.B4};
 		float[] fifths = {Pitches.G4, Pitches.E4, Pitches.C5, Pitches.D5};
 
-		for (int bar = 0; bar < 4; bar++) {
+		for (int bar = 0; bar < 9; bar++) {
 			int barOffset = bar * 16 * step;
-			float r = roots[bar];
-			float th = thirds[bar];
-			float f = fifths[bar];
+			float r = roots[bar % 4];
+			float th = thirds[bar % 4];
+			float f = fifths[bar % 4];
 
 			for (int i = 0; i < 16; i++) {
 				int t = barOffset + (i * step);
@@ -391,7 +391,7 @@ public class CinematicMusicService {
 			}
 		}
 
-		int end = 64 * step;
+		int end = 9 * 16 * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, lead, master, Pitches.C5);
 		return cachedRetro = new IntroTune("Retro 8-Bit", out);
@@ -412,7 +412,7 @@ public class CinematicMusicService {
 		// Cmaj7: C E G B
 		// Fmaj7: F A C E
 
-		for (int bar = 0; bar < 4; bar++) {
+		for (int bar = 0; bar < 5; bar++) {
 			int barOffset = bar * 16 * step;
 			boolean isC = (bar % 2 == 0);
 
@@ -441,7 +441,7 @@ public class CinematicMusicService {
 			addSound(out, barOffset, bell, master * 0.6f, isC ? Pitches.C5 : Pitches.F5 > 2.0f ? Pitches.F4 : Pitches.F5);
 		}
 
-		int end = 64 * step;
+		int end = 5 * 16 * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, chime, master, Pitches.C5);
 		return cachedEthereal = new IntroTune("Ethereal Dream", out);
@@ -462,9 +462,9 @@ public class CinematicMusicService {
 		// Dm - Bb - C - Am
 		float[] roots = {Pitches.D4, Pitches.Bb3, Pitches.C4, Pitches.A3};
 
-		for (int bar = 0; bar < 4; bar++) {
+		for (int bar = 0; bar < 10; bar++) {
 			int barOffset = bar * 16 * step;
-			float r = roots[bar];
+			float r = roots[bar % 4];
 
 			for (int i = 0; i < 16; i++) {
 				int t = barOffset + (i * step);
@@ -484,7 +484,7 @@ public class CinematicMusicService {
 			}
 		}
 
-		int end = 64 * step;
+		int end = 10 * 16 * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		return cachedCyberpunk = new IntroTune("Cyberpunk 2077", out);
 	}
@@ -503,9 +503,9 @@ public class CinematicMusicService {
 		// E - A - B7 - E
 		float[] roots = {Pitches.E4, Pitches.A3, Pitches.B3, Pitches.E4};
 
-		for (int bar = 0; bar < 4; bar++) {
+		for (int bar = 0; bar < 6; bar++) {
 			int barOffset = bar * 16 * step;
-			float r = roots[bar];
+			float r = roots[bar % 4];
 
 			for (int i = 0; i < 16; i++) {
 				int t = barOffset + (i * step);
@@ -529,7 +529,7 @@ public class CinematicMusicService {
 			}
 		}
 
-		int end = 64 * step;
+		int end = 6 * 16 * step;
 		addSound(out, end, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, master * 0.6f, 1.0f);
 		addSound(out, end, banjo, master, Pitches.E4);
 		return cachedWestern = new IntroTune("Wild West", out);
