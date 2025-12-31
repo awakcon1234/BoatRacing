@@ -546,7 +546,10 @@ public class EventService {
 
 		e.state = EventState.RUNNING;
 		e.currentTrackIndex = Math.max(0, e.currentTrackIndex);
-		e.startTimeMillis = 0L;
+		// Preserve the event's start timestamp for UI (boards/HUD). This used to be
+		// reused as a "scheduled start" timestamp during registration, but once the
+		// event begins we want to display the actual start time.
+		e.startTimeMillis = System.currentTimeMillis();
 		activeTrackName = e.currentTrackName();
 		trackCountdownStarted = false;
 		trackDeadlineMillis = 0L;

@@ -60,6 +60,15 @@ public final class MapEngineBoardDisplay {
 			tryInvoke(display, "addViewer", p);
 		}
 
+		// Reconnect safety: MapEngine may retain a stale receiver entry across
+		// disconnect/reconnect (same UUID, new connection). Force a rebind.
+		try {
+			drawing.ctx().removeReceiver(p);
+		} catch (Throwable ignored) {
+			tryInvoke(drawing.ctx(), "removeReceiver", p);
+			tryInvoke(drawing.ctx(), "remove", p);
+		}
+
 		try {
 			drawing.ctx().addReceiver(p);
 		} catch (Throwable ignored) {

@@ -857,18 +857,17 @@ public final class EventBoardService {
 			tracks = 0;
 		}
 
-		String when = "--/--/---- --:--";
+		String when = "--/--/----";
 		try {
 			if (e != null && e.startTimeMillis > 0L) {
 				java.time.ZonedDateTime z = java.time.Instant.ofEpochMilli(e.startTimeMillis)
 						.atZone(java.time.ZoneId.systemDefault());
-				when = String.format(java.util.Locale.ROOT, "%02d/%02d/%04d %02d:%02d%s",
-						z.getDayOfMonth(), z.getMonthValue(), z.getYear(),
-						((z.getHour() % 12) == 0 ? 12 : (z.getHour() % 12)), z.getMinute(),
-						(z.getHour() >= 12 ? "PM" : "AM"));
+				// Compact date only to avoid truncation on smaller boards.
+				when = String.format(java.util.Locale.ROOT, "%02d/%02d/%04d",
+						z.getDayOfMonth(), z.getMonthValue(), z.getYear());
 			}
 		} catch (Throwable ignored) {
-			when = "--/--/---- --:--";
+			when = "--/--/----";
 		}
 
 		return racers + " TAY ĐUA" + " ● " + tracks + " ĐƯỜNG ĐUA" + " ● " + when;
