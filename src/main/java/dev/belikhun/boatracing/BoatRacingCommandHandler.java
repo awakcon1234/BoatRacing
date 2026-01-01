@@ -296,6 +296,13 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 			} catch (Throwable ignored) {
 			}
 
+			// Restart Discord chat webhook relay (optional)
+			try {
+				if (plugin.getDiscordChatRelayService() != null)
+					plugin.getDiscordChatRelayService().restart();
+			} catch (Throwable ignored) {
+			}
+
 			Text.msg(p, "&aĐã tải lại plugin.");
 			p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
 			return true;

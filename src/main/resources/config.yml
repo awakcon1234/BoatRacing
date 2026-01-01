@@ -448,3 +448,34 @@ mapengine:
     # You can copy the structure from mapengine.lobby-board.placement.
     board:
       placement: {}
+
+# Discord webhook (tùy chọn): gửi toàn bộ tin nhắn chat trong game sang Discord.
+# Lưu ý:
+# - Tính năng này chỉ gửi ra Discord, KHÔNG ảnh hưởng chat trong game.
+# - Tất cả MiniMessage tags (ví dụ: <red>) và mã màu (&a, §a, hex) sẽ bị loại bỏ trước khi gửi.
+# - Hỗ trợ PlaceholderAPI (nếu server có cài), cùng với các placeholder nội bộ bên dưới.
+discord:
+  chat-webhook:
+    # Bật/tắt module
+    enabled: false
+
+    # URL webhook Discord (tạo trong kênh Discord -> Integrations -> Webhooks)
+    # Ví dụ: "https://discord.com/api/webhooks/..."
+    url: ""
+
+    # Template tên hiển thị của bot/webhook (hỗ trợ placeholder)
+    # Placeholder nội bộ: %player_name% %player_uuid% %world% %message%
+    username: "%player_name%"
+
+    # URL avatar (hỗ trợ placeholder). Để trống để dùng avatar mặc định của webhook.
+    avatar-url: ""
+
+    # Nội dung gửi lên Discord (hỗ trợ placeholder)
+    # Placeholder nội bộ: %player_name% %player_uuid% %world% %message%
+    message: "[%world%] %player_name%: %message%"
+
+    # Timeout HTTP khi gửi (ms)
+    timeout-ms: 5000
+
+    # Discord giới hạn content tối đa 2000 ký tự; bật để tự cắt.
+    trim-to-2000: true

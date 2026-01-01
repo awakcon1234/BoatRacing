@@ -38,6 +38,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private dev.belikhun.boatracing.track.TrackRecordManager trackRecordManager;
 	private dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService lobbyBoardService;
 	private dev.belikhun.boatracing.cinematic.CinematicCameraService cinematicCameraService;
+	private dev.belikhun.boatracing.integrations.discord.DiscordWebhookChatRelayService discordChatRelayService;
 	// Plugin metadata (avoid deprecated getDescription())
 	private String pluginVersion = "unknown";
 	private java.util.List<String> pluginAuthors = java.util.Collections.emptyList();
@@ -127,6 +128,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 		return cinematicCameraService;
 	}
 
+	public dev.belikhun.boatracing.integrations.discord.DiscordWebhookChatRelayService getDiscordChatRelayService() {
+		return discordChatRelayService;
+	}
+
 	@Override
 	public void onEnable() {
 		instance = this;
@@ -162,6 +167,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		this.lobbyBoardService = new dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService(this);
 		this.cinematicCameraService = new dev.belikhun.boatracing.cinematic.CinematicCameraService(this);
 		this.spawnConfirmGUI = new dev.belikhun.boatracing.ui.SpawnConfirmGUI(this);
+		this.discordChatRelayService = new dev.belikhun.boatracing.integrations.discord.DiscordWebhookChatRelayService(this);
 		// Team GUI removed
 		Bukkit.getPluginManager().registerEvents(adminGUI, this);
 		Bukkit.getPluginManager().registerEvents(tracksGUI, this);
@@ -178,6 +184,14 @@ public class BoatRacingPlugin extends JavaPlugin {
 			if (placeholderApiService != null)
 				placeholderApiService.start();
 		} catch (Throwable ignored) {
+		}
+
+		// Discord webhook chat relay (optional)
+		try {
+			if (discordChatRelayService != null)
+				discordChatRelayService.start();
+		} catch (Throwable t) {
+			getLogger().warning("[Discord] Không thể khởi động chat-webhook: " + t.getMessage());
 		}
 
 		try {
@@ -593,6 +607,12 @@ public class BoatRacingPlugin extends JavaPlugin {
 		try {
 			if (placeholderApiService != null)
 				placeholderApiService.stop();
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (discordChatRelayService != null)
+				discordChatRelayService.stop();
 		} catch (Throwable ignored) {
 		}
 
