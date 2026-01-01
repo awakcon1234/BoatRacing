@@ -740,22 +740,42 @@ public final class OpeningTitlesBoardService {
 			}
 
 			// Big year watermark (bottom-right)
+			// Decorative icons (bottom-left band)
 			try {
-				int year = Year.now().getValue();
-				String ys = String.valueOf(year);
-				if (titleFont != null) {
-					Font f = titleFont.deriveFont(Font.BOLD, (float) clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.46), 48, 220));
+				if (iconFont != null) {
+					int size = clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.055), 10, 22);
+					Font f = iconFont.deriveFont(Font.PLAIN, (float) size);
 					g.setFont(f);
-					int sw = g.getFontMetrics().stringWidth(ys);
-					int sh = g.getFontMetrics().getAscent();
-					int x = rect.x() + rect.w() - sw - Math.max(14, marginX);
+					Color c = pal.textDimSoft(90);
+					if (c != null)
+						g.setColor(c);
+
+					String[] glyphs = new String[] {
+						"\uf005", // star
+						"\uf004", // heart
+						"\uf111", // circle
+						"\uf0c8", // square
+						"\uf024", // flag
+						"\uf017", // clock
+						"\uf0f3", // bell
+						"\uf06e"  // eye
+					};
+
 					int y = rect.y() + rect.h() - Math.max(10, marginY / 2);
-					if (x < safeRight) x = safeRight + 6;
-					Color a = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(45);
-					Color b = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(45);
-					if (a != null && b != null) {
-						g.setPaint(new GradientPaint(x, y - sh, a, x + sw, y - sh, b));
-						g.drawString(ys, x, y);
+					int x = rect.x() + Math.max(12, marginX / 3);
+					int step = Math.max(12, size + 7);
+					int maxX = safeLeft - 12;
+
+					for (String s : glyphs) {
+						if (s == null || s.isBlank())
+							continue;
+						int cp = s.codePointAt(0);
+						if (!f.canDisplay(cp))
+							continue;
+						if (x > maxX)
+							break;
+						g.drawString(s, x, y);
+						x += step;
 					}
 				}
 			} catch (Throwable ignored) {
@@ -1179,7 +1199,7 @@ public final class OpeningTitlesBoardService {
 		double t = (double) (Math.max(0L, showDtMs - d)) / (double) available;
 		double e = easeOutCubic(t);
 		int y = (int) Math.round((1.0 - e) * (double) Math.max(0, risePx));
-		return new FxContainer().alpha(1.0).offset(0, y).child(child);
+		return wrapFx(child).alpha(1.0).offset(0, y);
 	}
 
 	private UiElement withAppearDelay(UiElement child, long showDtMs, boolean animateIn, long delayMs, int risePx) {
@@ -1195,7 +1215,18 @@ public final class OpeningTitlesBoardService {
 		double t = (double) (Math.max(0L, showDtMs - d)) / (double) available;
 		double e = easeOutCubic(t);
 		int y = (int) Math.round((1.0 - e) * (double) Math.max(0, risePx));
-		return new FxContainer().alpha(e).offset(0, y).child(child);
+		return wrapFx(child).alpha(e).offset(0, y);
+	}
+
+	private FxContainer wrapFx(UiElement child) {
+		FxContainer fx = new FxContainer().child(child);
+		try {
+			fx.style().widthPx(child.style().widthPx());
+			fx.style().heightPx(child.style().heightPx());
+			fx.style().margin(child.style().margin());
+		} catch (Throwable ignored) {
+		}
+		return fx;
 	}
 
 	private static RowContainer statRow(Font font, String label, String value, BroadcastTheme.Palette pal) {
