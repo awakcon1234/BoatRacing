@@ -738,9 +738,17 @@ public class EventService {
 
 		// Start track (after intro/lobby wait/break).
 		if (!trackCountdownStarted) {
+			boolean starting = false;
 			try {
-				startTrackCountdownNow(e, rm);
+				starting = rm.isAnyCountdownActive();
 			} catch (Throwable ignored) {
+				starting = false;
+			}
+			if (!starting) {
+				try {
+					startTrackCountdownNow(e, rm);
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 
