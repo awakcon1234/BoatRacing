@@ -373,6 +373,8 @@ mapengine:
 
     # Font sizes (fallback is Monospaced).
     font:
+      # Global scale applied to all font sizes on the event board.
+      scale: 1.25
       title-size: 18
       body-size: 14
 

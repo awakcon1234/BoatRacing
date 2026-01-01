@@ -120,8 +120,16 @@ public final class EventBoardService {
 			}
 		} : null);
 
-		int titleSize = clamp(plugin.getConfig().getInt("mapengine.event-board.font.title-size", 18), 10, 96);
-		int bodySize = clamp(plugin.getConfig().getInt("mapengine.event-board.font.body-size", 14), 8, 72);
+		double fontScale = plugin.getConfig().getDouble("mapengine.event-board.font.scale", 1.25);
+		if (fontScale < 0.5)
+			fontScale = 0.5;
+		if (fontScale > 3.0)
+			fontScale = 3.0;
+
+		int titleBaseSize = plugin.getConfig().getInt("mapengine.event-board.font.title-size", 18);
+		int bodyBaseSize = plugin.getConfig().getInt("mapengine.event-board.font.body-size", 14);
+		int titleSize = clamp((int) Math.round(titleBaseSize * fontScale), 10, 96);
+		int bodySize = clamp((int) Math.round(bodyBaseSize * fontScale), 8, 72);
 
 		if (base != null) {
 			titleFont = base.deriveFont(Font.BOLD, (float) titleSize);
