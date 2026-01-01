@@ -13,6 +13,10 @@ import dev.belikhun.boatracing.util.Time;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,25 +25,15 @@ import java.util.UUID;
 public class PlaceholderApiService {
 	private final BoatRacingPlugin plugin;
 	private BoatRacingExpansion expansion;
+	private boolean listenerRegistered = false;
 
 	public PlaceholderApiService(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
 	}
 
 	public synchronized void start() {
-		if (expansion != null)
-			return;
-		if (!isPlaceholderApiEnabled())
-			return;
-
-		try {
-			expansion = new BoatRacingExpansion(plugin);
-			if (!expansion.register()) {
-				expansion = null;
-			}
-		} catch (Throwable ignored) {
-			expansion = null;
-		}
+		ensureListener();
+		tryRegisterNow("startup");
 	}
 
 	public synchronized void stop() {
@@ -50,6 +44,103 @@ public class PlaceholderApiService {
 		} catch (Throwable ignored) {
 		}
 		expansion = null;
+	}
+
+	private synchronized void ensureListener() {
+		if (listenerRegistered)
+			return;
+		if (plugin == null)
+			return;
+		try {
+			Bukkit.getPluginManager().registerEvents(new PapiHookListener(this), plugin);
+			listenerRegistered = true;
+		} catch (Throwable ignored) {
+			listenerRegistered = false;
+		}
+	}
+
+	private synchronized void tryRegisterNow(String reason) {
+		if (expansion != null)
+			return;
+		if (!isPlaceholderApiEnabled())
+			return;
+
+		try {
+			expansion = new BoatRacingExpansion(plugin);
+			boolean ok = false;
+			try {
+				ok = expansion.register();
+			} catch (Throwable ignored) {
+				ok = false;
+			}
+			if (!ok) {
+				expansion = null;
+				try {
+					if (plugin != null)
+						plugin.getLogger().warning("[PAPI] Không thể đăng ký expansion br (" + reason + ").");
+				} catch (Throwable ignored) {
+				}
+				return;
+			}
+			try {
+				if (plugin != null)
+					plugin.getLogger().info("[PAPI] Đã đăng ký placeholder expansion: br (" + reason + ")");
+			} catch (Throwable ignored) {
+			}
+		} catch (Throwable t) {
+			expansion = null;
+			try {
+				if (plugin != null)
+					plugin.getLogger().warning("[PAPI] Lỗi khi đăng ký expansion br: " + t.getMessage());
+			} catch (Throwable ignored) {
+			}
+		}
+	}
+
+	private synchronized void onPlaceholderApiEnabled() {
+		tryRegisterNow("PlaceholderAPI enabled");
+	}
+
+	private synchronized void onPlaceholderApiDisabled() {
+		// Allow re-register after reload
+		try {
+			stop();
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private static final class PapiHookListener implements Listener {
+		private final PlaceholderApiService svc;
+
+		PapiHookListener(PlaceholderApiService svc) {
+			this.svc = svc;
+		}
+
+		@EventHandler
+		public void onPluginEnable(PluginEnableEvent e) {
+			if (svc == null || e == null || e.getPlugin() == null)
+				return;
+			try {
+				if (!"PlaceholderAPI".equalsIgnoreCase(e.getPlugin().getName()))
+					return;
+			} catch (Throwable ignored) {
+				return;
+			}
+			svc.onPlaceholderApiEnabled();
+		}
+
+		@EventHandler
+		public void onPluginDisable(PluginDisableEvent e) {
+			if (svc == null || e == null || e.getPlugin() == null)
+				return;
+			try {
+				if (!"PlaceholderAPI".equalsIgnoreCase(e.getPlugin().getName()))
+					return;
+			} catch (Throwable ignored) {
+				return;
+			}
+			svc.onPlaceholderApiDisabled();
+		}
 	}
 
 	private static boolean isPlaceholderApiEnabled() {
