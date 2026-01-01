@@ -14,6 +14,7 @@ Mục lục
 - Tổ chức cuộc đua (chờ và bắt đầu)
 - Lệnh & quyền
 - Cấu hình (config.yml)
+- PlaceholderAPI placeholders (br)
 - Lưu trữ dữ liệu
 - Giấy phép
 
@@ -126,6 +127,66 @@ Các khoá tiêu biểu:
 - `racing.false-start-penalty-seconds`, `racing.enable-false-start-penalty`: phạt xuất phát sớm
 - `racing.lights-out-delay-seconds` và `racing.lights-out-jitter-seconds`: tinh chỉnh nhịp đèn ra lệnh “GO!”
 - Tùy biến HUD: xem phần `scoreboard.ui` trong config (ScoreboardService hỗ trợ PlaceholderAPI + MiniMessage)
+
+## PlaceholderAPI placeholders (br)
+
+BoatRacing có cung cấp PlaceholderAPI Expansion với identifier `br`.
+
+- Cú pháp: `%br_<tên_placeholder>%`
+- Các giá trị trả về có thể chứa MiniMessage tags (ví dụ: `<gold>`, `<gray>`, `<u>`). Khi dùng trong HUD của BoatRacing, các tag này sẽ được parse. Nếu plugin khác không hỗ trợ MiniMessage, bạn có thể thấy tag dạng thô.
+
+### Hồ sơ người chơi
+
+| Placeholder | Mô tả | Ví dụ giá trị trả về |
+|---|---|---|
+| `%br_racer_name%` | Tên người chơi | `Belikhun` |
+| `%br_racer_display%` | Hiển thị racer chuẩn (MiniMessage) | `<yellow>[⚡ <u>12</u>] Belikhun` |
+| `%br_racer_color%` | Màu racer (MiniMessage tag) | `<yellow>` |
+| `%br_racer_icon%` | Icon racer | `⚡` |
+| `%br_racer_number%` | Số đua | `12` |
+| `%br_racer_completed%` | Số lần hoàn thành | `5` |
+| `%br_racer_wins%` | Số lần thắng | `2` |
+| `%br_racer_time_raced%` | Tổng thời gian đã đua | `1h 23m` |
+| `%br_racer_boat_type%` | Loại thuyền/raft (Material name) | `OAK_BOAT` |
+| `%br_racer_speed_unit%` | Đơn vị tốc độ ưu tiên | `kmh` |
+
+### Track đang tham gia
+
+| Placeholder | Mô tả | Ví dụ giá trị trả về |
+|---|---|---|
+| `%br_track%` / `%br_track_name%` | Tên đường đua mà người chơi đang ở trong race (hoặc `-` nếu không ở race) | `my-track` |
+| `%br_track_joined%` | Số người đang đăng ký/ở trong cuộc đua | `6` |
+| `%br_track_max%` | Số slot start tối đa của track | `8` |
+| `%br_track_laps%` | Số vòng hiện tại của race | `3` |
+| `%br_track_checkpoint_total%` | Tổng số checkpoint của track | `12` |
+| `%br_track_length%` | Chiều dài track (m) dạng số | `420.5` |
+| `%br_track_length_display%` | Chiều dài track dạng hiển thị | `🛣 420.5m` |
+
+### Sự kiện (Event)
+
+Các placeholder này dựa trên “sự kiện đang active” trong hệ thống Event.
+
+| Placeholder | Mô tả | Ví dụ giá trị trả về |
+|---|---|---|
+| `%br_event_id%` | ID sự kiện | `new-year-2026` |
+| `%br_event_title%` | Tên sự kiện | `Tết 2026` |
+| `%br_event_state%` | Trạng thái (enum) | `REGISTRATION` |
+| `%br_event_state_display%` | Trạng thái hiển thị (MiniMessage) | `<green>Đang mở đăng ký</green>` |
+| `%br_event_track_total%` | Tổng số track trong pool | `5` |
+| `%br_event_track_index%` | Track hiện tại (1-based) | `2` |
+| `%br_event_track_name%` | Tên track hiện tại | `track-02` |
+| `%br_event_participants%` | Số người tham gia (không tính LEFT) | `12` |
+| `%br_event_participants_max%` | Giới hạn tham gia (nếu có; nếu không có trả về `-`) | `16` |
+| `%br_event_points%` | Điểm của người chơi trong sự kiện (0 nếu không tham gia) | `25` |
+| `%br_event_position%` | Hạng của người chơi theo điểm ("-" nếu không tham gia) | `3` |
+
+Ví dụ dòng HUD (BoatRacing scoreboard templates):
+
+`<gray>Racer:</gray> %br_racer_display% <gray>●</gray> <gray>Track:</gray> <white>%br_track%</white>`
+
+Ví dụ render (minh hoạ):
+
+`Racer: [⚡ 12] Belikhun ● Track: my-track`
 
 ## Lưu trữ dữ liệu
 - Mỗi đường đua là 1 file: `plugins/BoatRacing/tracks/<tên>.yml`

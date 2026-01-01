@@ -20,6 +20,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private dev.belikhun.boatracing.ui.AdminGUI adminGUI;
 	private dev.belikhun.boatracing.ui.AdminRaceGUI adminRaceGUI;
 	private dev.belikhun.boatracing.ui.AdminEventGUI adminEventGUI;
+	private dev.belikhun.boatracing.integrations.placeholderapi.PlaceholderApiService placeholderApiService;
 	private dev.belikhun.boatracing.profile.PlayerProfileManager profileManager;
 	private dev.belikhun.boatracing.ui.ProfileGUI profileGUI;
 	private dev.belikhun.boatracing.ui.TrackSelectGUI trackSelectGUI;
@@ -60,6 +61,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 
 	public dev.belikhun.boatracing.ui.AdminEventGUI getAdminEventGUI() {
 		return adminEventGUI;
+	}
+
+	public dev.belikhun.boatracing.integrations.placeholderapi.PlaceholderApiService getPlaceholderApiService() {
+		return placeholderApiService;
 	}
 
 	public dev.belikhun.boatracing.profile.PlayerProfileManager getProfileManager() {
@@ -149,6 +154,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
 		this.raceService = new dev.belikhun.boatracing.race.RaceService(this);
 		this.eventService = new dev.belikhun.boatracing.event.EventService(this);
+		this.placeholderApiService = new dev.belikhun.boatracing.integrations.placeholderapi.PlaceholderApiService(this);
 		this.scoreboardService = new dev.belikhun.boatracing.ui.ScoreboardService(this);
 		this.hotbarService = new dev.belikhun.boatracing.ui.HotbarService(this);
 		this.setupWizard = new SetupWizard(this);
@@ -168,6 +174,12 @@ public class BoatRacingPlugin extends JavaPlugin {
 		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.event.EventRegistrationNpcListener(this), this);
 		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.ui.HotbarListener(this, hotbarService),
 				this);
+		try {
+			if (placeholderApiService != null)
+				placeholderApiService.start();
+		} catch (Throwable ignored) {
+		}
+
 		try {
 			if (scoreboardService != null) {
 				scoreboardService.start();
@@ -575,6 +587,12 @@ public class BoatRacingPlugin extends JavaPlugin {
 		try {
 			if (lobbyBoardService != null)
 				lobbyBoardService.stop();
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (placeholderApiService != null)
+				placeholderApiService.stop();
 		} catch (Throwable ignored) {
 		}
 
