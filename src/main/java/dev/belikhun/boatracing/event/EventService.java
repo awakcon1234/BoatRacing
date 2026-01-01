@@ -4,13 +4,18 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.event.storage.EventStorage;
 import dev.belikhun.boatracing.integrations.mapengine.EventBoardService;
 import dev.belikhun.boatracing.integrations.mapengine.OpeningTitlesBoardService;
+import dev.belikhun.boatracing.race.RaceFx;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.Sound;
+import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.meta.FireworkMeta;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
@@ -1325,6 +1330,13 @@ public class EventService {
 			flybyCenter = guessLobbyCenter();
 			flybyPoints = buildFlybyPoints();
 
+			// Audio cue: start of intro.
+			try {
+				playSoundToAudience(e, Sound.BLOCK_NOTE_BLOCK_BASS, 0.9f, 0.7f);
+				playSoundToAudience(e, Sound.BLOCK_NOTE_BLOCK_CHIME, 0.9f, 1.2f);
+			} catch (Throwable ignored) {
+			}
+
 			showTitleToAudience(e,
 					cfgText("event.opening-titles.text.welcome_title", "Chào mừng!"),
 					cfgText("event.opening-titles.text.welcome_subtitle", "%event_title%"),
@@ -1344,6 +1356,12 @@ public class EventService {
 			phase = Phase.INTRO_GAP;
 			phaseStartMs = System.currentTimeMillis();
 			phaseDurationMs = introGapSeconds * 1000L;
+
+			// Audio cue: moving into racer roll call.
+			try {
+				playSoundToAudience(e, Sound.BLOCK_NOTE_BLOCK_HAT, 0.8f, 1.1f);
+			} catch (Throwable ignored) {
+			}
 
 			showTitleToAudience(e,
 					cfgText("event.opening-titles.text.racers_intro_title", ""),
@@ -1385,6 +1403,16 @@ public class EventService {
 			} catch (Throwable ignored) {
 			}
 
+			// Audio + firework cue for each featured racer.
+			try {
+				playSoundToAudience(e, Sound.ENTITY_ENDERMAN_TELEPORT, 0.6f, 1.6f);
+				playSoundToAudience(e, Sound.BLOCK_NOTE_BLOCK_PLING, 0.9f, 1.8f);
+				Location fx = pickFxLocation(featured);
+				if (fx != null)
+					spawnFireworkBurst(fx, 1);
+			} catch (Throwable ignored) {
+			}
+
 			scheduleLater(perRacerSeconds * 20L, () -> endRacerAndContinue(e, featured.getUniqueId()));
 		}
 
@@ -1418,6 +1446,16 @@ public class EventService {
 			featuredRacer = null;
 			phaseStartMs = System.currentTimeMillis();
 			phaseDurationMs = 2000L;
+
+			// Finale cue.
+			try {
+				playSoundToAudience(e, Sound.ENTITY_FIREWORK_ROCKET_LAUNCH, 0.9f, 1.2f);
+				playSoundToAudience(e, Sound.ENTITY_FIREWORK_ROCKET_LARGE_BLAST, 0.9f, 1.0f);
+				Location fx = pickFxLocation(null);
+				if (fx != null)
+					spawnFireworkBurst(fx, 3);
+			} catch (Throwable ignored) {
+			}
 
 			showTitleToAudience(e,
 					cfgText("event.opening-titles.text.outro_title", "Bắt đầu thôi!"),
@@ -1477,6 +1515,77 @@ public class EventService {
 				cameraTask = null;
 			}
 			cameraTask = Bukkit.getScheduler().runTaskTimer(plugin, this::cameraTick, 1L, 1L);
+		}
+
+		private void playSoundToAudience(RaceEvent e, Sound sound, float volume, float pitch) {
+			if (sound == null)
+				return;
+			java.util.Set<UUID> audience = collectAudience();
+			for (UUID id : audience) {
+				try {
+					Player p = (id != null) ? Bukkit.getPlayer(id) : null;
+					if (p == null || !p.isOnline())
+						continue;
+					p.playSound(p.getLocation(), sound, volume, pitch);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+
+		private Location pickFxLocation(Player featured) {
+			try {
+				Location base = null;
+				if (stageLocation != null)
+					base = stageLocation;
+				else if (flybyCenter != null)
+					base = flybyCenter;
+				else if (fixedCamera != null)
+					base = fixedCamera;
+				else if (featured != null)
+					base = featured.getLocation();
+				if (base == null || base.getWorld() == null)
+					return null;
+				Location out = base.clone().add(0.0, 2.2, 0.0);
+				return out;
+			} catch (Throwable ignored) {
+				return null;
+			}
+		}
+
+		private void spawnFireworkBurst(Location base, int count) {
+			if (plugin == null)
+				return;
+			if (base == null || base.getWorld() == null)
+				return;
+			int n = clamp(count, 1, 6);
+			for (int i = 0; i < n; i++) {
+				try {
+					Location spawn = base.clone().add((i - (n - 1) / 2.0) * 0.8, 0.0, 0.0);
+					Firework fw = spawn.getWorld().spawn(spawn, Firework.class);
+					try {
+						RaceFx.markFirework(plugin, fw);
+					} catch (Throwable ignored) {
+					}
+					FireworkMeta meta = fw.getFireworkMeta();
+					meta.setPower(0);
+					meta.addEffect(org.bukkit.FireworkEffect.builder()
+							.with(org.bukkit.FireworkEffect.Type.STAR)
+							.withColor(Color.AQUA, Color.LIME, Color.YELLOW)
+							.withFade(Color.WHITE)
+							.flicker(true)
+							.trail(true)
+							.build());
+					fw.setFireworkMeta(meta);
+					Bukkit.getScheduler().runTaskLater(plugin, () -> {
+						try {
+							if (!fw.isDead())
+								fw.detonate();
+						} catch (Throwable ignored) {
+						}
+					}, 2L);
+				} catch (Throwable ignored) {
+				}
+			}
 		}
 
 		private void cameraTick() {
