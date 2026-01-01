@@ -666,6 +666,14 @@ public final class OpeningTitlesBoardService {
 		final Color emblemC3 = c3;
 		final long emblemShowDtMs = showDtMs;
 		final boolean emblemAnimateIn = isTrans;
+		final long emblemTransDtMs = isTrans ? Math.max(0L, now - transitionStartMs) : 0L;
+		final Screen wmStableScreen = screen;
+		final Screen wmFromScreen = fromScreen;
+		final Screen wmToScreen = toScreen;
+		final UUID wmStableId = racerId;
+		final UUID wmFromId = fromRacerId;
+		final UUID wmToId = toRacerId;
+		final PlayerProfileManager wmPm = (plugin != null) ? plugin.getProfileManager() : null;
 
 		root.add(new GraphicsElement((ctx, rect) -> {
 			if (ctx == null || ctx.g == null)
@@ -731,7 +739,17 @@ public final class OpeningTitlesBoardService {
 						double grow;
 						if (!emblemAnimateIn) {
 							grow = 1.0;
+						} else if (emblemTransDtMs < HIDE_MS) {
+							// Disappear (HIDE phase): shrink each petal with a slight stagger.
+							long delay = (long) i * 70L;
+							long d = Math.max(0L, delay);
+							long available = Math.max(1L, HIDE_MS - d);
+							double tt = (double) (Math.max(0L, emblemTransDtMs - d)) / (double) available;
+							tt = Math.max(0.0, Math.min(1.0, tt));
+							double e = easeInCubic(tt);
+							grow = 1.0 - 0.75 * e;
 						} else {
+							// Appear (SHOW phase): grow each petal with stagger.
 							long delay = 60L + (long) i * 90L;
 							long d = Math.max(0L, delay);
 							long available = Math.max(1L, SHOW_MS - d);
@@ -763,51 +781,32 @@ public final class OpeningTitlesBoardService {
 			} catch (Throwable ignored) {
 			}
 
-			// Big year watermark (bottom-right)
-			// Decorative icons (right-side band)
+			// Racer number watermark (right band, switches after hide completes)
 			try {
-				if (iconFont != null) {
-					int size = clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.055), 10, 22);
-					Font f = iconFont.deriveFont(Font.PLAIN, (float) size);
+				Screen sNow = wmStableScreen;
+				UUID idNow = wmStableId;
+				if (emblemAnimateIn) {
+					boolean inHide = emblemTransDtMs < HIDE_MS;
+					sNow = inHide ? wmFromScreen : wmToScreen;
+					idNow = inHide ? wmFromId : wmToId;
+				}
+
+				if (sNow == Screen.RACER_CARD && idNow != null && wmPm != null && titleFont != null) {
+					int num = wmPm.getNumber(idNow);
+					String ns = (num > 0) ? String.format(Locale.ROOT, "%02d", num) : "--";
+					Font f = titleFont.deriveFont(Font.BOLD, (float) clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.46), 48, 220));
 					g.setFont(f);
-					Color c = pal.textDimSoft(90);
-					if (c != null)
-						g.setColor(c);
-
-					String[] glyphs = new String[] {
-						"\uf005", // star
-						"\uf004", // heart
-						"\uf111", // circle
-						"\uf0c8", // square
-						"\uf024", // flag
-						"\uf017", // clock
-						"\uf0f3", // bell
-						"\uf06e"  // eye
-					};
-
-					// Anchor into the right band (between safeRight..right edge).
-					int step = Math.max(12, size + 7);
-					int x = rect.x() + rect.w() - Math.max(12, marginX / 3);
-					int maxY = safeBottom - Math.max(10, marginY / 3);
-					int y = maxY;
-
-					// Keep icons on/after safeRight so we don't intrude into the main safe area.
-					x = Math.max(x, safeRight + Math.max(10, marginX / 4));
-
-					for (String s : glyphs) {
-						if (s == null || s.isBlank())
-							continue;
-						int cp = s.codePointAt(0);
-						if (!f.canDisplay(cp))
-							continue;
-						if (y < safeTop + Math.max(10, marginY / 3))
-							break;
-
-						// Right-align glyphs by subtracting their width.
-						int sw = g.getFontMetrics().stringWidth(s);
-						int drawX = Math.max(x - sw, safeRight + 6);
-						g.drawString(s, drawX, y);
-						y -= step;
+					int sw = g.getFontMetrics().stringWidth(ns);
+					int sh = g.getFontMetrics().getAscent();
+					int x = rect.x() + rect.w() - sw - Math.max(14, marginX);
+					int y = rect.y() + rect.h() - Math.max(10, marginY / 2);
+					if (x < safeRight)
+						x = safeRight + 6;
+					Color a = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(55);
+					Color b = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(55);
+					if (a != null && b != null) {
+						g.setPaint(new GradientPaint(x, y - sh, a, x + sw, y - sh, b));
+						g.drawString(ns, x, y);
 					}
 				}
 			} catch (Throwable ignored) {
