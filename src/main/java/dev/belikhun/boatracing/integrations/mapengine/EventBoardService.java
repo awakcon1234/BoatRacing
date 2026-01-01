@@ -84,6 +84,9 @@ public final class EventBoardService {
 
 	// Runtime
 	private final Set<UUID> spawnedTo = new HashSet<>();
+	private final Set<UUID> eligibleViewers = new HashSet<>();
+	private static final long REENSURE_EXISTING_VIEWERS_MS = 5000L;
+	private long lastReensureAtMs = 0L;
 
 	public EventBoardService(BoatRacingPlugin plugin, EventService eventService) {
 		this.plugin = plugin;
@@ -381,6 +384,7 @@ public final class EventBoardService {
 			}
 		}
 		spawnedTo.clear();
+		eligibleViewers.clear();
 
 		try {
 			boardDisplay.destroy();
@@ -414,7 +418,7 @@ public final class EventBoardService {
 		// Determine eligible viewers:
 		// - within radius
 		// - everyone in lobby (not in any race)
-		Set<UUID> eligible = new HashSet<>();
+		eligibleViewers.clear();
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			if (p == null || !p.isOnline() || p.getWorld() == null)
 				continue;
@@ -426,12 +430,13 @@ public final class EventBoardService {
 			}
 			if (!BoardViewers.isWithinRadiusChunks(p, placement, visibleRadiusChunks))
 				continue;
-			eligible.add(p.getUniqueId());
+			eligibleViewers.add(p.getUniqueId());
 		}
 
 		// Spawn/despawn
-		for (UUID id : new HashSet<>(spawnedTo)) {
-			if (eligible.contains(id))
+		for (java.util.Iterator<UUID> it = spawnedTo.iterator(); it.hasNext();) {
+			UUID id = it.next();
+			if (eligibleViewers.contains(id))
 				continue;
 			Player p = Bukkit.getPlayer(id);
 			if (p != null && p.isOnline()) {
@@ -440,17 +445,21 @@ public final class EventBoardService {
 				} catch (Throwable ignored) {
 				}
 			}
-			spawnedTo.remove(id);
+			it.remove();
 		}
 
-		for (UUID id : eligible) {
+		long now = System.currentTimeMillis();
+		boolean reensure = (now - lastReensureAtMs) >= REENSURE_EXISTING_VIEWERS_MS;
+		if (reensure)
+			lastReensureAtMs = now;
+
+		for (UUID id : eligibleViewers) {
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
 			try {
-				// Re-ensure viewer even if already spawned. Teleports/world loads can cause
-				// MapEngine to miss the first spawn; this keeps boards reliable.
-				boardDisplay.ensureViewer(p);
+				if (reensure || !spawnedTo.contains(id))
+					boardDisplay.ensureViewer(p);
 				spawnedTo.add(id);
 			} catch (Throwable ignored) {
 			}

@@ -63,6 +63,30 @@ public final class OpeningTitlesBoardService {
 	private final MapEngineBoardDisplay boardDisplay = new MapEngineBoardDisplay();
 	private final RenderBuffers renderBuffers = new RenderBuffers();
 
+	// Reused tick buffers (avoid per-tick allocations)
+	private final Set<UUID> eligibleViewers = new HashSet<>();
+
+	// UI cache (avoid rebuilding the UI tree every tick)
+	private UiElement cachedFaviconUi;
+	private BufferedImage cachedFaviconImage;
+	private int cachedFaviconW;
+	private int cachedFaviconH;
+	private BufferedImage bundledLogo;
+
+	private static final long RACER_UI_CACHE_TTL_MS = 2000L;
+	private static final int RACER_UI_CACHE_MAX = 48;
+	private final java.util.LinkedHashMap<UUID, CachedRacerUi> racerUiCache = new java.util.LinkedHashMap<>(64, 0.75f, true) {
+		@Override
+		protected boolean removeEldestEntry(java.util.Map.Entry<UUID, CachedRacerUi> eldest) {
+			return size() > RACER_UI_CACHE_MAX;
+		}
+	};
+
+	private long lastRenderedKey = Long.MIN_VALUE;
+	private long lastRacerUiRefreshAtMs = 0L;
+	private static final long RENDER_IDLE_THROTTLE_MS = 1000L;
+	private long lastRenderAtMs = 0L;
+
 	private BukkitTask tickTask;
 
 	private BoardPlacement placement;
@@ -104,6 +128,24 @@ public final class OpeningTitlesBoardService {
 	private static final long FLASH_MS = 280L;
 
 	private final Set<UUID> spawnedTo = new HashSet<>();
+
+	private static final class CachedRacerUi {
+		final UiElement ui;
+		final long builtAtMs;
+		final int w;
+		final int h;
+		final UUID id;
+		final String name;
+
+		CachedRacerUi(UiElement ui, long builtAtMs, int w, int h, UUID id, String name) {
+			this.ui = ui;
+			this.builtAtMs = builtAtMs;
+			this.w = w;
+			this.h = h;
+			this.id = id;
+			this.name = name;
+		}
+	}
 
 	public OpeningTitlesBoardService(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
@@ -159,6 +201,15 @@ public final class OpeningTitlesBoardService {
 
 		faviconImage = null;
 		faviconLastLoadMs = 0L;
+		cachedFaviconUi = null;
+		cachedFaviconImage = null;
+		cachedFaviconW = 0;
+		cachedFaviconH = 0;
+		bundledLogo = null;
+		racerUiCache.clear();
+		lastRenderedKey = Long.MIN_VALUE;
+		lastRacerUiRefreshAtMs = 0L;
+		lastRenderAtMs = 0L;
 	}
 
 	public boolean start() {
@@ -429,6 +480,7 @@ public final class OpeningTitlesBoardService {
 			}
 		}
 		spawnedTo.clear();
+		eligibleViewers.clear();
 
 		boardDisplay.destroy();
 	}
@@ -482,14 +534,14 @@ public final class OpeningTitlesBoardService {
 		if (!boardDisplay.isReady())
 			return;
 
-		Set<UUID> eligible = new HashSet<>();
+		eligibleViewers.clear();
 		for (UUID id : desiredViewers) {
 			if (id == null)
 				continue;
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
-			eligible.add(id);
+			eligibleViewers.add(id);
 		}
 		for (UUID id : previewViewers) {
 			if (id == null)
@@ -497,10 +549,10 @@ public final class OpeningTitlesBoardService {
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
-			eligible.add(id);
+			eligibleViewers.add(id);
 		}
 
-		if (eligible.isEmpty()) {
+		if (eligibleViewers.isEmpty()) {
 			if (tickTask != null && (desiredViewers == null || desiredViewers.isEmpty())
 					&& (previewViewers == null || previewViewers.isEmpty())) {
 				// No viewers at all; stop to free resources.
@@ -510,8 +562,9 @@ public final class OpeningTitlesBoardService {
 		}
 
 		// Spawn/despawn
-		for (UUID id : new HashSet<>(spawnedTo)) {
-			if (eligible.contains(id))
+		for (java.util.Iterator<UUID> it = spawnedTo.iterator(); it.hasNext();) {
+			UUID id = it.next();
+			if (eligibleViewers.contains(id))
 				continue;
 			Player p = Bukkit.getPlayer(id);
 			if (p != null && p.isOnline()) {
@@ -520,10 +573,12 @@ public final class OpeningTitlesBoardService {
 				} catch (Throwable ignored) {
 				}
 			}
-			spawnedTo.remove(id);
+			it.remove();
 		}
 
-		for (UUID id : eligible) {
+		for (UUID id : eligibleViewers) {
+			if (spawnedTo.contains(id))
+				continue;
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
@@ -537,20 +592,23 @@ public final class OpeningTitlesBoardService {
 		if (spawnedTo.isEmpty())
 			return;
 
-		BufferedImage img = renderUi(placement.pixelWidth(), placement.pixelHeight());
+		long now = System.currentTimeMillis();
+		if (!shouldRenderNow(now))
+			return;
+		BufferedImage img = renderUi(placement.pixelWidth(), placement.pixelHeight(), now);
 		boardDisplay.renderAndFlush(img);
+		lastRenderAtMs = now;
 	}
 
-	private BufferedImage renderUi(int w, int h) {
+	private BufferedImage renderUi(int w, int h, long now) {
 		BufferedImage img = renderBuffers.acquire(w, h);
-		UiElement root = buildRoot(w, h);
+		UiElement root = buildRoot(w, h, now);
 		UiComposer.renderInto(img, root, bodyFont, fallbackFont);
 		return img;
 	}
 
-	private UiElement buildRoot(int w, int h) {
+	private UiElement buildRoot(int w, int h, long now) {
 		BroadcastTheme.Palette pal = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY);
-		final long now = System.currentTimeMillis();
 
 		// Resolve transition progress.
 		boolean isTrans = transitioning;
@@ -591,6 +649,22 @@ public final class OpeningTitlesBoardService {
 		root.style().background(pal.panel());
 
 		// Background: clean dark layout + signature emblem (inspired by provided references).
+		Color c1 = null;
+		Color c2 = null;
+		Color c3 = null;
+		try {
+			c1 = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(230);
+			c2 = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(230);
+			c3 = BroadcastTheme.palette(BroadcastTheme.ACCENT_REGISTERING).accentSoft(230);
+		} catch (Throwable ignored) {
+			c1 = null;
+			c2 = null;
+			c3 = null;
+		}
+		final Color emblemC1 = c1;
+		final Color emblemC2 = c2;
+		final Color emblemC3 = c3;
+
 		root.add(new GraphicsElement((ctx, rect) -> {
 			if (ctx == null || ctx.g == null)
 				return;
@@ -629,10 +703,10 @@ public final class OpeningTitlesBoardService {
 
 			// Signature emblem on the right (3 arms) - keep inside right band
 			try {
-				Color c1 = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(230);
-				Color c2 = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(230);
-				Color c3 = BroadcastTheme.palette(BroadcastTheme.ACCENT_REGISTERING).accentSoft(230);
-				if (c1 != null && c2 != null && c3 != null) {
+				Color ec1 = emblemC1;
+				Color ec2 = emblemC2;
+				Color ec3 = emblemC3;
+				if (ec1 != null && ec2 != null && ec3 != null) {
 					int size = (int) Math.round(Math.min(rect.w(), rect.h()) * 0.30);
 					int armW = Math.max(18, size);
 					int armH = Math.max(10, (int) Math.round(size * 0.24));
@@ -646,7 +720,7 @@ public final class OpeningTitlesBoardService {
 					cx = Math.min(cx, rect.x() + rect.w() - 10);
 
 					AffineTransform old = g.getTransform();
-					Color[] colors = new Color[] { c1, c2, c3 };
+					Color[] colors = new Color[] { ec1, ec2, ec3 };
 					double[] angles = new double[] { 0.0, 120.0, 240.0 };
 					for (int i = 0; i < 3; i++) {
 						g.setTransform(old);
@@ -722,7 +796,7 @@ public final class OpeningTitlesBoardService {
 		UiElement curUi;
 		if (!isTrans) {
 			Screen s = screen;
-			curUi = buildRootFor(s, racerId, racerName, w, h, pal, showDtMs, false);
+			curUi = getStableRootFor(s, racerId, racerName, w, h, pal, now);
 			root.add(new FxContainer().alpha(1.0).offset(0, 0).child(curUi));
 			return root;
 		}
@@ -742,18 +816,108 @@ public final class OpeningTitlesBoardService {
 		return root;
 	}
 
+	private UiElement getStableRootFor(Screen s, UUID id, String name, int w, int h, BroadcastTheme.Palette pal, long now) {
+		return switch (s) {
+			case FAVICON -> getCachedFaviconUi(w, h, pal);
+			case RACER_CARD -> getCachedRacerUi(w, h, pal, id, name, now);
+		};
+	}
+
+	private UiElement getCachedFaviconUi(int w, int h, BroadcastTheme.Palette pal) {
+		BufferedImage icon = loadFaviconIfNeeded();
+		if (icon == null)
+			icon = loadBundledLogoCached();
+		if (cachedFaviconUi != null && cachedFaviconW == w && cachedFaviconH == h && cachedFaviconImage == icon)
+			return cachedFaviconUi;
+		cachedFaviconUi = buildFaviconUi(w, h, pal, icon);
+		cachedFaviconW = w;
+		cachedFaviconH = h;
+		cachedFaviconImage = icon;
+		return cachedFaviconUi;
+	}
+
+	private UiElement getCachedRacerUi(int w, int h, BroadcastTheme.Palette pal, UUID id, String name, long now) {
+		if (id == null) {
+			return buildRacerUi(w, h, pal, null, name, SHOW_MS, false);
+		}
+		CachedRacerUi cached = racerUiCache.get(id);
+		if (cached != null) {
+			boolean sameName = (cached.name == null && name == null) || (cached.name != null && cached.name.equals(name));
+			if (cached.w == w && cached.h == h && sameName && (now - cached.builtAtMs) <= RACER_UI_CACHE_TTL_MS) {
+				return cached.ui;
+			}
+		}
+
+		UiElement ui = buildRacerUi(w, h, pal, id, name, SHOW_MS, false);
+		racerUiCache.put(id, new CachedRacerUi(ui, now, w, h, id, name));
+		return ui;
+	}
+
+	private boolean shouldRenderNow(long now) {
+		// During transitions/flash, we need per-frame updates.
+		if (transitioning)
+			return true;
+		if (flashStartMs > 0L && (now - flashStartMs) < FLASH_MS)
+			return true;
+
+		// If screen is racer card, refresh occasionally for profile stats (but not 20 TPS).
+		if (screen == Screen.RACER_CARD) {
+			if ((now - lastRacerUiRefreshAtMs) >= RACER_UI_CACHE_TTL_MS) {
+				lastRacerUiRefreshAtMs = now;
+				return true;
+			}
+		}
+
+		// Favicon can change on disk; if icon reference changes, rerender.
+		if (screen == Screen.FAVICON) {
+			BufferedImage icon = loadFaviconIfNeeded();
+			if (icon == null)
+				icon = loadBundledLogoCached();
+			if (cachedFaviconImage != icon)
+				return true;
+		}
+
+		// Finally, avoid spamming render/flush if nothing changed.
+		long key = computeRenderKey();
+		if (key != lastRenderedKey) {
+			lastRenderedKey = key;
+			return true;
+		}
+
+		return (now - lastRenderAtMs) >= RENDER_IDLE_THROTTLE_MS;
+	}
+
+	private long computeRenderKey() {
+		int w = (placement != null ? placement.pixelWidth() : 0);
+		int h = (placement != null ? placement.pixelHeight() : 0);
+		long k = 1469598103934665603L;
+		k = (k ^ w) * 1099511628211L;
+		k = (k ^ h) * 1099511628211L;
+		k = (k ^ (screen != null ? screen.ordinal() : 0)) * 1099511628211L;
+		UUID id = racerId;
+		if (id != null) {
+			k = (k ^ id.getMostSignificantBits()) * 1099511628211L;
+			k = (k ^ id.getLeastSignificantBits()) * 1099511628211L;
+		}
+		String n = racerName;
+		if (n != null)
+			k = (k ^ n.hashCode()) * 1099511628211L;
+		return k;
+	}
+
 	private UiElement buildRootFor(Screen s, UUID id, String name, int w, int h, BroadcastTheme.Palette pal, long showDtMs, boolean animateIn) {
 		return switch (s) {
-			case FAVICON -> buildFaviconUi(w, h, pal);
+			case FAVICON -> buildFaviconUi(w, h, pal, null);
 			case RACER_CARD -> buildRacerUi(w, h, pal, id, name, showDtMs, animateIn);
 		};
 	}
 
-	private UiElement buildFaviconUi(int w, int h, BroadcastTheme.Palette pal) {
-		BufferedImage icon = loadFaviconIfNeeded();
+	private UiElement buildFaviconUi(int w, int h, BroadcastTheme.Palette pal, BufferedImage iconOverride) {
+		BufferedImage icon = iconOverride;
 		if (icon == null) {
-			// Fallback to bundled logo from EventBoardService
-			icon = loadBundledLogo();
+			icon = loadFaviconIfNeeded();
+			if (icon == null)
+				icon = loadBundledLogoCached();
 		}
 
 		// Modern "broadcast" splash inspired by the references: big headline + clean blocks.
@@ -1101,12 +1265,16 @@ public final class OpeningTitlesBoardService {
 		return 1.0 - (k * k * k);
 	}
 
-	private BufferedImage loadBundledLogo() {
+	private BufferedImage loadBundledLogoCached() {
+		if (bundledLogo != null)
+			return bundledLogo;
 		try (java.io.InputStream is = plugin.getResource("imgs/logo.png")) {
 			if (is == null)
 				return null;
-			return ImageIO.read(is);
+			bundledLogo = ImageIO.read(is);
+			return bundledLogo;
 		} catch (Throwable ignored) {
+			bundledLogo = null;
 			return null;
 		}
 	}

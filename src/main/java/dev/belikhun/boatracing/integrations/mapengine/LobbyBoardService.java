@@ -127,6 +127,9 @@ public final class LobbyBoardService {
 	private long lastDebugTickLogMillis = 0L;
 
 	private final Set<UUID> spawnedTo = new HashSet<>();
+	private final Set<UUID> eligibleViewers = new HashSet<>();
+	private static final long REENSURE_EXISTING_VIEWERS_MS = 5000L;
+	private long lastReensureAtMs = 0L;
 
 	private void invalidateUiCache() {
 		uiCache = null;
@@ -239,6 +242,7 @@ public final class LobbyBoardService {
 			}
 		}
 		spawnedTo.clear();
+		eligibleViewers.clear();
 
 		// best-effort destroy the display object (API varies between versions)
 		boardDisplay.destroy();
@@ -484,7 +488,7 @@ public final class LobbyBoardService {
 			return;
 
 		// Determine eligible viewers.
-		Set<UUID> eligible = new HashSet<>();
+		eligibleViewers.clear();
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			if (p == null || !p.isOnline() || p.getWorld() == null)
 				continue;
@@ -495,34 +499,41 @@ public final class LobbyBoardService {
 
 			if (!BoardViewers.isWithinRadiusChunks(p, placement, visibleRadiusChunks))
 				continue;
-			eligible.add(p.getUniqueId());
+			eligibleViewers.add(p.getUniqueId());
 		}
 
-		dbgTick("tick(): eligible=" + eligible.size() + " spawnedTo=" + spawnedTo.size());
+		dbgTick("tick(): eligible=" + eligibleViewers.size() + " spawnedTo=" + spawnedTo.size());
 
 		// Despawn players that are no longer eligible.
-		for (UUID id : new HashSet<>(spawnedTo)) {
-			if (!eligible.contains(id)) {
-				Player p = Bukkit.getPlayer(id);
-				if (p != null && p.isOnline()) {
-					try {
-						despawnFor(p);
-					} catch (Throwable ignored) {
-					}
+		for (java.util.Iterator<UUID> it = spawnedTo.iterator(); it.hasNext();) {
+			UUID id = it.next();
+			if (eligibleViewers.contains(id))
+				continue;
+			Player p = Bukkit.getPlayer(id);
+			if (p != null && p.isOnline()) {
+				try {
+					despawnFor(p);
+				} catch (Throwable ignored) {
 				}
-				spawnedTo.remove(id);
 			}
+			it.remove();
 		}
 
+		long now = System.currentTimeMillis();
+		boolean reensure = (now - lastReensureAtMs) >= REENSURE_EXISTING_VIEWERS_MS;
+		if (reensure)
+			lastReensureAtMs = now;
+
 		// Spawn to new eligible viewers.
-		for (UUID id : eligible) {
+		for (UUID id : eligibleViewers) {
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
 			try {
-				// Re-ensure viewer even if already spawned. Teleports/world loads can cause
-				// MapEngine to miss the first spawn; this keeps boards reliable.
-				spawnFor(p);
+				// Ensure for newly eligible viewers; periodically re-ensure existing viewers to
+				// stay robust against teleports/world loads without doing it every tick.
+				if (reensure || !spawnedTo.contains(id))
+					spawnFor(p);
 			} catch (Throwable ignored) {
 			}
 			spawnedTo.add(id);
