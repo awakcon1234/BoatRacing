@@ -215,6 +215,7 @@ public class EventRegistrationGUI implements Listener {
 			case REGISTRATION -> "&aĐang mở đăng ký";
 			case RUNNING -> "&bĐang diễn ra";
 			case COMPLETED -> "&6Đã kết thúc";
+			case DISABLED -> "&7Đã tắt";
 			case CANCELLED -> "&cĐã hủy";
 		};
 	}

@@ -690,6 +690,25 @@ public final class EventCommands {
 				Text.msg(p, ok ? "&aĐã hủy sự kiện." : "&cKhông có sự kiện để hủy.");
 				return true;
 			}
+			case "disable" -> {
+				if (!p.hasPermission("boatracing.event.admin")) {
+					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+					return true;
+				}
+				RaceEvent e = svc.getActiveEvent();
+				if (e == null) {
+					Text.msg(p, "&cKhông có sự kiện nào để tắt.");
+					return true;
+				}
+				boolean ok = svc.disableActiveEvent();
+				if (!ok) {
+					Text.msg(p, "&cKhông thể tắt sự kiện lúc này.");
+					Text.tell(p, "&7Chỉ dùng khi sự kiện đã &6kết thúc&7 hoặc đã &chủy&7.");
+					return true;
+				}
+				Text.msg(p, "&aĐã tắt sự kiện. &7Bảng sự kiện vẫn hiển thị kết quả; bục trao giải được giữ lại.");
+				return true;
+			}
 			case "track" -> {
 				if (!p.hasPermission("boatracing.event.admin")) {
 					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
@@ -757,7 +776,7 @@ public final class EventCommands {
 		Text.tell(p, "&7 - &f/" + label + " event join");
 		Text.tell(p, "&7 - &f/" + label + " event leave");
 		if (p.hasPermission("boatracing.event.admin")) {
-			Text.tell(p, "&8Quản trị:&7 /" + label + " event create|open|schedule|start|cancel");
+			Text.tell(p, "&8Quản trị:&7 /" + label + " event create|open|schedule|start|cancel|disable");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event track add|remove|list");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event board set|status|clear");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event opening ...");

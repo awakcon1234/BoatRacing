@@ -1021,6 +1021,7 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 					subs.add("schedule");
 					subs.add("start");
 					subs.add("cancel");
+					subs.add("disable");
 					subs.add("track");
 					subs.add("board");
 					subs.add("opening");

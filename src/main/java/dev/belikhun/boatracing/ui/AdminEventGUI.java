@@ -54,6 +54,7 @@ public class AdminEventGUI implements Listener {
 		SCHEDULE,
 		START,
 		CANCEL,
+		DISABLE,
 		TRACK_POOL,
 		OPENING_MENU,
 		OPENING_START,
@@ -162,6 +163,15 @@ public class AdminEventGUI implements Listener {
 						"&7Hủy sự kiện đang hoạt động.",
 						" ",
 						"&eBấm: &fHủy sự kiện"
+				), true, null));
+
+		inv.setItem(20, buttonWithLore(Material.GRAY_DYE, Text.item("&7&lTắt sự kiện"), Action.DISABLE,
+				List.of(
+						"&7Đưa sự kiện về trạng thái &7TẮT&7.",
+						"&8Giữ bảng kết quả + bục trao giải.",
+						"&8Scoreboard của người chơi sẽ trở về sảnh.",
+						" ",
+						"&eBấm: &fTắt (chỉ khi đã kết thúc / đã hủy)"
 				), true, null));
 
 		inv.setItem(22, buttonWithLore(Material.WRITABLE_BOOK, Text.item("&d&lTrack pool"), Action.TRACK_POOL,
@@ -369,6 +379,7 @@ public class AdminEventGUI implements Listener {
 			case REGISTRATION -> "&aĐang mở đăng ký";
 			case RUNNING -> "&bĐang diễn ra";
 			case COMPLETED -> "&6Đã kết thúc";
+			case DISABLED -> "&7Đã tắt";
 			case CANCELLED -> "&cĐã hủy";
 		};
 	}
@@ -670,6 +681,7 @@ public class AdminEventGUI implements Listener {
 			case SCHEDULE -> beginSchedule(p);
 			case START -> doStart(p);
 			case CANCEL -> doCancel(p);
+			case DISABLE -> doDisable(p);
 			case TRACK_POOL -> openTrackPool(p);
 			case OPENING_MENU -> openOpeningMenu(p);
 			case OPENING_START -> {
@@ -773,6 +785,35 @@ public class AdminEventGUI implements Listener {
 				}
 			}
 		}
+	}
+
+	private void doDisable(Player p) {
+		EventService svc = svc();
+		if (svc == null || p == null)
+			return;
+		RaceEvent e = null;
+		try {
+			e = svc.getActiveEvent();
+		} catch (Throwable ignored) {
+			e = null;
+		}
+		if (e == null) {
+			Text.msg(p, "&cKhông có sự kiện nào để tắt.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			open(p);
+			return;
+		}
+		boolean ok = svc.disableActiveEvent();
+		if (!ok) {
+			Text.msg(p, "&cKhông thể tắt sự kiện lúc này.");
+			Text.tell(p, "&7Chỉ dùng khi sự kiện đã &6kết thúc&7 hoặc đã &chủy&7.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			open(p);
+			return;
+		}
+		Text.msg(p, "&aĐã tắt sự kiện. &7Bảng sự kiện vẫn hiển thị kết quả; bục trao giải được giữ lại.");
+		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+		open(p);
 	}
 
 	@EventHandler(priority = EventPriority.HIGHEST)

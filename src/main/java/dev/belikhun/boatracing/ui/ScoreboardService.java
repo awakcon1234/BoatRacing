@@ -139,6 +139,12 @@ public class ScoreboardService {
 							active = null;
 						}
 						if (active != null && isEventParticipant(active, p.getUniqueId())) {
+							if (active.state == EventState.DISABLED) {
+								setState(p, "LOBBY");
+								applyLobbyBoard(p);
+								clearActionBar(p);
+								continue;
+							}
 							setState(p, "EVENT");
 							applyEventLobbyBoard(p, active);
 							clearActionBar(p);
@@ -201,6 +207,7 @@ public class ScoreboardService {
 			case REGISTRATION -> "<green>Đang mở đăng ký</green>";
 			case RUNNING -> "<aqua>Đang diễn ra</aqua>";
 			case COMPLETED -> "<gold>Đã kết thúc</gold>";
+			case DISABLED -> "<gray>Đã tắt</gray>";
 			case CANCELLED -> "<red>Đã hủy</red>";
 		};
 	}

@@ -5,5 +5,6 @@ public enum EventState {
 	REGISTRATION,
 	RUNNING,
 	COMPLETED,
+	DISABLED,
 	CANCELLED
 }

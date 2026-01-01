@@ -504,6 +504,8 @@ public final class EventBoardService {
 		EventState st = active.state;
 		if (st == EventState.COMPLETED)
 			return Screen.EVENT_FINISHED;
+		if (st == EventState.DISABLED)
+			return Screen.EVENT_FINISHED;
 		if (st == EventState.CANCELLED)
 			return Screen.EVENT_FINISHED;
 
@@ -1253,6 +1255,7 @@ public final class EventBoardService {
 			case REGISTRATION -> "Đang đăng ký";
 			case RUNNING -> "Đang chạy";
 			case COMPLETED -> "Đã kết thúc";
+			case DISABLED -> "Đã tắt";
 			case CANCELLED -> "Đã hủy";
 		};
 	}

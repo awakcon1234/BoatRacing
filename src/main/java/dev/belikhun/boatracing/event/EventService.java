@@ -181,6 +181,58 @@ public class EventService {
 						}
 					}, delay);
 				}
+			} else if (e != null && e.state == EventState.DISABLED && podiumService != null) {
+				if (podiumDebug) {
+					try {
+						plugin.getLogger().info("[Event][PodiumDBG] Active event is DISABLED; scheduling podium auto-spawn retries.");
+					} catch (Throwable ignored) {
+					}
+				}
+				// Retry a few times in case chunks/plugins aren't ready immediately.
+				final int maxAttempts = 5;
+				for (int i = 0; i < maxAttempts; i++) {
+					final int attempt = i + 1;
+					long delay = 20L + (i * 40L); // 1s, 3s, 5s, 7s, 9s
+					if (podiumDebug) {
+						try {
+							plugin.getLogger().info("[Event][PodiumDBG] Scheduling auto-spawn attempt " + attempt + "/" + maxAttempts + " in " + delay + " ticks.");
+						} catch (Throwable ignored) {
+						}
+					}
+					Bukkit.getScheduler().runTaskLater(plugin, () -> {
+						try {
+							if (podiumDebug) {
+								try {
+									plugin.getLogger().info("[Event][PodiumDBG] Running auto-spawn attempt " + attempt + "/" + maxAttempts
+											+ " (alreadySpawned=" + podiumService.hasSpawnedAnything() + ")");
+								} catch (Throwable ignored) {
+								}
+							}
+							if (podiumService.hasSpawnedAnything())
+								return;
+							podiumService.spawnTop3(e);
+							if (podiumDebug) {
+								try {
+									plugin.getLogger().info("[Event][PodiumDBG] Attempt " + attempt + " completed (spawnedAnything=" + podiumService.hasSpawnedAnything() + ")");
+								} catch (Throwable ignored) {
+								}
+							}
+						} catch (Throwable ignored) {
+							if (podiumDebug) {
+								try {
+									plugin.getLogger().warning("[Event][PodiumDBG] Exception while spawning podium on attempt " + attempt + ": " + ignored.getMessage());
+								} catch (Throwable ignored2) {
+								}
+							}
+						}
+						try {
+							if (!podiumService.hasSpawnedAnything() && attempt == maxAttempts) {
+								plugin.getLogger().warning("[Event] Podium auto-spawn failed after restart (no entities spawned).");
+							}
+						} catch (Throwable ignored) {
+						}
+					}, delay);
+				}
 			} else if (podiumDebug) {
 				try {
 					String st = (e == null || e.state == null) ? "<null>" : e.state.name();
@@ -476,7 +528,7 @@ public class EventService {
 		// context so UI/boards don't keep showing stale data from the previous event.
 		try {
 			RaceEvent active = getActiveEvent();
-			boolean finished = (active != null && (active.state == EventState.CANCELLED || active.state == EventState.COMPLETED));
+			boolean finished = (active != null && (active.state == EventState.CANCELLED || active.state == EventState.COMPLETED || active.state == EventState.DISABLED));
 			if (active == null || finished) {
 				setActiveEvent(e.id);
 				activeTrackName = null;
@@ -507,6 +559,7 @@ public class EventService {
 		if (active != null && active.state != null
 				&& active.state != EventState.CANCELLED
 				&& active.state != EventState.COMPLETED
+				&& active.state != EventState.DISABLED
 				&& !active.id.equals(e.id)) {
 			return false;
 		}
@@ -602,6 +655,28 @@ public class EventService {
 		lobbyWaitEndMillis = 0L;
 		breakEndMillis = 0L;
 		lobbyGatherDone = false;
+		return true;
+	}
+
+	/**
+	 * Disable a finished event:
+	 * - Keep the MapEngine event board showing final results
+	 * - Keep podium NPCs
+	 * - Restore normal lobby scoreboards for players
+	 */
+	public synchronized boolean disableActiveEvent() {
+		RaceEvent e = getActiveEvent();
+		if (e == null)
+			return false;
+		if (e.state != EventState.COMPLETED && e.state != EventState.CANCELLED)
+			return false;
+		e.state = EventState.DISABLED;
+		EventStorage.saveEvent(dataFolder, e);
+		try {
+			if (plugin != null && plugin.getScoreboardService() != null)
+				plugin.getScoreboardService().forceTick();
+		} catch (Throwable ignored) {
+		}
 		return true;
 	}
 
@@ -724,7 +799,7 @@ public class EventService {
 				registrationNpcService.tick(e);
 		} catch (Throwable ignored) {
 		}
-		if (e.state == EventState.CANCELLED || e.state == EventState.COMPLETED)
+		if (e.state == EventState.CANCELLED || e.state == EventState.COMPLETED || e.state == EventState.DISABLED)
 			return;
 
 		// Auto-start at startTime when in registration.
