@@ -2936,6 +2936,30 @@ public class RaceManager {
 				}
 
 				if (plugin != null) {
+					// If this race is running as part of an active EventService track, EventService
+					// will handle returning participants to lobby after the celebration window.
+					// For normal (non-event) races, we must teleport players ourselves.
+					boolean eventManagedTrack = false;
+					try {
+						if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br) {
+							dev.belikhun.boatracing.event.EventService es = br.getEventService();
+							String active = (es != null ? es.getActiveTrackNameRuntime() : null);
+							dev.belikhun.boatracing.event.RaceEvent ev = (es != null ? es.getActiveEvent() : null);
+							String cur = null;
+							try {
+								cur = trackConfig != null ? trackConfig.getCurrentName() : null;
+							} catch (Throwable ignored) {
+								cur = null;
+							}
+							if (ev != null && active != null && cur != null && !active.isBlank() && !cur.isBlank()) {
+								eventManagedTrack = active.equalsIgnoreCase(cur);
+							}
+						}
+					} catch (Throwable ignored) {
+						eventManagedTrack = false;
+					}
+					final boolean teleportAfterFinish = !eventManagedTrack;
+
 					int sec = 15;
 					try {
 						sec = Math.max(0, plugin.getConfig().getInt("racing.post-finish-cleanup-seconds", 15));
@@ -2960,7 +2984,7 @@ public class RaceManager {
 						postFinishCleanupEndMillis = System.currentTimeMillis() + (delayTicks * 50L);
 						postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
 							try {
-								stop(false);
+								stop(teleportAfterFinish);
 							} catch (Throwable ignored) {
 							}
 							postFinishCleanupEndMillis = 0L;
@@ -2969,7 +2993,7 @@ public class RaceManager {
 					} else {
 						postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
 							try {
-								stop(false);
+								stop(teleportAfterFinish);
 							} catch (Throwable ignored) {
 							}
 							postFinishCleanupEndMillis = 0L;
@@ -5275,8 +5299,36 @@ public class RaceManager {
 					} else if (p.getWorld() != null) {
 						spawn = p.getWorld().getSpawnLocation();
 					}
-					if (spawn != null)
-						p.teleport(spawn);
+					if (spawn != null) {
+						org.bukkit.Location target;
+						try {
+							target = spawn.clone();
+						} catch (Throwable ignored) {
+							target = spawn;
+						}
+						final Player tp = p;
+						final float yaw = target.getYaw();
+						final float pitch = target.getPitch();
+						p.teleport(target);
+						try {
+							p.setRotation(yaw, pitch);
+						} catch (Throwable ignored) {
+						}
+						// Stabilize facing next tick (vehicle/client can override right after teleport)
+						try {
+							if (plugin != null) {
+								plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+									try {
+										if (!tp.isOnline())
+											return;
+										tp.setRotation(yaw, pitch);
+									} catch (Throwable ignored) {
+									}
+								}, 1L);
+							}
+						} catch (Throwable ignored) {
+						}
+					}
 					p.setFallDistance(0f);
 					try {
 						if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br)
