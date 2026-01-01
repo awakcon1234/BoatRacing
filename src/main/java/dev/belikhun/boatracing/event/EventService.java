@@ -63,7 +63,6 @@ public class EventService {
 	private boolean trackWasRunning = false;
 
 	// Event phase scheduling (runtime-only; not persisted)
-	private static final int INTRO_SECONDS = 30;
 	private static final int FIRST_TRACK_WAIT_SECONDS = 60;
 	private static final int BREAK_SECONDS = 5 * 60;
 	private long introEndMillis = 0L;
@@ -703,22 +702,6 @@ public class EventService {
 
 		long now = System.currentTimeMillis();
 
-		// Intro phase: just wait.
-		if (introEndMillis > 0L && now < introEndMillis)
-			return;
-
-		// After intro ends, gather everyone back to lobby then wait 60s before starting the first track.
-		if (introEndMillis > 0L && now >= introEndMillis && !lobbyGatherDone && e.currentTrackIndex == 0) {
-			try {
-				gatherEligibleToLobby();
-			} catch (Throwable ignored) {
-			}
-			lobbyGatherDone = true;
-			lobbyWaitEndMillis = now + (FIRST_TRACK_WAIT_SECONDS * 1000L);
-			broadcastToParticipants(e, "&e⌛ Đang chuẩn bị chặng 1. &7Bắt đầu sau &f"
-					+ Time.formatCountdownSeconds(FIRST_TRACK_WAIT_SECONDS) + "&7.");
-		}
-
 		// Pre-first-track waiting period.
 		if (lobbyWaitEndMillis > 0L && now < lobbyWaitEndMillis)
 			return;
@@ -807,15 +790,11 @@ public class EventService {
 		breakEndMillis = 0L;
 		lobbyGatherDone = false;
 
-		boolean useOpeningTitles = false;
-		try {
-			useOpeningTitles = plugin.getConfig().getBoolean("event.opening-titles.enabled", false) && e.currentTrackIndex == 0;
-		} catch (Throwable ignored) {
-			useOpeningTitles = false;
-		}
-
+		// Replace legacy 30s placeholder intro with the real opening titles intro sequence.
+		// Only run it for the first track.
+		boolean useOpeningTitles = (e.currentTrackIndex == 0);
+		introEndMillis = 0L;
 		if (useOpeningTitles) {
-			introEndMillis = 0L;
 			try {
 				gatherEligibleToLobby();
 			} catch (Throwable ignored) {
@@ -823,7 +802,7 @@ public class EventService {
 			try {
 				if (openingTitlesController != null)
 					openingTitlesController.start(e, () -> {
-						// After titles: ensure everyone is in lobby, then start track countdown.
+						// After titles: ensure everyone is in lobby, then allow starting track countdown.
 						try {
 							gatherEligibleToLobby();
 						} catch (Throwable ignored) {
@@ -834,17 +813,11 @@ public class EventService {
 					});
 			} catch (Throwable ignored) {
 			}
-		} else {
-			introEndMillis = now + (INTRO_SECONDS * 1000L);
 		}
 		EventStorage.saveEvent(dataFolder, e);
 		broadcastToParticipants(e, "&eSự kiện &f" + safeName(e.title) + "&e đã bắt đầu!");
-		if (!useOpeningTitles) {
-			broadcastToParticipants(e, "&7⏳ Đang giới thiệu... bắt đầu sau &f" + Time.formatCountdownSeconds(INTRO_SECONDS)
-					+ "&7.");
-		} else {
+		if (useOpeningTitles)
 			broadcastToParticipants(e, "&7⏳ Đang giới thiệu... &fchuẩn bị chặng 1&7.");
-		}
 		return true;
 	}
 
