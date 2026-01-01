@@ -565,16 +565,18 @@ public final class OpeningTitlesBoardService {
 		}
 
 		int slide = (int) Math.round(w * 0.07);
+		long showDtMs;
 		double hideT;
 		double showT;
 		if (!isTrans) {
 			hideT = 1.0;
 			showT = 1.0;
+			showDtMs = SHOW_MS;
 		} else {
 			long dt = Math.max(0L, now - transitionStartMs);
 			hideT = (HIDE_MS <= 0L) ? 1.0 : Math.max(0.0, Math.min(1.0, (double) dt / (double) HIDE_MS));
-			long showDt = Math.max(0L, dt - HIDE_MS);
-			showT = (SHOW_MS <= 0L) ? 1.0 : Math.max(0.0, Math.min(1.0, (double) showDt / (double) SHOW_MS));
+			showDtMs = Math.max(0L, dt - HIDE_MS);
+			showT = (SHOW_MS <= 0L) ? 1.0 : Math.max(0.0, Math.min(1.0, (double) showDtMs / (double) SHOW_MS));
 		}
 
 		double hideEase = easeInCubic(hideT);
@@ -588,6 +590,12 @@ public final class OpeningTitlesBoardService {
 			if (ctx == null || ctx.g == null)
 				return;
 			Graphics2D g = ctx.g;
+			int marginX = Math.max(18, (int) Math.round(rect.w() * 0.12));
+			int marginY = Math.max(18, (int) Math.round(rect.h() * 0.12));
+			int safeLeft = rect.x() + marginX;
+			int safeRight = rect.x() + rect.w() - marginX;
+			int safeTop = rect.y() + marginY;
+			int safeBottom = rect.y() + rect.h() - marginY;
 			try {
 				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 				g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
@@ -631,22 +639,26 @@ public final class OpeningTitlesBoardService {
 					g.fillRect(rect.x(), rect.y(), rect.w(), lh);
 				}
 
-				// Diagonal slash blocks (subtle)
+				// Diagonal slash blocks (subtle) - keep inside the right margin band (avoid overlapping content)
 				Color slash = pal.accentSoft(55);
 				if (slash != null) {
 					g.setColor(slash);
-					int sw = Math.max(10, (int) Math.round(rect.w() * 0.09));
+					int sw = Math.max(10, Math.min((int) Math.round(rect.w() * 0.09), Math.max(12, marginX - 8)));
 					int sh = Math.max(10, (int) Math.round(rect.h() * 0.55));
-					int sx = rect.x() + rect.w() - (int) Math.round(rect.w() * 0.28);
-					int sy = rect.y() + (int) Math.round(rect.h() * 0.10);
+					int sx = rect.x() + rect.w() - marginX + (int) Math.round(marginX * 0.12);
+					int sy = safeTop - (int) Math.round(marginY * 0.20);
+					sh = Math.min(sh, Math.max(10, safeBottom - sy));
 					int[] px = new int[] { sx, sx + sw, sx + sw - (int) (sw * 0.35), sx - (int) (sw * 0.35) };
 					int[] py = new int[] { sy, sy, sy + sh, sy + sh };
 					g.fillPolygon(px, py, 4);
-					g.fillPolygon(
-							new int[] { sx + sw + (int) (sw * 0.45), sx + sw + (int) (sw * 1.45), sx + sw + (int) (sw * 1.10), sx + sw + (int) (sw * 0.10) },
-							py,
-							4
-					);
+					int sx2 = sx + sw + (int) (sw * 0.55);
+					if (sx2 < rect.x() + rect.w() - 2) {
+						g.fillPolygon(
+								new int[] { sx2, sx2 + sw, sx2 + sw - (int) (sw * 0.35), sx2 - (int) (sw * 0.35) },
+								py,
+								4
+						);
+					}
 				}
 			} catch (Throwable ignored) {
 			}
@@ -712,10 +724,12 @@ public final class OpeningTitlesBoardService {
 					if (f.canDisplay(g1.codePointAt(0))) g.drawString(g1, xR, yT);
 					if (f.canDisplay(g2.codePointAt(0))) g.drawString(g2, xL, yB);
 					if (f.canDisplay(g3.codePointAt(0))) g.drawString(g3, xR, yB);
+					// Extra glyphs: keep in the side margin bands only
 					int midY = rect.y() + rect.h() / 2;
-					int xMid = rect.x() + rect.w() - pad - size - (int) Math.round(rect.w() * 0.07);
-					if (f.canDisplay(g4.codePointAt(0))) g.drawString(g4, xMid, midY);
-					if (f.canDisplay(g5.codePointAt(0))) g.drawString(g5, rect.x() + pad + (int) Math.round(rect.w() * 0.08), midY);
+					int xLeftBand = rect.x() + Math.max(6, marginX / 2);
+					int xRightBand = rect.x() + rect.w() - Math.max(6, marginX / 2) - size;
+					if (xLeftBand < safeLeft - 4 && f.canDisplay(g5.codePointAt(0))) g.drawString(g5, xLeftBand, midY);
+					if (xRightBand > safeRight + 4 && f.canDisplay(g4.codePointAt(0))) g.drawString(g4, xRightBand, midY);
 				}
 			} catch (Throwable ignored) {
 			}
@@ -742,12 +756,14 @@ public final class OpeningTitlesBoardService {
 			try {
 				Color dim = pal.textDimSoft(90);
 				if (dim != null) g.setColor(dim);
-				int baseY = rect.y() + rect.h() - (int) Math.round(rect.h() * 0.10);
-				int startX = rect.x() + (int) Math.round(rect.w() * 0.10);
+				int baseY = rect.y() + rect.h() - Math.max(8, marginY / 2);
+				int startX = rect.x() + Math.max(10, marginX / 2);
 				int gap = Math.max(6, (int) Math.round(rect.w() * 0.015));
 				int r = Math.max(2, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.006));
 				for (int i = 0; i < 8; i++) {
 					int x = startX + i * gap;
+					if (x >= safeLeft && x <= safeRight)
+						continue;
 					g.fillOval(x, baseY, r, r);
 				}
 			} catch (Throwable ignored) {
@@ -757,13 +773,13 @@ public final class OpeningTitlesBoardService {
 		UiElement curUi;
 		if (!isTrans) {
 			Screen s = screen;
-			curUi = buildRootFor(s, racerId, racerName, w, h, pal);
+			curUi = buildRootFor(s, racerId, racerName, w, h, pal, showDtMs, false);
 			root.add(new FxContainer().alpha(1.0).offset(0, 0).child(curUi));
 			return root;
 		}
 
-		UiElement fromUi = buildRootFor(fromScreen, fromRacerId, fromRacerName, w, h, pal);
-		UiElement toUi = buildRootFor(toScreen, toRacerId, toRacerName, w, h, pal);
+		UiElement fromUi = buildRootFor(fromScreen, fromRacerId, fromRacerName, w, h, pal, SHOW_MS, false);
+		UiElement toUi = buildRootFor(toScreen, toRacerId, toRacerName, w, h, pal, showDtMs, true);
 
 		// Phase 1: hide outgoing only.
 		double aOut = 1.0 - hideEase;
@@ -777,10 +793,10 @@ public final class OpeningTitlesBoardService {
 		return root;
 	}
 
-	private UiElement buildRootFor(Screen s, UUID id, String name, int w, int h, BroadcastTheme.Palette pal) {
+	private UiElement buildRootFor(Screen s, UUID id, String name, int w, int h, BroadcastTheme.Palette pal, long showDtMs, boolean animateIn) {
 		return switch (s) {
 			case FAVICON -> buildFaviconUi(w, h, pal);
-			case RACER_CARD -> buildRacerUi(w, h, pal, id, name);
+			case RACER_CARD -> buildRacerUi(w, h, pal, id, name, showDtMs, animateIn);
 		};
 	}
 
@@ -839,7 +855,7 @@ public final class OpeningTitlesBoardService {
 		return root;
 	}
 
-	private UiElement buildRacerUi(int w, int h, BroadcastTheme.Palette pal, UUID id, String name) {
+	private UiElement buildRacerUi(int w, int h, BroadcastTheme.Palette pal, UUID id, String name, long showDtMs, boolean animateIn) {
 
 		String display;
 		try {
@@ -889,7 +905,7 @@ public final class OpeningTitlesBoardService {
 				.font(big)
 				.align(LegacyTextElement.Align.CENTER)
 				.trimToFit(true);
-		root.add(title);
+		root.add(withAppearDelay(title, showDtMs, animateIn, 100L, Math.max(6, gap)));
 
 		// Stats panel (wins/completed/time raced/personal best)
 		int wins = 0;
@@ -967,7 +983,7 @@ public final class OpeningTitlesBoardService {
 				.align(LegacyTextElement.Align.LEFT)
 				.trimToFit(true);
 		header.add(hdr);
-		panel.add(header);
+		panel.add(withAppearDelay(header, showDtMs, animateIn, 200L, Math.max(4, gap / 2)));
 
 		// Divider line
 		GraphicsElement divider = new GraphicsElement((ctx, rect) -> {
@@ -983,17 +999,34 @@ public final class OpeningTitlesBoardService {
 			}
 		});
 		divider.style().heightPx(Math.max(2, borderW));
-		panel.add(divider);
+		panel.add(withAppearDelay(divider, showDtMs, animateIn, 240L, Math.max(3, gap / 2)));
 
-		panel.add(statRow(label, "&7★ Thắng", "&f" + wins, pal));
-		panel.add(statRow(label, "&7✔ Hoàn thành", "&f" + completed, pal));
-		panel.add(statRow(label, "&7⌚ Thời gian đua", "&f" + formatDurationVi(timeRaced), pal));
+		panel.add(withAppearDelay(statRow(label, "&7★ Thắng", "&f" + wins, pal), showDtMs, animateIn, 280L, Math.max(3, gap / 2)));
+		panel.add(withAppearDelay(statRow(label, "&7✔ Hoàn thành", "&f" + completed, pal), showDtMs, animateIn, 320L, Math.max(3, gap / 2)));
+		panel.add(withAppearDelay(statRow(label, "&7⌚ Thời gian đua", "&f" + formatDurationVi(timeRaced), pal), showDtMs, animateIn, 360L, Math.max(3, gap / 2)));
 		String pbV = (bestPb > 0L) ? (formatRaceTime(bestPb) + (bestPbTrack == null || bestPbTrack.isBlank() ? "" : (" &8● &7" + trimTrack(bestPbTrack)))) : "-";
-		panel.add(statRow(label, "&7⌚ PB tốt nhất", "&f" + pbV, pal));
+		panel.add(withAppearDelay(statRow(label, "&7⌚ PB tốt nhất", "&f" + pbV, pal), showDtMs, animateIn, 400L, Math.max(3, gap / 2)));
 
-		root.add(panel);
+		// Stats panel itself: start after 0.2s
+		root.add(withAppearDelay(panel, showDtMs, animateIn, 200L, Math.max(8, gap)));
 
 		return root;
+	}
+
+	private UiElement withAppearDelay(UiElement child, long showDtMs, boolean animateIn, long delayMs, int risePx) {
+		if (child == null)
+			return child;
+		if (!animateIn)
+			return child;
+		if (SHOW_MS <= 0L)
+			return child;
+
+		long d = Math.max(0L, delayMs);
+		long available = Math.max(1L, SHOW_MS - d);
+		double t = (double) (Math.max(0L, showDtMs - d)) / (double) available;
+		double e = easeOutCubic(t);
+		int y = (int) Math.round((1.0 - e) * (double) Math.max(0, risePx));
+		return new FxContainer().alpha(e).offset(0, y).child(child);
 	}
 
 	private static RowContainer statRow(Font font, String label, String value, BroadcastTheme.Palette pal) {
