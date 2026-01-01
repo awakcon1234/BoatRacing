@@ -145,21 +145,14 @@ public class EventRegistrationNpcService {
 					false
 				);
 				if (npcId != null && !npcId.isBlank()) {
-					boolean tagged = false;
+					// Tagging the underlying entity is version-dependent; do not fail hard if we
+					// can't tag it. We'll use a separate invisible click-proxy entity instead.
 					try {
-						tagged = dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.tagNpcEntityById(npcId, registerNpcKey);
+						dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.tagNpcEntityById(npcId, registerNpcKey);
 					} catch (Throwable ignored) {
-						tagged = false;
 					}
-					if (tagged) {
-						spawnedFancyNpcId = npcId;
-						fancyOk = true;
-					} else {
-						try {
-							dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.removeNpcById(npcId);
-						} catch (Throwable ignored) {
-						}
-					}
+					spawnedFancyNpcId = npcId;
+					fancyOk = true;
 				}
 			}
 		} catch (Throwable ignored) {
@@ -211,12 +204,67 @@ public class EventRegistrationNpcService {
 				as.getEquipment().setHelmet(head);
 			} catch (Throwable ignored) {
 			}
+		} else {
+			// Spawn an invisible click proxy (no skull) so interacting opens the GUI even
+			// if FancyNpcs doesn't expose a Bukkit entity we can PDC-tag.
+			UUID proxy = spawnClickProxy(loc);
+			if (proxy != null) {
+				npcEntityId = proxy;
+				spawned.add(proxy);
+			}
 		}
 
 		// Same approach as podium NPC: use a fixed TextDisplay block in front of the NPC.
 		textDisplayId = spawnNpcFrontTextBlock(loc, buildText(e), 0.35, 0.38, 0.95f);
 		if (textDisplayId != null)
 			spawned.add(textDisplayId);
+	}
+
+	private UUID spawnClickProxy(Location loc) {
+		if (loc == null || loc.getWorld() == null)
+			return null;
+		ensureChunkLoaded(loc);
+
+		// Prefer Interaction entity (no visuals, good hitbox). Fallback to invisible armorstand.
+		try {
+			org.bukkit.entity.Interaction it = loc.getWorld().spawn(loc, org.bukkit.entity.Interaction.class, ent -> {
+				try {
+					ent.getPersistentDataContainer().set(registerNpcKey, PersistentDataType.BYTE, (byte) 1);
+				} catch (Throwable ignored) {
+				}
+				try {
+					ent.setInteractionWidth(0.7f);
+					ent.setInteractionHeight(1.9f);
+				} catch (Throwable ignored) {
+				}
+			});
+			return it.getUniqueId();
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			ArmorStand as = loc.getWorld().spawn(loc, ArmorStand.class, ent -> {
+				ent.setInvisible(true);
+				ent.setMarker(false);
+				ent.setGravity(false);
+				ent.setSilent(true);
+				try {
+					ent.setInvulnerable(true);
+				} catch (Throwable ignored) {
+				}
+				try {
+					ent.setRemoveWhenFarAway(false);
+				} catch (Throwable ignored) {
+				}
+				try {
+					ent.getPersistentDataContainer().set(registerNpcKey, PersistentDataType.BYTE, (byte) 1);
+				} catch (Throwable ignored) {
+				}
+			});
+			return as.getUniqueId();
+		} catch (Throwable ignored) {
+			return null;
+		}
 	}
 
 	private void updateText(RaceEvent e) {
