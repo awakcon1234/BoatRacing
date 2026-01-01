@@ -23,6 +23,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private dev.belikhun.boatracing.profile.PlayerProfileManager profileManager;
 	private dev.belikhun.boatracing.ui.ProfileGUI profileGUI;
 	private dev.belikhun.boatracing.ui.TrackSelectGUI trackSelectGUI;
+	private dev.belikhun.boatracing.ui.EventRegistrationGUI eventRegistrationGUI;
 	private dev.belikhun.boatracing.ui.HotbarService hotbarService;
 	private dev.belikhun.boatracing.ui.ScoreboardService scoreboardService;
 	private String prefix;
@@ -70,6 +71,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 
 	public dev.belikhun.boatracing.ui.TrackSelectGUI getTrackSelectGUI() {
 		return trackSelectGUI;
+	}
+
+	public dev.belikhun.boatracing.ui.EventRegistrationGUI getEventRegistrationGUI() {
+		return eventRegistrationGUI;
 	}
 
 	public dev.belikhun.boatracing.ui.HotbarService getHotbarService() {
@@ -134,6 +139,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		this.trackRecordManager = new dev.belikhun.boatracing.track.TrackRecordManager(getDataFolder());
 		this.profileGUI = new dev.belikhun.boatracing.ui.ProfileGUI(this);
 		this.trackSelectGUI = new dev.belikhun.boatracing.ui.TrackSelectGUI(this);
+		this.eventRegistrationGUI = new dev.belikhun.boatracing.ui.EventRegistrationGUI(this);
 		this.trackConfig = new TrackConfig(this, getDataFolder());
 		this.trackLibrary = new TrackLibrary(getDataFolder(), trackConfig);
 		this.raceService = new dev.belikhun.boatracing.race.RaceService(this);
@@ -151,6 +157,8 @@ public class BoatRacingPlugin extends JavaPlugin {
 		Bukkit.getPluginManager().registerEvents(adminEventGUI, this);
 		Bukkit.getPluginManager().registerEvents(profileGUI, this);
 		Bukkit.getPluginManager().registerEvents(trackSelectGUI, this);
+		Bukkit.getPluginManager().registerEvents(eventRegistrationGUI, this);
+		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.event.EventRegistrationNpcListener(this), this);
 		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.ui.HotbarListener(this, hotbarService),
 				this);
 		try {

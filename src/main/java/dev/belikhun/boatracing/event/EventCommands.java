@@ -27,6 +27,118 @@ public final class EventCommands {
 
 		String sub = args[1].toLowerCase();
 		switch (sub) {
+			case "regnpc" -> {
+				if (!p.hasPermission("boatracing.event.admin")) {
+					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+					return true;
+				}
+
+				if (args.length == 2 || args[2].equalsIgnoreCase("help")) {
+					Text.msg(p, "&eNPC đăng ký sự kiện:");
+					Text.tell(p, "&7 - &f/" + label + " event regnpc set &7(Lấy vị trí hiện tại)");
+					Text.tell(p, "&7 - &f/" + label + " event regnpc clear");
+					Text.tell(p, "&7 - &f/" + label + " event regnpc status");
+					Text.tell(p, "");
+					Text.tell(p, "&eSkin:");
+					Text.tell(p, "&7 - &f/" + label + " event regnpc skin set <uuid>");
+					Text.tell(p, "&7 - &f/" + label + " event regnpc skin clear");
+					return true;
+				}
+
+				String act = args[2].toLowerCase();
+				switch (act) {
+					case "set" -> {
+						writeLocation(plugin, "event.registration-npc.location", p.getLocation());
+						try {
+							if (svc.getRegistrationNpcService() != null)
+								svc.getRegistrationNpcService().clear();
+						} catch (Throwable ignored) {
+						}
+						Text.msg(p, "&aĐã đặt vị trí NPC đăng ký sự kiện tại: &f" + fmt(p.getLocation()));
+						p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+						return true;
+					}
+					case "clear" -> {
+						clearLocation(plugin, "event.registration-npc.location");
+						try {
+							if (svc.getRegistrationNpcService() != null)
+								svc.getRegistrationNpcService().clear();
+						} catch (Throwable ignored) {
+						}
+						Text.msg(p, "&aĐã xóa vị trí NPC đăng ký sự kiện. &7(Sẽ dùng world spawn)");
+						p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+						return true;
+					}
+					case "status" -> {
+						Text.msg(p, "&eNPC đăng ký sự kiện:");
+						Location loc = readLocation(plugin, "event.registration-npc.location");
+						Text.tell(p, "&7● Vị trí: " + (loc == null ? "&cChưa đặt (dùng world spawn)" : "&a" + fmt(loc)));
+						String skin = "";
+						try {
+							skin = plugin.getConfig().getString("event.registration-npc.skin", "");
+						} catch (Throwable ignored) {
+							skin = "";
+						}
+						skin = (skin == null ? "" : skin.trim());
+						Text.tell(p, "&7● Skin UUID: " + (skin.isBlank() ? "&cChưa đặt" : "&a" + skin));
+						return true;
+					}
+					case "skin" -> {
+						if (args.length < 4) {
+							Text.msg(p, "&eDùng: /" + label + " event regnpc skin set <uuid> &7| clear");
+							return true;
+						}
+						String a2 = args[3].toLowerCase();
+						switch (a2) {
+							case "set" -> {
+								if (args.length < 5) {
+									Text.msg(p, "&cThiếu UUID. Ví dụ: &f/" + label + " event regnpc skin set 00000000-0000-0000-0000-000000000000");
+									return true;
+								}
+								String raw = args[4];
+								java.util.UUID id;
+								try {
+									id = java.util.UUID.fromString(raw);
+								} catch (Throwable t) {
+									Text.msg(p, "&cUUID không hợp lệ: &f" + raw);
+									return true;
+								}
+								plugin.getConfig().set("event.registration-npc.skin", id.toString());
+								plugin.saveConfig();
+								try {
+									if (svc.getRegistrationNpcService() != null)
+										svc.getRegistrationNpcService().clear();
+								} catch (Throwable ignored) {
+								}
+								Text.msg(p, "&aĐã đặt skin cho NPC đăng ký sự kiện: &f" + id);
+								p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+								return true;
+							}
+							case "clear" -> {
+								plugin.getConfig().set("event.registration-npc.skin", "");
+								plugin.saveConfig();
+								try {
+									if (svc.getRegistrationNpcService() != null)
+										svc.getRegistrationNpcService().clear();
+								} catch (Throwable ignored) {
+								}
+								Text.msg(p, "&aĐã xóa skin của NPC đăng ký sự kiện.");
+								p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+								return true;
+							}
+							default -> {
+								Text.msg(p, "&cKhông rõ. Dùng: /" + label + " event regnpc skin set <uuid> &7| clear");
+								return true;
+							}
+						}
+					}
+					default -> {
+						Text.msg(p, "&cKhông rõ lệnh. Dùng: /" + label + " event regnpc help");
+						return true;
+					}
+				}
+			}
 			case "podium" -> {
 				if (!p.hasPermission("boatracing.event.admin")) {
 					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
@@ -629,6 +741,7 @@ public final class EventCommands {
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event track add|remove|list");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event board set|status|clear");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event opening ...");
+			Text.tell(p, "&8Quản trị:&7 /" + label + " event regnpc set|clear|status|skin");
 			Text.tell(p, "&8Quản trị:&7 /" + label + " event podium set|clear|status|spawn");
 		}
 	}

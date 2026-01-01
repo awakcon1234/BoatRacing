@@ -6,6 +6,18 @@ player-actions:
 
 # Event opening titles (F1-style)
 event:
+  registration-npc:
+    # NPC dùng để người chơi click để đăng ký sự kiện
+    # Nếu không đặt world (để trống), plugin sẽ dùng world spawn
+    location:
+      world: ""
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+      pitch: 0.0
+    # UUID của skin (dạng 00000000-0000-0000-0000-000000000000). Để trống nếu không dùng.
+    skin: ""
   podium:
     # Debug toggles (logs to console). Keep these off unless troubleshooting.
     debug: false

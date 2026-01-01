@@ -46,6 +46,7 @@ public class EventService {
 	private final BoatRacingPlugin plugin;
 	private final File dataFolder;
 	private final PodiumService podiumService;
+	private final EventRegistrationNpcService registrationNpcService;
 	private final EventBoardService eventBoardService;
 	private final OpeningTitlesBoardService openingTitlesBoardService;
 	private final OpeningTitlesController openingTitlesController;
@@ -74,6 +75,7 @@ public class EventService {
 		this.plugin = plugin;
 		this.dataFolder = plugin.getDataFolder();
 		this.podiumService = new PodiumService(plugin);
+		this.registrationNpcService = new EventRegistrationNpcService(plugin, this);
 		this.eventBoardService = new EventBoardService(plugin, this);
 		this.openingTitlesBoardService = new OpeningTitlesBoardService(plugin);
 		this.openingTitlesController = new OpeningTitlesController(plugin, this, openingTitlesBoardService);
@@ -103,6 +105,14 @@ public class EventService {
 		} catch (Throwable ignored) {
 		}
 		ensureTickTask();
+
+		// Auto-show the registration NPC after restart if registration is open.
+		try {
+			RaceEvent e0 = getActiveEvent();
+			if (e0 != null && e0.state == EventState.REGISTRATION && registrationNpcService != null)
+				registrationNpcService.tick(e0);
+		} catch (Throwable ignored) {
+		}
 
 		// Auto-spawn podium after restart if the active event is already completed.
 		try {
@@ -181,6 +191,10 @@ public class EventService {
 
 	public PodiumService getPodiumService() {
 		return podiumService;
+	}
+
+	public EventRegistrationNpcService getRegistrationNpcService() {
+		return registrationNpcService;
 	}
 
 	public EventBoardService getEventBoardService() {
@@ -429,6 +443,11 @@ public class EventService {
 		} catch (Throwable ignored) {
 		}
 		try {
+			if (registrationNpcService != null)
+				registrationNpcService.clear();
+		} catch (Throwable ignored) {
+		}
+		try {
 			saveAll();
 		} catch (Throwable ignored) {
 		}
@@ -654,6 +673,11 @@ public class EventService {
 		RaceEvent e = getActiveEvent();
 		if (e == null)
 			return;
+		try {
+			if (registrationNpcService != null)
+				registrationNpcService.tick(e);
+		} catch (Throwable ignored) {
+		}
 		if (e.state == EventState.CANCELLED || e.state == EventState.COMPLETED)
 			return;
 
