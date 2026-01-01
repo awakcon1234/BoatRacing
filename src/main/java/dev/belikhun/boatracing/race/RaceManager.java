@@ -1055,6 +1055,18 @@ public class RaceManager {
 		// a short stationary streak.
 		long nowMs = System.currentTimeMillis();
 		double bps = 0.0;
+		// Secondary source: boat horizontal velocity (blocks/tick -> blocks/sec).
+		double velBps = 0.0;
+		try {
+			org.bukkit.util.Vector v = boat.getVelocity();
+			if (v != null) {
+				double hv = Math.sqrt((v.getX() * v.getX()) + (v.getZ() * v.getZ()));
+				if (Double.isFinite(hv) && hv >= 0.0)
+					velBps = hv * 20.0;
+			}
+		} catch (Throwable ignored) {
+			velBps = 0.0;
+		}
 		try {
 			org.bukkit.Location prev = dashboardLastBoatLoc.get(id);
 			Long prevT = dashboardLastBoatLocTime.get(id);
@@ -1083,7 +1095,9 @@ public class RaceManager {
 					long dtMs = Math.max(dtMsRaw, expectedMs);
 					double dist = 0.0;
 					try {
-						dist = bl.distance(prev);
+						double dx = bl.getX() - prev.getX();
+						double dz = bl.getZ() - prev.getZ();
+						dist = Math.sqrt((dx * dx) + (dz * dz));
 					} catch (Throwable ignored2) {
 						dist = 0.0;
 					}
@@ -1091,33 +1105,49 @@ public class RaceManager {
 					// Very small deltas are often just "no new sample this tick".
 					final double eps = 1.0E-4;
 					final int holdTicks = 2;
+					final double velMoveEpsBps = 0.20; // treat as moving if velocity exceeds this
 
 					// Ignore big jumps (teleports / chunk re-sync / countdown snaps).
 					// A reasonable bound: a few blocks per tick. Anything larger is not real
 					// movement.
 					double maxDist = 5.0 * (double) Math.max(1, periodTicks);
 					if (!Double.isFinite(dist) || dist < 0.0) {
-						// Bad sample: keep last.
-						bps = last;
+						// Bad sample: prefer velocity if available, otherwise keep last.
+						bps = (velBps > velMoveEpsBps ? velBps : last);
+						stillTicks = 0;
+						try {
+							dashboardLastBoatLoc.put(id, bl.clone());
+							dashboardLastBoatLocTime.put(id, nowMs);
+						} catch (Throwable ignored3) {
+						}
 					} else if (dist <= eps) {
-						stillTicks++;
-						if (stillTicks <= holdTicks && last > 0.0) {
-							// Hold last speed; do NOT advance the sample so the next real movement
-							// accumulates distance over a longer dt.
-							bps = last;
-						} else {
-							// Truly stopped (or held long enough): allow 0 and advance sample so we
-							// don't get a huge dt later.
-							bps = 0.0;
+						// Stale position sample: if velocity says we're moving, accept velocity.
+						if (velBps > velMoveEpsBps) {
+							bps = velBps;
+							stillTicks = 0;
 							try {
 								dashboardLastBoatLoc.put(id, bl.clone());
 								dashboardLastBoatLocTime.put(id, nowMs);
 							} catch (Throwable ignored3) {
 							}
+						} else {
+							stillTicks++;
+							if (stillTicks <= holdTicks && last > 0.0) {
+								// Hold last speed briefly.
+								bps = last;
+							} else {
+								// Truly stopped (or held long enough): allow 0 and advance sample.
+								bps = 0.0;
+								try {
+									dashboardLastBoatLoc.put(id, bl.clone());
+									dashboardLastBoatLocTime.put(id, nowMs);
+								} catch (Throwable ignored3) {
+								}
+							}
 						}
 					} else if (dist > maxDist) {
-						// Teleport-like jump: keep last speed for this tick, but advance the sample.
-						bps = last;
+						// Teleport-like jump: ignore delta. Prefer velocity if it looks sane.
+						bps = (velBps > velMoveEpsBps ? velBps : last);
 						stillTicks = 0;
 						try {
 							dashboardLastBoatLoc.put(id, bl.clone());
@@ -1125,8 +1155,20 @@ public class RaceManager {
 						} catch (Throwable ignored3) {
 						}
 					} else {
-						bps = Math.max(0.0, dist / (dtMs / 1000.0));
+						double deltaBps = Math.max(0.0, dist / (dtMs / 1000.0));
+						// Blend delta + velocity to reduce jitter and eliminate stale samples.
+						if (velBps > 0.0 && Double.isFinite(velBps)) {
+							bps = (deltaBps * 0.65) + (velBps * 0.35);
+						} else {
+							bps = deltaBps;
+						}
 						stillTicks = 0;
+						// Normal movement sample: advance so we measure per-tick speed.
+						try {
+							dashboardLastBoatLoc.put(id, bl.clone());
+							dashboardLastBoatLocTime.put(id, nowMs);
+						} catch (Throwable ignored3) {
+						}
 					}
 				}
 			}
