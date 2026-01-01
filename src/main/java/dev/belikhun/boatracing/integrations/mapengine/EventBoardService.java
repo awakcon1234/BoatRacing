@@ -1227,8 +1227,9 @@ public final class EventBoardService {
 	}
 
 	private UiElement buildEventFinishedUi(RaceEvent e, int w, int h) {
-		int pad = Math.max(16, (int) Math.round(Math.min(w, h) * 0.03));
-		int gap = Math.max(6, (int) Math.round(pad * 0.35));
+		boolean compact = h <= 340 || w <= 520;
+		int pad = Math.max(compact ? 12 : 16, (int) Math.round(Math.min(w, h) * (compact ? 0.022 : 0.03)));
+		int gap = Math.max(compact ? 4 : 6, (int) Math.round(pad * (compact ? 0.28 : 0.35)));
 
 		BroadcastTheme.Palette pal = BroadcastTheme.palette(accentFor(Screen.EVENT_FINISHED));
 		Color bg = pal.bg0();
@@ -1257,10 +1258,10 @@ public final class EventBoardService {
 
 		List<EventRankEntry> ranking = buildRanking(e);
 
-		ColumnContainer bodyCol = new ColumnContainer().gap(Math.max(12, gap)).alignItems(UiAlign.STRETCH)
+		ColumnContainer bodyCol = new ColumnContainer().gap(Math.max(compact ? 8 : 12, gap)).alignItems(UiAlign.STRETCH)
 				.justifyContent((ranking.size() <= 3) ? UiJustify.CENTER : UiJustify.START);
 		bodyCol.style().flexGrow(1);
-		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2))).border(borderSoft, 2);
+		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(compact ? 10 : 14, pad / 2))).border(borderSoft, 2);
 
 		EventRankEntry first = ranking.size() > 0 ? ranking.get(0) : null;
 		EventRankEntry second = ranking.size() > 1 ? ranking.get(1) : null;
@@ -1272,8 +1273,8 @@ public final class EventBoardService {
 		Color bronze = new Color(0xCD, 0x7F, 0x32);
 
 		// Hero section (broadcast-like, typography-first)
-		RowContainer hero = new RowContainer().gap(Math.max(18, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
-		hero.style().background(panel).padding(UiInsets.all(Math.max(14, pad / 2))).border(borderSoft, 2);
+		RowContainer hero = new RowContainer().gap(Math.max(compact ? 12 : 18, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+		hero.style().background(panel).padding(UiInsets.all(Math.max(compact ? 10 : 14, pad / 2))).border(borderSoft, 2);
 
 		ColumnContainer heroLeft = new ColumnContainer().gap(Math.max(6, gap / 2)).alignItems(UiAlign.START).justifyContent(UiJustify.START);
 		heroLeft.style().widthPx(0).flexGrow(2);
@@ -1304,7 +1305,7 @@ public final class EventBoardService {
 		} catch (Throwable ignored) {
 		}
 
-		if (iconFont != null) {
+		if (iconFont != null && !compact) {
 			TextElement mark = new TextElement("\uf091")
 					.font(iconFont.deriveFont(Font.PLAIN, Math.max(54f, title.getSize2D() * 3.0f)))
 					.color(new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 40))
@@ -1326,12 +1327,13 @@ public final class EventBoardService {
 		bodyCol.add(hero);
 
 		// Podium section (visual)
-		int podiumH = Math.max(130, (int) Math.round(h * 0.38));
-		podiumH = Math.min(podiumH, Math.max(130, (int) Math.round(h * 0.50)));
+		int podiumH = (int) Math.round(h * (compact ? 0.30 : 0.38));
+		podiumH = Math.max(compact ? 105 : 130, podiumH);
+		podiumH = Math.min(podiumH, Math.max(compact ? 110 : 130, (int) Math.round(h * (compact ? 0.38 : 0.50))));
 
 		Font podiumTitle = section.deriveFont(Font.BOLD, Math.max(22f, section.getSize2D() * 0.85f));
 		Font cardBadge = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
-		Font cardName = title.deriveFont(Font.BOLD, Math.max(22f, title.getSize2D() * 1.25f));
+		Font cardName = title.deriveFont(Font.BOLD, Math.max(compact ? 18f : 22f, title.getSize2D() * (compact ? 1.10f : 1.25f)));
 		Font cardPoints = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
 
 		ColumnContainer podium = new ColumnContainer().gap(Math.max(8, gap / 2)).alignItems(UiAlign.STRETCH);
@@ -1503,16 +1505,18 @@ public final class EventBoardService {
 
 		bodyCol.add(podium);
 
-		// Thank-you message
-		RowContainer thanksRow = new RowContainer().alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
-		TextElement thanks = text("Cảm ơn bạn đã tham gia sự kiện", body.deriveFont(Font.BOLD, Math.max(15f, body.getSize2D() * 1.05f)), bg, TextElement.Align.CENTER);
-		thanks.style().padding(UiInsets.symmetric(Math.max(5, pad / 4), Math.max(14, pad / 2))).background(accent);
-		thanksRow.add(thanks);
-		bodyCol.add(thanksRow);
+		// Thank-you message (skip on compact boards to avoid bottom clipping)
+		if (!compact) {
+			RowContainer thanksRow = new RowContainer().alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
+			TextElement thanks = text("Cảm ơn bạn đã tham gia sự kiện", body.deriveFont(Font.BOLD, Math.max(15f, body.getSize2D() * 1.05f)), bg, TextElement.Align.CENTER);
+			thanks.style().padding(UiInsets.symmetric(Math.max(5, pad / 4), Math.max(14, pad / 2))).background(accent);
+			thanksRow.add(thanks);
+			bodyCol.add(thanksRow);
+		}
 
 		// Only show the final ranking section if it adds new information beyond TOP 3.
 		int restStart = Math.min(3, ranking.size());
-		if (restStart < ranking.size()) {
+		if (!compact && restStart < ranking.size()) {
 			Spacer grow = new Spacer();
 			grow.style().flexGrow(1);
 			bodyCol.add(grow);
