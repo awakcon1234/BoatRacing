@@ -20,6 +20,64 @@ public class RaceService {
 	private final Map<UUID, String> trackByPlayer = new HashMap<>();
 	private final Set<UUID> pendingLobbyTeleport = new HashSet<>();
 
+	private void teleportToLobby(org.bukkit.entity.Player p) {
+		if (p == null)
+			return;
+		org.bukkit.Location spawn = null;
+		try {
+			spawn = (plugin != null ? plugin.resolveLobbySpawn(p)
+					: (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null));
+		} catch (Throwable ignored) {
+			spawn = null;
+		}
+		if (spawn == null)
+			return;
+
+		org.bukkit.Location target;
+		try {
+			target = spawn.clone();
+		} catch (Throwable ignored) {
+			target = spawn;
+		}
+
+		final float yaw = target.getYaw();
+		final float pitch = target.getPitch();
+
+		try {
+			p.teleport(target);
+		} catch (Throwable ignored) {
+		}
+		try {
+			p.setRotation(yaw, pitch);
+		} catch (Throwable ignored) {
+		}
+		try {
+			p.setFallDistance(0f);
+		} catch (Throwable ignored) {
+		}
+		try {
+			if (plugin != null)
+				plugin.applyLobbyFlight(p);
+		} catch (Throwable ignored) {
+		}
+
+		// Some client/vehicle flows can override yaw/pitch right after teleport.
+		// Re-apply next tick to make the facing stable.
+		try {
+			if (plugin != null) {
+				Bukkit.getScheduler().runTaskLater(plugin, () -> {
+					try {
+						if (!p.isOnline())
+							return;
+						p.setRotation(yaw, pitch);
+					} catch (Throwable ignored) {
+					}
+				}, 1L);
+			}
+		} catch (Throwable ignored) {
+		}
+	}
+
 	private int defaultLaps = 3;
 
 	public RaceService(BoatRacingPlugin plugin) {
@@ -228,17 +286,7 @@ public class RaceService {
 				p.leaveVehicle();
 		} catch (Throwable ignored) {
 		}
-		try {
-			org.bukkit.Location spawn = plugin.resolveLobbySpawn(p);
-			if (spawn != null)
-				p.teleport(spawn);
-			p.setFallDistance(0f);
-			try {
-				plugin.applyLobbyFlight(p);
-			} catch (Throwable ignored2) {
-			}
-		} catch (Throwable ignored) {
-		}
+		teleportToLobby(p);
 	}
 
 	/**
@@ -289,16 +337,7 @@ public class RaceService {
 							p.leaveVehicle();
 					} catch (Throwable ignored) {
 					}
-					org.bukkit.Location spawn = (plugin != null ? plugin.resolveLobbySpawn(p)
-							: (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null));
-					if (spawn != null)
-						p.teleport(spawn);
-					p.setFallDistance(0f);
-					try {
-						if (plugin != null)
-							plugin.applyLobbyFlight(p);
-					} catch (Throwable ignored2) {
-					}
+					teleportToLobby(p);
 				} catch (Throwable ignored) {
 				}
 			});
@@ -338,17 +377,7 @@ public class RaceService {
 			if (p.isInsideVehicle()) p.leaveVehicle();
 		} catch (Throwable ignored) {}
 
-		try {
-			org.bukkit.Location spawn = (plugin != null ? plugin.resolveLobbySpawn(p)
-					: (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null));
-			if (spawn != null) p.teleport(spawn);
-			p.setFallDistance(0f);
-			try {
-				if (plugin != null)
-					plugin.applyLobbyFlight(p);
-			} catch (Throwable ignored2) {
-			}
-		} catch (Throwable ignored) {}
+		teleportToLobby(p);
 
 		// Player-facing confirmation (Vietnamese UX rule)
 		try {

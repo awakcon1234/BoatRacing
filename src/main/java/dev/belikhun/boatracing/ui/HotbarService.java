@@ -150,19 +150,11 @@ public class HotbarService {
 				try {
 					boolean ok = plugin.getRaceService().leaveToLobby(p);
 					if (!ok) {
-						// Still ensure they're in a clean state.
+						// Still ensure they're in a clean state (and keep correct lobby facing).
 						try {
-							org.bukkit.Location spawn = plugin != null ? plugin.resolveLobbySpawn(p) : null;
-							if (spawn == null && p.getWorld() != null)
-								spawn = p.getWorld().getSpawnLocation();
-							if (spawn != null)
-								p.teleport(spawn);
-							try {
-								if (plugin != null)
-									plugin.applyLobbyFlight(p);
-							} catch (Throwable ignored3) {
-							}
-						} catch (Throwable ignored2) {}
+							plugin.getRaceService().abandonNow(p, true);
+						} catch (Throwable ignored2) {
+						}
 					}
 				} catch (Throwable ignored) {}
 			}

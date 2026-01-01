@@ -567,18 +567,27 @@ public class RaceManager {
 
 				// Visual stopper: place a stair directly in front of the boat during countdown.
 				// Restored via countdownBarrierRestore after countdown ends.
-				int stopperX = midX;
-				int stopperZ = midZ;
+				java.util.List<Block> stoppers = new java.util.ArrayList<>();
 				if (front == BlockFace.NORTH) {
-					stopperZ = minZ - 1;
+					int z = minZ - 1;
+					for (int x = minX; x <= maxX; x++)
+						stoppers.add(w.getBlockAt(x, y, z));
 				} else if (front == BlockFace.SOUTH) {
-					stopperZ = maxZ + 1;
+					int z = maxZ + 1;
+					for (int x = minX; x <= maxX; x++)
+						stoppers.add(w.getBlockAt(x, y, z));
 				} else if (front == BlockFace.WEST) {
-					stopperX = minX - 1;
+					int x = minX - 1;
+					for (int z = minZ; z <= maxZ; z++)
+						stoppers.add(w.getBlockAt(x, y, z));
 				} else if (front == BlockFace.EAST) {
-					stopperX = maxX + 1;
+					int x = maxX + 1;
+					for (int z = minZ; z <= maxZ; z++)
+						stoppers.add(w.getBlockAt(x, y, z));
+				} else {
+					// Fallback: keep legacy behavior (single stopper)
+					stoppers.add(w.getBlockAt(midX + front.getModX(), y, midZ + front.getModZ()));
 				}
-				Block stopper = w.getBlockAt(stopperX, y, stopperZ);
 
 				java.util.Set<Block> targets = new java.util.LinkedHashSet<>();
 
@@ -662,45 +671,48 @@ public class RaceManager {
 					}
 				}
 
-				// Place the stair stopper after barriers so it remains visible.
+				// Place the stair stopper(s) after barriers so they remain visible.
 				try {
-					if (stopper != null) {
+					PreferredBoatData pref = resolvePreferredBoat(playerId);
+					Material stairMat = resolveStopperStairMaterial(pref);
+					for (Block stopper : stoppers) {
+						if (stopper == null)
+							continue;
 						// Only place on the waterline block.
 						Material cur = stopper.getType();
 						boolean canReplace = cur == Material.AIR || cur == Material.WATER || cur == Material.BARRIER;
-						if (canReplace) {
-							if (!countdownBarrierRestore.containsKey(stopper)) {
-								try {
-									countdownBarrierRestore.put(stopper, stopper.getBlockData().clone());
-								} catch (Throwable ignored) {
-									countdownBarrierRestore.put(stopper, stopper.getBlockData());
-								}
-							}
+						if (!canReplace)
+							continue;
 
-							org.bukkit.block.data.BlockData prev = countdownBarrierRestore.get(stopper);
-							boolean wasWater = prev != null && prev.getMaterial() == Material.WATER;
-
-							PreferredBoatData pref = resolvePreferredBoat(playerId);
-							Material stairMat = resolveStopperStairMaterial(pref);
-							org.bukkit.block.data.type.Stairs stairs = (org.bukkit.block.data.type.Stairs) Bukkit
-									.createBlockData(stairMat);
-							// Face the stair toward the boat so the "flat" side looks like a stopper.
+						if (!countdownBarrierRestore.containsKey(stopper)) {
 							try {
-								stairs.setFacing(back);
+								countdownBarrierRestore.put(stopper, stopper.getBlockData().clone());
 							} catch (Throwable ignored) {
+								countdownBarrierRestore.put(stopper, stopper.getBlockData());
 							}
-							try {
-								stairs.setHalf(org.bukkit.block.data.Bisected.Half.BOTTOM);
-							} catch (Throwable ignored) {
-							}
-							try {
-								if (stairs instanceof org.bukkit.block.data.Waterlogged wl)
-									wl.setWaterlogged(wasWater);
-							} catch (Throwable ignored) {
-							}
-
-							stopper.setBlockData(stairs, false);
 						}
+
+						org.bukkit.block.data.BlockData prev = countdownBarrierRestore.get(stopper);
+						boolean wasWater = prev != null && prev.getMaterial() == Material.WATER;
+
+						org.bukkit.block.data.type.Stairs stairs = (org.bukkit.block.data.type.Stairs) Bukkit
+								.createBlockData(stairMat);
+						// Face the stair toward the boat so the "flat" side looks like a stopper.
+						try {
+							stairs.setFacing(back);
+						} catch (Throwable ignored) {
+						}
+						try {
+							stairs.setHalf(org.bukkit.block.data.Bisected.Half.BOTTOM);
+						} catch (Throwable ignored) {
+						}
+						try {
+							if (stairs instanceof org.bukkit.block.data.Waterlogged wl)
+								wl.setWaterlogged(wasWater);
+						} catch (Throwable ignored) {
+						}
+
+						stopper.setBlockData(stairs, false);
 					}
 				} catch (Throwable ignored) {
 				}
