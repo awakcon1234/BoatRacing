@@ -30,13 +30,16 @@ event:
     enabled: false
 
     # Welcome fly-by length (seconds)
-    welcome-seconds: 6
+    welcome-seconds: 10
 
     # Delay before the first racer after the intro subtitle (seconds)
-    intro-gap-seconds: 2
+    intro-gap-seconds: 4
 
     # How long each racer is featured (seconds)
     per-racer-seconds: 10
+
+    # Outro title duration (seconds)
+    outro-seconds: 6
 
     # Lobby fly-by camera defaults (used if no explicit points are provided)
     lobby-camera:

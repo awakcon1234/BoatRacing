@@ -227,6 +227,16 @@ public class ScoreboardService {
 				long end = 0L;
 				String label = null;
 
+				// Scheduled event start time (registration phase).
+				try {
+					if ((e.state == EventState.REGISTRATION || e.state == EventState.DRAFT)
+							&& e.startTimeMillis > 0L && now < e.startTimeMillis) {
+						end = e.startTimeMillis;
+						label = "Bắt đầu sự kiện";
+					}
+				} catch (Throwable ignored) {
+				}
+
 				long introEnd = 0L;
 				long lobbyEnd = 0L;
 				long breakEnd = 0L;
@@ -243,16 +253,16 @@ public class ScoreboardService {
 					trackDeadline = 0L;
 				}
 
-				if (introEnd > 0L && now < introEnd) {
+				if (label == null && introEnd > 0L && now < introEnd) {
 					end = introEnd;
 					label = "Bắt đầu";
-				} else if (lobbyEnd > 0L && now < lobbyEnd) {
+				} else if (label == null && lobbyEnd > 0L && now < lobbyEnd) {
 					end = lobbyEnd;
 					label = "Bắt đầu";
-				} else if (breakEnd > 0L && now < breakEnd) {
+				} else if (label == null && breakEnd > 0L && now < breakEnd) {
 					end = breakEnd;
 					label = "Chặng tiếp theo";
-				} else if (trackDeadline > 0L && now < trackDeadline) {
+				} else if (label == null && trackDeadline > 0L && now < trackDeadline) {
 					end = trackDeadline;
 					label = "Hết giờ";
 				}

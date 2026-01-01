@@ -160,7 +160,7 @@ public class RaceManager {
 		if (shown == 0) {
 			lines.add("&7Không có dữ liệu xếp hạng.");
 		}
-		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
 		return lines;
 	}
 
@@ -203,7 +203,7 @@ public class RaceManager {
 				lines.add(a);
 		}
 
-		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
+		lines.add("&6&l┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛");
 		return lines;
 	}
 
@@ -3554,7 +3554,7 @@ public class RaceManager {
 	}
 
 	private String racerDisplayLegacy(UUID id, String name) {
-		String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
+		String n = resolveRacerName(id, name);
 		try {
 			if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br && br.getProfileManager() != null
 					&& id != null) {
@@ -3563,6 +3563,34 @@ public class RaceManager {
 		} catch (Throwable ignored) {
 		}
 		return "&f" + n;
+	}
+
+	private static String resolveRacerName(UUID id, String name) {
+		if (name != null && !name.isBlank())
+			return name;
+		if (id == null)
+			return "(không rõ)";
+
+		try {
+			Player p = Bukkit.getPlayer(id);
+			if (p != null) {
+				String pn = p.getName();
+				if (pn != null && !pn.isBlank())
+					return pn;
+			}
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			org.bukkit.OfflinePlayer op = Bukkit.getOfflinePlayer(id);
+			String on = (op != null ? op.getName() : null);
+			if (on != null && !on.isBlank())
+				return on;
+		} catch (Throwable ignored) {
+		}
+
+		String s = id.toString();
+		return s.length() >= 8 ? s.substring(0, 8) : s;
 	}
 
 	private void broadcastRegistrationLeave(UUID leftId, String leftName) {

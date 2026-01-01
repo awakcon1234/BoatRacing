@@ -1212,6 +1212,18 @@ public final class EventBoardService {
 		hero.add(text(formatHms(sec), huge, fg, TextElement.Align.CENTER));
 		bodyCol.add(hero);
 
+		UiElement trackStrip = buildTrackProgressStrip(
+				e,
+				body.deriveFont(Font.BOLD, Math.max(16f, body.getSize2D() * 1.10f)),
+				body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f)),
+				fg,
+				bg,
+				Math.max(10, pad / 2),
+				Math.max(10, gap)
+		);
+		if (trackStrip != null)
+			bodyCol.add(trackStrip);
+
 		// Ranking preview (bottom)
 		List<EventRankEntry> ranking = buildRanking(e);
 		ColumnContainer rankBox = new ColumnContainer().gap(Math.max(4, gap / 2)).alignItems(UiAlign.CENTER);

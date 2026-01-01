@@ -1078,7 +1078,107 @@ public class EventService {
 			}
 		}
 
+		// When running as part of an event, return racers back to the lobby after the
+		// track celebration window finishes.
+		try {
+			scheduleReturnToLobbyAfterTrackCelebration(e);
+		} catch (Throwable ignored) {
+		}
+
 		advanceToNextTrackOrFinish(e);
+	}
+
+	private void scheduleReturnToLobbyAfterTrackCelebration(RaceEvent e) {
+		if (plugin == null || e == null)
+			return;
+		if (currentTrackRoster == null || currentTrackRoster.isEmpty())
+			return;
+		// Snapshot roster now; advanceToNextTrackOrFinish() clears it.
+		final java.util.Set<java.util.UUID> roster = new java.util.LinkedHashSet<>(currentTrackRoster);
+
+		int sec = 15;
+		try {
+			sec = Math.max(0, plugin.getConfig().getInt("racing.post-finish-cleanup-seconds", 15));
+		} catch (Throwable ignored) {
+			sec = 15;
+		}
+
+		// Match RaceManager behavior: when the configured seconds is 0, it still keeps
+		// a short delay so the event tick can observe completion.
+		long delayTicks = (sec <= 0 ? 40L : (long) sec * 20L);
+		// Add a tiny buffer so we run after RaceManager stop(false) restores gamemodes.
+		delayTicks = Math.max(1L, delayTicks + 1L);
+
+		Bukkit.getScheduler().runTaskLater(plugin, () -> {
+			org.bukkit.Location lobbySpawn = resolveEventLobbySpawn();
+			if (lobbySpawn == null || lobbySpawn.getWorld() == null)
+				return;
+			for (java.util.UUID id : roster) {
+				try {
+					if (id == null)
+						continue;
+					Player p = Bukkit.getPlayer(id);
+					if (p == null || !p.isOnline())
+						continue;
+					try {
+						if (p.isInsideVehicle())
+							p.leaveVehicle();
+					} catch (Throwable ignored) {
+					}
+					p.teleport(lobbySpawn);
+					p.setFallDistance(0f);
+				} catch (Throwable ignored) {
+				}
+			}
+		}, delayTicks);
+	}
+
+	private org.bukkit.Location resolveEventLobbySpawn() {
+		if (plugin == null)
+			return null;
+		org.bukkit.World w = null;
+
+		// Prefer the registration NPC world if configured.
+		try {
+			String wn = plugin.getConfig().getString("event.registration-npc.location.world", "");
+			if (wn != null && !wn.isBlank())
+				w = Bukkit.getWorld(wn);
+		} catch (Throwable ignored) {
+		}
+
+		// Fallback: opening titles stage world (usually the lobby world).
+		if (w == null) {
+			try {
+				String wn = plugin.getConfig().getString("mapengine.opening-titles.stage.world", "");
+				if (wn != null && !wn.isBlank())
+					w = Bukkit.getWorld(wn);
+			} catch (Throwable ignored) {
+			}
+		}
+
+		// Fallback: first online player's world.
+		if (w == null) {
+			try {
+				for (Player p : Bukkit.getOnlinePlayers()) {
+					if (p != null && p.isOnline() && p.getWorld() != null) {
+						w = p.getWorld();
+						break;
+					}
+				}
+			} catch (Throwable ignored) {
+			}
+		}
+
+		// Final fallback: first loaded world.
+		if (w == null) {
+			try {
+				if (!Bukkit.getWorlds().isEmpty())
+					w = Bukkit.getWorlds().get(0);
+			} catch (Throwable ignored) {
+			}
+		}
+
+		return w != null ? w.getSpawnLocation() : null;
 	}
 
 	private void awardPointsForTrack(RaceEvent e, RaceManager rm) {
@@ -1302,6 +1402,7 @@ public class EventService {
 		private int welcomeSeconds;
 		private int introGapSeconds;
 		private int perRacerSeconds;
+		private int outroSeconds;
 
 		private java.util.List<UUID> racerOrder = java.util.Collections.emptyList();
 		private int racerIndex = 0;
@@ -1410,9 +1511,10 @@ public class EventService {
 		}
 
 		private void loadConfig() {
-			welcomeSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.welcome-seconds", 6), 1, 60);
-			introGapSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.intro-gap-seconds", 2), 0, 30);
+			welcomeSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.welcome-seconds", 10), 1, 60);
+			introGapSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.intro-gap-seconds", 4), 0, 30);
 			perRacerSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.per-racer-seconds", 5), 1, 60);
+			outroSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.outro-seconds", 6), 1, 60);
 		}
 
 		private void loadStageAndCamera() {
@@ -1595,7 +1697,7 @@ public class EventService {
 			showTitleToAudience(e,
 					cfgText("event.opening-titles.text.outro_title", "Bắt đầu thôi!"),
 					cfgText("event.opening-titles.text.outro_subtitle", "Đang chuẩn bị chặng đua đầu tiên…"),
-					2);
+					Math.max(2, outroSeconds));
 			try {
 				if (board != null)
 					board.showFavicon();
@@ -1928,9 +2030,10 @@ public class EventService {
 			java.util.Set<UUID> audience = collectAudience();
 			String t = expandEventTitle(e, title);
 			String sub = expandEventTitle(e, subtitle);
-			int fadeIn = 10;
-			int fadeOut = 10;
-			int stay = Math.max(20, seconds * 20 - fadeIn - fadeOut);
+			// Slower titles for a more cinematic feel.
+			int fadeIn = 20;
+			int fadeOut = 20;
+			int stay = Math.max(60, seconds * 20 - fadeIn - fadeOut);
 			String tColored = Text.colorize(t);
 			String subColored = Text.colorize(sub);
 			for (UUID id : audience) {
