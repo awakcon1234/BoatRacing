@@ -1397,6 +1397,10 @@ public class EventService {
 		private final java.util.Map<UUID, Location> savedLocations = new java.util.HashMap<>();
 		private final java.util.Map<UUID, GameMode> pendingRestoreModes = new java.util.HashMap<>();
 		private final java.util.Map<UUID, Location> pendingRestoreLocations = new java.util.HashMap<>();
+		// viewerId -> targets that must be shown again when both are online.
+		private final java.util.Map<UUID, java.util.Set<UUID>> pendingRestoreVisibility = new java.util.HashMap<>();
+		// Audience members currently hidden from each other.
+		private final java.util.Set<UUID> hiddenAudience = new java.util.HashSet<>();
 
 		private volatile boolean running = false;
 		private volatile UUID featuredRacer;
@@ -1449,6 +1453,134 @@ public class EventService {
 			} catch (Throwable ignored) {
 				if (loc != null)
 					pendingRestoreLocations.put(id, loc);
+			}
+			restorePendingVisibility(p);
+		}
+
+		private void hideBetween(java.util.Set<UUID> viewers, java.util.Set<UUID> targets) {
+			if (viewers == null || targets == null || viewers.isEmpty() || targets.isEmpty())
+				return;
+			for (UUID vid : new java.util.HashSet<>(viewers)) {
+				Player v = (vid != null) ? Bukkit.getPlayer(vid) : null;
+				if (v == null || !v.isOnline())
+					continue;
+				for (UUID tid : new java.util.HashSet<>(targets)) {
+					if (tid == null || tid.equals(vid))
+						continue;
+					Player t = Bukkit.getPlayer(tid);
+					if (t == null || !t.isOnline())
+						continue;
+					try {
+						v.hidePlayer(plugin, t);
+					} catch (Throwable ignored) {
+					}
+				}
+			}
+		}
+
+		private void showBetween(java.util.Set<UUID> viewers, java.util.Set<UUID> targets) {
+			if (viewers == null || targets == null || viewers.isEmpty() || targets.isEmpty())
+				return;
+			for (UUID vid : new java.util.HashSet<>(viewers)) {
+				Player v = (vid != null) ? Bukkit.getPlayer(vid) : null;
+				if (v == null || !v.isOnline())
+					continue;
+				for (UUID tid : new java.util.HashSet<>(targets)) {
+					if (tid == null || tid.equals(vid))
+						continue;
+					Player t = Bukkit.getPlayer(tid);
+					if (t == null || !t.isOnline()) {
+						pendingRestoreVisibility.computeIfAbsent(vid, k -> new java.util.HashSet<>()).add(tid);
+						continue;
+					}
+					try {
+						v.showPlayer(plugin, t);
+					} catch (Throwable ignored) {
+					}
+				}
+			}
+		}
+
+		private void restorePendingVisibility(Player player) {
+			if (player == null)
+				return;
+			UUID pid = player.getUniqueId();
+			if (pid == null)
+				return;
+
+			// If this player is a viewer with pending targets, try to show them now.
+			java.util.Set<UUID> targets = pendingRestoreVisibility.get(pid);
+			if (targets != null && !targets.isEmpty()) {
+				for (UUID tid : new java.util.HashSet<>(targets)) {
+					Player t = Bukkit.getPlayer(tid);
+					if (t == null || !t.isOnline())
+						continue;
+					try {
+						player.showPlayer(plugin, t);
+						targets.remove(tid);
+					} catch (Throwable ignored) {
+					}
+				}
+				if (targets.isEmpty())
+					pendingRestoreVisibility.remove(pid);
+			}
+
+			// If this player is a target for other viewers, restore those too.
+			for (java.util.Map.Entry<UUID, java.util.Set<UUID>> e : new java.util.HashMap<>(pendingRestoreVisibility)
+					.entrySet()) {
+				UUID viewerId = e.getKey();
+				java.util.Set<UUID> ts = e.getValue();
+				if (viewerId == null || ts == null || ts.isEmpty())
+					continue;
+				if (!ts.contains(pid))
+					continue;
+				Player viewer = Bukkit.getPlayer(viewerId);
+				if (viewer == null || !viewer.isOnline())
+					continue;
+				try {
+					viewer.showPlayer(plugin, player);
+					ts.remove(pid);
+				} catch (Throwable ignored) {
+				}
+				if (ts.isEmpty())
+					pendingRestoreVisibility.remove(viewerId);
+			}
+		}
+
+		private void updateHiddenAudience(java.util.Set<UUID> desiredHidden) {
+			if (desiredHidden == null)
+				desiredHidden = java.util.Collections.emptySet();
+
+			java.util.Set<UUID> added = new java.util.HashSet<>(desiredHidden);
+			added.removeAll(hiddenAudience);
+			java.util.Set<UUID> removed = new java.util.HashSet<>(hiddenAudience);
+			removed.removeAll(desiredHidden);
+
+			// Restore visibility for people leaving the hidden set.
+			if (!removed.isEmpty()) {
+				showBetween(removed, hiddenAudience);
+				showBetween(hiddenAudience, removed);
+				hiddenAudience.removeAll(removed);
+				// Also drop any pending entries related to removed players.
+				for (UUID rid : removed) {
+					pendingRestoreVisibility.remove(rid);
+				}
+				for (java.util.Set<UUID> ts : pendingRestoreVisibility.values()) {
+					try {
+						ts.removeAll(removed);
+					} catch (Throwable ignored) {
+					}
+				}
+			}
+
+			// Apply hide for newly added members (bidirectional with existing hiddenAudience and among added).
+			if (!added.isEmpty()) {
+				java.util.Set<UUID> current = new java.util.HashSet<>(hiddenAudience);
+				hideBetween(added, current);
+				hideBetween(current, added);
+				// Hide between new members too.
+				hideBetween(added, added);
+				hiddenAudience.addAll(added);
 			}
 		}
 
@@ -1522,6 +1654,16 @@ public class EventService {
 
 		void stop(boolean restorePlayers) {
 			running = false;
+
+			// Always restore visibility when the intro stops.
+			try {
+				showBetween(hiddenAudience, hiddenAudience);
+			} catch (Throwable ignored) {
+			}
+			try {
+				hiddenAudience.clear();
+			} catch (Throwable ignored) {
+			}
 
 			if (cameraTask != null) {
 				try {
@@ -1800,6 +1942,15 @@ public class EventService {
 			}
 
 			restoreAllPlayers();
+			// Safety: ensure visibility is restored even if player restore fails.
+			try {
+				showBetween(hiddenAudience, hiddenAudience);
+			} catch (Throwable ignored) {
+			}
+			try {
+				hiddenAudience.clear();
+			} catch (Throwable ignored) {
+			}
 			try {
 				if (onComplete != null)
 					onComplete.run();
@@ -1897,6 +2048,14 @@ public class EventService {
 				return;
 
 			java.util.Set<UUID> audience = collectAudience();
+			// Hide spectators from each other to avoid visible player heads at the shared camera.
+			// Keep the featured racer visible during their showcase.
+			java.util.Set<UUID> desiredHidden = new java.util.HashSet<>(audience);
+			UUID featured = featuredRacer;
+			if (featured != null && phase == Phase.RACERS) {
+				desiredHidden.remove(featured);
+			}
+			updateHiddenAudience(desiredHidden);
 			try {
 				if (board != null)
 					board.setViewers(audience);
@@ -1907,7 +2066,6 @@ public class EventService {
 			if (cam == null || cam.getWorld() == null)
 				return;
 
-			UUID featured = featuredRacer;
 			for (UUID id : audience) {
 				if (id == null)
 					continue;
@@ -2121,6 +2279,22 @@ public class EventService {
 		private void moveFeaturedToStage(Player p) {
 			if (p == null)
 				return;
+			// Featured racer should be visible during the showcase.
+			try {
+				UUID id = p.getUniqueId();
+				if (id != null) {
+					showBetween(hiddenAudience, java.util.Set.of(id));
+					showBetween(java.util.Set.of(id), hiddenAudience);
+					pendingRestoreVisibility.remove(id);
+					for (java.util.Set<UUID> ts : pendingRestoreVisibility.values()) {
+						try {
+							ts.remove(id);
+						} catch (Throwable ignored) {
+						}
+					}
+				}
+			} catch (Throwable ignored) {
+			}
 			try {
 				savedModes.putIfAbsent(p.getUniqueId(), safeGameMode(p));
 				savedLocations.putIfAbsent(p.getUniqueId(), safeLocation(p));
