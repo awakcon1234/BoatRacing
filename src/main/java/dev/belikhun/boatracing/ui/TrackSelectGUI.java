@@ -174,20 +174,23 @@ public class TrackSelectGUI implements Listener {
 
 		RaceManager rm = null;
 		try {
-			rm = plugin.getRaceService().getOrCreate(trackName);
+			// Do not create/cached-load races just for GUI display.
+			rm = plugin.getRaceService().get(trackName);
 		} catch (Throwable ignored) {
 			rm = null;
 		}
 
 		boolean ready = false;
 		TrackConfig tc = null;
-		if (rm != null && rm.getTrackConfig() != null) {
-			try {
-				tc = rm.getTrackConfig();
-				ready = tc.isReady();
-			} catch (Throwable ignored) {
-				ready = false;
+		try {
+			// Always read the latest config from disk so the GUI reflects recent edits.
+			TrackConfig fresh = new TrackConfig(plugin, plugin.getDataFolder());
+			if (fresh.load(trackName)) {
+				tc = fresh;
+				ready = fresh.isReady();
 			}
+		} catch (Throwable ignored) {
+			ready = false;
 		}
 
 		boolean running = rm != null && rm.isRunning();
@@ -207,7 +210,7 @@ public class TrackSelectGUI implements Listener {
 		// - Blue (enchanted) = currently playing / cannot join
 		// - Red = maintenance/editing (not ready)
 		// - Green = open/waiting for players
-		if (rm == null) {
+		if (tc == null) {
 			mat = Material.BARRIER;
 			lore.add("&cKhông thể tải đường đua này.");
 			// no author available

@@ -58,6 +58,44 @@ public class RaceService {
 		return raceByTrack.get(trackName);
 	}
 
+	/**
+	 * Reload a track's runtime RaceManager if it is idle.
+	 *
+	 * This is used after saving track edits so TrackSelect/join flows don't keep
+	 * using an old cached TrackConfig instance.
+	 *
+	 * @return true if the race manager was reloaded, false otherwise.
+	 */
+	public synchronized boolean reloadIfIdle(String trackName) {
+		if (trackName == null || trackName.isBlank())
+			return false;
+		String key = trackName.trim();
+		RaceManager existing = raceByTrack.get(key);
+		if (existing == null)
+			return false;
+
+		try {
+			if (existing.isRunning() || existing.isAnyCountdownActive() || existing.isRegistering())
+				return false;
+			java.util.Set<java.util.UUID> involved = existing.getInvolved();
+			if (involved != null && !involved.isEmpty())
+				return false;
+		} catch (Throwable ignored) {
+			// If we can't safely determine state, do not reload.
+			return false;
+		}
+
+		raceByTrack.remove(key);
+		TrackConfig tc = new TrackConfig(plugin, dataFolder);
+		if (!tc.load(key)) {
+			return false;
+		}
+		RaceManager rm = new RaceManager(plugin, tc);
+		rm.setTotalLaps(getDefaultLaps());
+		raceByTrack.put(key, rm);
+		return true;
+	}
+
 	public synchronized Collection<RaceManager> allRaces() {
 		return java.util.Collections.unmodifiableCollection(raceByTrack.values());
 	}

@@ -290,6 +290,7 @@ public class AdminTracksGUI implements Listener {
 					Text.msg(p, "&cKhông thể lưu đường.");
 				} else {
 					lib.select(input);
+					try { if (plugin.getRaceService() != null) plugin.getRaceService().reloadIfIdle(input); } catch (Throwable ignored) {}
 					Text.msg(p, "&aĐã tạo và chọn đường: &f" + input);
 				}
 				Bukkit.getScheduler().runTask(plugin, () -> open(p));
@@ -316,6 +317,7 @@ public class AdminTracksGUI implements Listener {
 					Text.msg(p, "&cKhông thể lưu đường.");
 				} else {
 					plugin.getTrackLibrary().select(input);
+					try { if (plugin.getRaceService() != null) plugin.getRaceService().reloadIfIdle(input); } catch (Throwable ignored) {}
 					Text.msg(p, "&aĐã lưu thành: &f" + input);
 				}
 				Bukkit.getScheduler().runTask(plugin, () -> open(p));
@@ -475,6 +477,7 @@ public class AdminTracksGUI implements Listener {
 		if (cur == null) { promptSaveAs(p); return; }
 		boolean ok = plugin.getTrackConfig().save(cur);
 		if (!ok) { Text.msg(p, "&cKhông thể lưu đường."); return; }
+		try { if (plugin.getRaceService() != null) plugin.getRaceService().reloadIfIdle(cur); } catch (Throwable ignored) {}
 		Text.msg(p, "&aĐã lưu &f" + cur);
 		open(p);
 	}
