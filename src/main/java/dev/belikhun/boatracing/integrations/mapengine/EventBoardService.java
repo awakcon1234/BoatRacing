@@ -1228,8 +1228,16 @@ public final class EventBoardService {
 
 	private UiElement buildEventFinishedUi(RaceEvent e, int w, int h) {
 		boolean compact = h <= 340 || w <= 520;
-		int pad = Math.max(compact ? 12 : 16, (int) Math.round(Math.min(w, h) * (compact ? 0.022 : 0.03)));
-		int gap = Math.max(compact ? 4 : 6, (int) Math.round(pad * (compact ? 0.28 : 0.35)));
+		boolean ultraCompact = h <= 280 || w <= 440;
+		double scaleD = Math.min(w / 860.0, h / 470.0);
+		if (scaleD < (ultraCompact ? 0.65 : 0.72))
+			scaleD = (ultraCompact ? 0.65 : 0.72);
+		if (scaleD > 1.0)
+			scaleD = 1.0;
+		float scale = (float) scaleD;
+
+		int pad = Math.max(ultraCompact ? 10 : (compact ? 12 : 16), (int) Math.round(Math.min(w, h) * (ultraCompact ? 0.018 : (compact ? 0.022 : 0.03))));
+		int gap = Math.max(ultraCompact ? 3 : (compact ? 4 : 6), (int) Math.round(pad * (ultraCompact ? 0.22 : (compact ? 0.28 : 0.35))));
 
 		BroadcastTheme.Palette pal = BroadcastTheme.palette(accentFor(Screen.EVENT_FINISHED));
 		Color bg = pal.bg0();
@@ -1242,14 +1250,14 @@ public final class EventBoardService {
 
 		Font title = (titleFont != null ? titleFont : new Font("Monospaced", Font.BOLD, 18));
 		Font body = (bodyFont != null ? bodyFont : new Font("Monospaced", Font.PLAIN, 14));
-		Font header = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * 1.55f));
-		Font meta = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
-		Font section = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * 1.55f));
-		Font heroLabel = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
-		Font heroTitle = title.deriveFont(Font.BOLD, Math.max(34f, title.getSize2D() * 1.90f));
-		Font heroWinner = title.deriveFont(Font.BOLD, Math.max(46f, title.getSize2D() * 2.60f));
-		Font heroMeta = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
-		Font heroYear = title.deriveFont(Font.BOLD, Math.max(72f, title.getSize2D() * 4.10f));
+		Font header = title.deriveFont(Font.BOLD, Math.max(24f, title.getSize2D() * (1.45f * scale)));
+		Font meta = body.deriveFont(Font.BOLD, Math.max(12f, body.getSize2D() * (1.0f * scale)));
+		Font section = title.deriveFont(Font.BOLD, Math.max(22f, title.getSize2D() * (1.40f * scale)));
+		Font heroLabel = body.deriveFont(Font.BOLD, Math.max(11f, body.getSize2D() * (0.92f * scale)));
+		Font heroTitle = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * (1.70f * scale)));
+		Font heroWinner = title.deriveFont(Font.BOLD, Math.max(32f, title.getSize2D() * (2.20f * scale)));
+		Font heroMeta = body.deriveFont(Font.BOLD, Math.max(12f, body.getSize2D() * (1.0f * scale)));
+		Font heroYear = title.deriveFont(Font.BOLD, Math.max(48f, title.getSize2D() * (3.40f * scale)));
 
 		ColumnContainer root = new ColumnContainer().gap(gap).alignItems(UiAlign.STRETCH);
 		root.style().background(bg).padding(UiInsets.all(pad));
@@ -1273,8 +1281,8 @@ public final class EventBoardService {
 		Color bronze = new Color(0xCD, 0x7F, 0x32);
 
 		// Hero section (broadcast-like, typography-first)
-		RowContainer hero = new RowContainer().gap(Math.max(compact ? 12 : 18, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
-		hero.style().background(panel).padding(UiInsets.all(Math.max(compact ? 10 : 14, pad / 2))).border(borderSoft, 2);
+		RowContainer hero = new RowContainer().gap(Math.max(ultraCompact ? 10 : (compact ? 12 : 18), gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+		hero.style().background(panel).padding(UiInsets.all(Math.max(ultraCompact ? 8 : (compact ? 10 : 14), pad / 2))).border(borderSoft, 2);
 
 		ColumnContainer heroLeft = new ColumnContainer().gap(Math.max(6, gap / 2)).alignItems(UiAlign.START).justifyContent(UiJustify.START);
 		heroLeft.style().widthPx(0).flexGrow(2);
@@ -1294,7 +1302,7 @@ public final class EventBoardService {
 		heroLeft.add(text(winnerMeta, heroMeta, new Color(gold.getRed(), gold.getGreen(), gold.getBlue(), 255), TextElement.Align.LEFT));
 		hero.add(heroLeft);
 
-		ColumnContainer heroRight = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.END).justifyContent(UiJustify.START);
+		ColumnContainer heroRight = new ColumnContainer().gap(Math.max(3, gap / 3)).alignItems(UiAlign.END).justifyContent(UiJustify.START);
 		heroRight.style().widthPx(0).flexGrow(1);
 
 		int year = java.time.LocalDate.now().getYear();
@@ -1305,36 +1313,37 @@ public final class EventBoardService {
 		} catch (Throwable ignored) {
 		}
 
-		if (iconFont != null && !compact) {
+		if (iconFont != null && !compact && !ultraCompact) {
 			TextElement mark = new TextElement("\uf091")
-					.font(iconFont.deriveFont(Font.PLAIN, Math.max(54f, title.getSize2D() * 3.0f)))
+					.font(iconFont.deriveFont(Font.PLAIN, Math.max(46f, title.getSize2D() * (2.60f * scale))))
 					.color(new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 40))
 					.align(TextElement.Align.RIGHT)
 					.ellipsis(false);
-			mark.style().widthPx(Math.max(120, (int) Math.round(w * 0.26)));
+			mark.style().widthPx(Math.max(100, (int) Math.round(w * 0.22)));
 			heroRight.add(mark);
 		}
 
-		TextElement yearEl = text(String.valueOf(year), heroYear, new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 70), TextElement.Align.RIGHT);
-		yearEl.ellipsis(false);
-		yearEl.style().widthPx(Math.max(180, (int) Math.round(w * 0.34)));
-		heroRight.add(yearEl);
-		TextElement stamp = text("BẢNG XẾP HẠNG CUỐI", heroMeta, muted, TextElement.Align.RIGHT);
-		stamp.style().widthPx(Math.max(180, (int) Math.round(w * 0.34)));
-		heroRight.add(stamp);
-
-		hero.add(heroRight);
+		if (!ultraCompact) {
+			TextElement yearEl = text(String.valueOf(year), heroYear, new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 70), TextElement.Align.RIGHT);
+			yearEl.ellipsis(false);
+			yearEl.style().widthPx(Math.max(150, (int) Math.round(w * 0.30)));
+			heroRight.add(yearEl);
+			TextElement stamp = text("BẢNG XẾP HẠNG CUỐI", heroMeta, muted, TextElement.Align.RIGHT);
+			stamp.style().widthPx(Math.max(150, (int) Math.round(w * 0.30)));
+			heroRight.add(stamp);
+			hero.add(heroRight);
+		}
 		bodyCol.add(hero);
 
 		// Podium section (visual)
-		int podiumH = (int) Math.round(h * (compact ? 0.30 : 0.38));
-		podiumH = Math.max(compact ? 105 : 130, podiumH);
-		podiumH = Math.min(podiumH, Math.max(compact ? 110 : 130, (int) Math.round(h * (compact ? 0.38 : 0.50))));
+		int podiumH = (int) Math.round(h * (ultraCompact ? 0.16 : (compact ? 0.22 : 0.38)));
+		podiumH = Math.max(ultraCompact ? 78 : (compact ? 92 : 130), podiumH);
+		podiumH = Math.min(podiumH, Math.max(ultraCompact ? 84 : (compact ? 96 : 130), (int) Math.round(h * (ultraCompact ? 0.22 : (compact ? 0.30 : 0.50)))));
 
-		Font podiumTitle = section.deriveFont(Font.BOLD, Math.max(22f, section.getSize2D() * 0.85f));
+		Font podiumTitle = section.deriveFont(Font.BOLD, Math.max(18f, section.getSize2D() * (0.78f * scale)));
 		Font cardBadge = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
-		Font cardName = title.deriveFont(Font.BOLD, Math.max(compact ? 18f : 22f, title.getSize2D() * (compact ? 1.10f : 1.25f)));
-		Font cardPoints = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
+		Font cardName = title.deriveFont(Font.BOLD, Math.max(ultraCompact ? 16f : (compact ? 18f : 22f), title.getSize2D() * ((ultraCompact ? 0.95f : (compact ? 1.05f : 1.25f)) * scale)));
+		Font cardPoints = body.deriveFont(Font.BOLD, Math.max(12f, body.getSize2D() * (1.0f * scale)));
 
 		ColumnContainer podium = new ColumnContainer().gap(Math.max(8, gap / 2)).alignItems(UiAlign.STRETCH);
 
@@ -1343,7 +1352,7 @@ public final class EventBoardService {
 		podium.add(podiumHeader);
 
 		// Winner cards (aligned with the podium widths: 2nd | 1st | 3rd)
-		RowContainer cards = new RowContainer().gap(Math.max(10, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.CENTER);
+		RowContainer cards = new RowContainer().gap(Math.max(ultraCompact ? 6 : 10, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.CENTER);
 		cards.style().padding(UiInsets.all(0));
 
 		Color place1 = BroadcastTheme.mix(panel2, gold, 0.80);
@@ -1360,7 +1369,7 @@ public final class EventBoardService {
 		};
 
 		ColumnContainer c2 = new ColumnContainer().gap(Math.max(2, gap / 4)).alignItems(UiAlign.CENTER);
-		c2.style().widthPx(0).flexGrow(1).background(cardBg).padding(UiInsets.all(Math.max(10, pad / 3))).border(cardBorder, 2);
+		c2.style().widthPx(0).flexGrow(1).background(cardBg).padding(UiInsets.all(Math.max(ultraCompact ? 6 : 10, pad / 3))).border(cardBorder, 2);
 		TextElement c2Badge = text("HẠNG 2", cardBadge, bg, TextElement.Align.CENTER);
 		c2Badge.style().padding(UiInsets.symmetric(Math.max(3, pad / 7), Math.max(10, pad / 3))).background(place2);
 		c2.add(c2Badge);
@@ -1369,16 +1378,16 @@ public final class EventBoardService {
 		cards.add(c2);
 
 		ColumnContainer c1 = new ColumnContainer().gap(Math.max(2, gap / 4)).alignItems(UiAlign.CENTER);
-		c1.style().widthPx(0).flexGrow(2).background(cardBg).padding(UiInsets.all(Math.max(10, pad / 3))).border(a.apply(accent, 180), 2);
+		c1.style().widthPx(0).flexGrow(2).background(cardBg).padding(UiInsets.all(Math.max(ultraCompact ? 6 : 10, pad / 3))).border(a.apply(accent, 180), 2);
 		TextElement c1Badge = text("VÔ ĐỊCH", cardBadge, bg, TextElement.Align.CENTER);
 		c1Badge.style().padding(UiInsets.symmetric(Math.max(3, pad / 7), Math.max(10, pad / 3))).background(place1);
 		c1.add(c1Badge);
-		c1.add(text(first != null ? first.name : "—", cardName.deriveFont(Font.BOLD, Math.max(26f, cardName.getSize2D() * 1.05f)), fg, TextElement.Align.CENTER));
+		c1.add(text(first != null ? first.name : "—", cardName.deriveFont(Font.BOLD, Math.max(ultraCompact ? 18f : 26f, cardName.getSize2D() * 1.05f)), fg, TextElement.Align.CENTER));
 		c1.add(text(first != null ? String.format(java.util.Locale.ROOT, "%d điểm", first.points) : "", cardPoints, muted, TextElement.Align.CENTER));
 		cards.add(c1);
 
 		ColumnContainer c3 = new ColumnContainer().gap(Math.max(2, gap / 4)).alignItems(UiAlign.CENTER);
-		c3.style().widthPx(0).flexGrow(1).background(cardBg).padding(UiInsets.all(Math.max(10, pad / 3))).border(cardBorder, 2);
+		c3.style().widthPx(0).flexGrow(1).background(cardBg).padding(UiInsets.all(Math.max(ultraCompact ? 6 : 10, pad / 3))).border(cardBorder, 2);
 		TextElement c3Badge = text("HẠNG 3", cardBadge, bg, TextElement.Align.CENTER);
 		c3Badge.style().padding(UiInsets.symmetric(Math.max(3, pad / 7), Math.max(10, pad / 3))).background(place3);
 		c3.add(c3Badge);
@@ -1500,8 +1509,10 @@ public final class EventBoardService {
 			} catch (Throwable ignored) {
 			}
 		});
-		podiumGraphic.style().heightPx(podiumH).border(borderSoft, 2);
-		podium.add(podiumGraphic);
+		if (!ultraCompact) {
+			podiumGraphic.style().heightPx(podiumH).border(borderSoft, 2);
+			podium.add(podiumGraphic);
+		}
 
 		bodyCol.add(podium);
 
