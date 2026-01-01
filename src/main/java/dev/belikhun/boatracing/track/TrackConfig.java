@@ -111,6 +111,8 @@ public class TrackConfig {
 		this.centerline.clear();
 		this.cachedTrackLength = readCachedTrackLength(cfg);
 		this.waitingSpawn = null;
+		// Critical: do not carry worldName across tracks. It must be derived from the file or inferred.
+		this.worldName = null;
 
 		// UI metadata
 		try {
@@ -521,7 +523,15 @@ public class TrackConfig {
 	public org.bukkit.Location getWaitingSpawn() { return withTrackWorld(waitingSpawn); }
 	public void setWaitingSpawn(org.bukkit.Location loc) {
 		if (loc == null) { this.waitingSpawn = null; return; }
-		if (this.worldName == null && loc.getWorld() != null) this.worldName = loc.getWorld().getName();
+		if (loc.getWorld() != null) {
+			String w = loc.getWorld().getName();
+			if (this.worldName == null) {
+				this.worldName = w;
+			} else if (!this.worldName.equals(w)) {
+				logger.warning("TrackConfig: waitingSpawn world differs from track world (trackWorld=" + this.worldName + ", spawnWorld=" + w + ", track=" + currentName + ")");
+				this.worldName = w;
+			}
+		}
 		this.waitingSpawn = withTrackWorld(loc);
 	}
 

@@ -47,6 +47,7 @@ public class AdminTracksGUI implements Listener {
 		NEW_TRACK,
 		SAVE,
 		SAVE_AS,
+		TELEPORT_TRACK,
 		SET_ICON,
 		CLEAR_ICON,
 		SET_AUTHOR,
@@ -78,7 +79,7 @@ public class AdminTracksGUI implements Listener {
 
 	public void open(Player p) {
 		if (!hasSetup(p)) { Text.msg(p, "&cBạn không có quyền thực hiện điều đó."); return; }
-		int size = 27;
+		int size = 36;
 		Inventory inv = Bukkit.createInventory(null, size, TITLE);
 		ItemStack filler = pane(Material.GRAY_STAINED_GLASS_PANE);
 		for (int i = 0; i < size; i++) inv.setItem(i, filler);
@@ -105,6 +106,12 @@ public class AdminTracksGUI implements Listener {
 				List.of("&7Nhập tên mới để lưu"), true));
 		inv.setItem(16, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), Action.REFRESH,
 				List.of("&7Cập nhật thông tin"), true));
+		inv.setItem(31, buttonWithLore(Material.ENDER_PEARL, Text.item("&b&lDịch chuyển tới đường"), Action.TELEPORT_TRACK,
+				List.of(
+					"&7Dịch chuyển đến vị trí của đường đua hiện tại",
+					"",
+					"&fƯu tiên:&7 Spawn chờ 🡢 Start 🡢 Đích"
+				), true));
 		boolean vizOn = vizTasks.containsKey(p.getUniqueId());
 		inv.setItem(15, buttonWithLore(vizOn ? Material.AMETHYST_SHARD : Material.GLASS,
 			Text.item((vizOn?"&d&lẨn":"&d&lHiện") + " đường giữa"), Action.TOGGLE_VIZ,
@@ -342,6 +349,7 @@ public class AdminTracksGUI implements Listener {
 			case NEW_TRACK -> promptNewTrack(p);
 			case SAVE -> doSave(p);
 			case SAVE_AS -> promptSaveAs(p);
+			case TELEPORT_TRACK -> doTeleportToTrack(p);
 			case SET_ICON -> doSetIcon(p);
 			case CLEAR_ICON -> { plugin.getTrackConfig().setIcon(null); Text.msg(p, "&aĐã xóa icon đường."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);}
 			case SET_AUTHOR -> promptSetAuthor(p);
@@ -515,6 +523,82 @@ public class AdminTracksGUI implements Listener {
 		plugin.getTrackConfig().setWaitingSpawn(loc);
 		Text.msg(p, "&aĐã đặt spawn chờ tại &f" + Text.fmtPos(loc) + " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=0)");
 		p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
+		open(p);
+	}
+
+	private void doTeleportToTrack(Player p) {
+		if (p == null)
+			return;
+		String trackName = (lib != null ? lib.getCurrent() : null);
+		if (trackName == null || trackName.isBlank()) {
+			Text.msg(p, "&cChưa chọn đường đua nào.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			return;
+		}
+
+		TrackConfig cfg = plugin.getTrackConfig();
+		org.bukkit.Location target = null;
+
+		try {
+			target = (cfg != null ? cfg.getWaitingSpawn() : null);
+		} catch (Throwable ignored) {
+			target = null;
+		}
+		if (target == null) {
+			try {
+				java.util.List<org.bukkit.Location> starts = (cfg != null ? cfg.getStarts() : java.util.Collections.emptyList());
+				if (starts != null && !starts.isEmpty())
+					target = starts.get(0);
+			} catch (Throwable ignored) {
+				target = null;
+			}
+		}
+		if (target == null) {
+			try {
+				Region fin = (cfg != null ? cfg.getFinish() : null);
+				if (fin != null && fin.getBox() != null) {
+					org.bukkit.util.BoundingBox b = fin.getBox();
+					double cx = (b.getMinX() + b.getMaxX()) / 2.0;
+					double cz = (b.getMinZ() + b.getMaxZ()) / 2.0;
+					double y = Math.max(b.getMinY(), b.getMaxY()) + 1.0;
+					String wn = fin.getWorldName();
+					if (wn == null || wn.isBlank())
+						wn = (cfg != null ? cfg.getWorldName() : null);
+					org.bukkit.World w = (wn != null ? Bukkit.getWorld(wn) : null);
+					target = new org.bukkit.Location(w, cx, y, cz);
+				}
+			} catch (Throwable ignored) {
+				target = null;
+			}
+		}
+
+		if (target == null || target.getWorld() == null) {
+			Text.msg(p, "&cKhông thể tìm thấy vị trí để dịch chuyển.&7 Hãy đặt &fSpawn chờ&7 hoặc &fStart/Đích&7 cho đường.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			return;
+		}
+
+		try {
+			if (p.isInsideVehicle())
+				p.leaveVehicle();
+		} catch (Throwable ignored) {
+		}
+
+		boolean ok;
+		try {
+			ok = p.teleport(target);
+		} catch (Throwable ignored) {
+			ok = false;
+		}
+
+		if (ok) {
+			Text.msg(p, "&aĐã dịch chuyển tới đường: &f" + trackName);
+			Text.tell(p, "&7Vị trí: &f" + Text.fmtPos(target));
+			p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ENDERMAN_TELEPORT, 0.9f, 1.2f);
+		} else {
+			Text.msg(p, "&cKhông thể dịch chuyển tới đường: &f" + trackName);
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+		}
 		open(p);
 	}
 
