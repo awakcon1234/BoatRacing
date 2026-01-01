@@ -696,18 +696,13 @@ public final class OpeningTitlesBoardService {
 			} catch (Throwable ignored) {
 			}
 
-			// Subtle vignette + top glow
+			// Subtle vignette
 			try {
 				Color panel = pal.panel();
 				if (panel != null) {
 					g.setColor(panel);
 					g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
 				}
-				g.setPaint(new GradientPaint(
-						rect.x(), rect.y(), new Color(255, 255, 255, 18),
-						rect.x(), rect.y() + (int) Math.round(rect.h() * 0.35), new Color(255, 255, 255, 0)
-				));
-				g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
 				g.setPaint(new GradientPaint(
 						rect.x(), rect.y() + rect.h(), new Color(0, 0, 0, 120),
 						rect.x(), rect.y() + (int) Math.round(rect.h() * 0.55), new Color(0, 0, 0, 0)
@@ -1069,13 +1064,14 @@ public final class OpeningTitlesBoardService {
 		}
 
 		int padX = Math.max(14, (int) Math.round(w * 0.08));
-		int padY = Math.max(12, (int) Math.round(h * 0.10));
+		int padTop = Math.max(8, (int) Math.round(h * 0.03));
+		int padBottom = Math.max(12, (int) Math.round(h * 0.10));
 		int gap = Math.max(6, (int) Math.round(Math.min(w, h) * 0.02));
 		ColumnContainer root = new ColumnContainer()
 				.alignItems(UiAlign.STRETCH)
 				.justifyContent(UiJustify.START)
 				.gap(Math.max(4, gap));
-		root.style().padding(UiInsets.symmetric(padY, padX));
+		root.style().padding(new UiInsets(padTop, padX, padBottom, padX));
 
 		Font label;
 		Font big;
