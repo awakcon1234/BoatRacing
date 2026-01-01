@@ -452,8 +452,8 @@ public final class CenterlineBuilder {
 
 		WalkGrid grid = WalkGrid.build(w, minX, maxX, minZ, maxZ, startY, 12, logger, label, verbose);
 		if (grid == null) {
-			warn(logger, "A* " + label + " aborted: failed to build walk grid");
-			return null;
+			if (verbose) warn(logger, "A* " + label + " switching to on-demand search (grid too large)");
+			return aStar2DInBoundsOnDemand(w, start, goal, minX, maxX, minZ, maxZ, logger, label, verbose);
 		}
 		if (!grid.isWalkable(start.x, start.z) || !grid.isWalkable(goal.x, goal.z)) {
 			warn(logger, "A* " + label + " aborted: endpoints not walkable in grid. startWalkable=" + grid.isWalkable(start.x, start.z) + " goalWalkable=" + grid.isWalkable(goal.x, goal.z));
@@ -566,6 +566,101 @@ public final class CenterlineBuilder {
 		return null; // no path
 	}
 
+	private static List<Location> aStar2DInBoundsOnDemand(
+			World w,
+			Node start,
+			Node goal,
+			int minX,
+			int maxX,
+			int minZ,
+			int maxZ,
+			Logger logger,
+			String label,
+			boolean verbose
+	) {
+		java.util.PriorityQueue<Node> open = new java.util.PriorityQueue<>(Comparator.comparingDouble(n -> n.f));
+		java.util.Map<Long, Node> all = new java.util.HashMap<>();
+		java.util.Map<Long, Integer> surfaceCache = new java.util.HashMap<>();
+
+		start.g = 0.0;
+		start.f = start.g + h(start, goal);
+		open.add(start);
+		all.put(key(start.x, start.y, start.z), start);
+
+		int expanded = 0;
+		final int maxStepUpDown = 2;
+		final int maxExpanded = 200_000;
+		final long startNs = System.nanoTime();
+		final long maxNs = 600_000_000L; // 600ms budget to avoid long main-thread stalls
+
+		while (!open.isEmpty()) {
+			Node cur = open.poll();
+			if (cur.x == goal.x && cur.z == goal.z && Math.abs(cur.y - goal.y) <= maxStepUpDown) {
+				if (verbose) info(logger, "A* " + label + " success(on-demand): expanded=" + expanded + " visited=" + all.size());
+				return reconstruct(w, cur);
+			}
+			cur.closed = true;
+			expanded++;
+			if (expanded >= maxExpanded) {
+				warn(logger, "A* " + label + " failed(on-demand): expansion cap reached (" + maxExpanded + ")");
+				return null;
+			}
+			if ((expanded & 0x3FF) == 0 && (System.nanoTime() - startNs) > maxNs) {
+				warn(logger, "A* " + label + " failed(on-demand): time budget exceeded (" + (maxNs / 1_000_000L) + "ms)");
+				return null;
+			}
+
+			for (int[] d : DIRS) {
+				int nx = cur.x + d[0];
+				int nz = cur.z + d[1];
+				double stepCost = d[2] / 10.0;
+				if (nx < minX || nx > maxX || nz < minZ || nz > maxZ)
+					continue;
+
+				int ny = cachedSurfaceY(w, nx, nz, cur.y, 12, surfaceCache);
+				if (ny == Integer.MIN_VALUE)
+					continue;
+				if (!isClearAbove(w, nx, ny, nz))
+					continue;
+				Material t = w.getBlockAt(nx, ny, nz).getType();
+				if (!ALLOWED.contains(t))
+					continue;
+				if (Math.abs(ny - cur.y) > maxStepUpDown)
+					continue;
+
+				long k = key(nx, ny, nz);
+				Node nb = all.get(k);
+				if (nb == null) {
+					nb = new Node(nx, ny, nz);
+					all.put(k, nb);
+				}
+				if (nb.closed)
+					continue;
+
+				int dy = Math.abs(ny - cur.y);
+				int distToCorridorEdge = Math.min(Math.min(nx - minX, maxX - nx), Math.min(nz - minZ, maxZ - nz));
+				if (distToCorridorEdge < 0)
+					distToCorridorEdge = 0;
+				double centerPenalty = CENTER_BIAS / (distToCorridorEdge + 1.0);
+				double tg = cur.g + stepCost + (0.2 * dy) + centerPenalty;
+				if (tg < nb.g) {
+					nb.parent = cur;
+					nb.g = tg;
+					nb.f = tg + h(nb, goal);
+					open.remove(nb);
+					open.add(nb);
+				}
+			}
+		}
+
+		warn(logger, "A* " + label + " failed(on-demand): no path. expanded=" + expanded + " visited=" + all.size() +
+				" corridor=[x:" + minX + ".." + maxX + ", z:" + minZ + ".." + maxZ + "]" +
+				" start=" + w.getName() + "(" + start.x + "," + start.y + "," + start.z + ")" +
+				" goal=" + w.getName() + "(" + goal.x + "," + goal.y + "," + goal.z + ")" +
+				" allowed=" + ALLOWED);
+		return null;
+	}
+
 	private static final class WalkGrid {
 		final int minX, minZ, width, height;
 		final int[] surfaceY; // Integer.MIN_VALUE for none
@@ -611,11 +706,8 @@ public final class CenterlineBuilder {
 			long cap = 1_200_000L;
 			if (cells <= 0 || cells > cap) {
 				if (verbose) warn(logger, "A* " + label + " grid skipped: bounds too large (" + width + "x" + height + "=" + cells + ")");
-				// Fallback: no grid centering
-				WalkGrid g = new WalkGrid(minX, minZ, width, height);
-				// minimal walkability computed on-demand would be nicer, but we avoid allocation.
-				// Returning null forces caller to abort; caller can keep previous behavior if needed.
-				return g;
+				// Caller must fall back to an on-demand search to avoid allocating a massive grid.
+				return null;
 			}
 
 			WalkGrid g = new WalkGrid(minX, minZ, width, height);

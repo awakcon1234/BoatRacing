@@ -57,6 +57,32 @@ public class TrackConfig {
 		return !starts.isEmpty() && finish != null;
 	}
 
+	/**
+	 * Reset ALL in-memory data for creating a brand-new track.
+	 *
+	 * This is intentionally stricter than individual clear*() helpers and is used
+	 * by the "Tạo mới" flow to avoid copying data from the previously selected track.
+	 */
+	public void resetForNewTrack() {
+		this.icon = null;
+		this.authorId = null;
+		this.authorName = null;
+		this.authorText = null;
+		this.starts.clear();
+		this.lights.clear();
+		this.checkpoints.clear();
+		this.finish = null;
+		this.bounds = null;
+		this.pitlane = null;
+		this.teamPits.clear();
+		this.customStartSlots.clear();
+		this.centerline.clear();
+		this.cachedTrackLength = -1.0;
+		this.waitingSpawn = null;
+		this.worldName = null;
+		this.currentName = null;
+	}
+
 	public List<String> missingRequirements() {
 		List<String> out = new ArrayList<>();
 		if (starts.isEmpty()) out.add("starts");

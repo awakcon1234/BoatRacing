@@ -276,6 +276,8 @@ public class AdminTracksGUI implements Listener {
 					Text.msg(p, "&cĐã tồn tại đường tên đó.");
 					return List.of(AnvilGUI.ResponseAction.close());
 				}
+				// NEW TRACK must start empty; do not copy data from the currently selected track.
+				plugin.getTrackConfig().resetForNewTrack();
 				boolean ok = plugin.getTrackConfig().save(input);
 				if (!ok) {
 					Text.msg(p, "&cKhông thể lưu đường.");
