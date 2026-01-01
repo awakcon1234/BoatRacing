@@ -358,7 +358,15 @@ public class ScoreboardService {
 		ph.put("event_position", viewerPos > 0 ? String.valueOf(viewerPos) : "-");
 		ph.put("event_position_tag", viewerPos > 0 ? colorizePlacementTag(viewerPos) : "<gray>-</gray>");
 		ph.put("event_participants", String.valueOf(ranking.size()));
-		ph.put("event_participants_max", "-");
+		String participantsMax = "-";
+		try {
+			int max = e != null ? Math.max(0, e.maxParticipants) : 0;
+			if (max > 0)
+				participantsMax = String.valueOf(max);
+		} catch (Throwable ignored) {
+			participantsMax = "-";
+		}
+		ph.put("event_participants_max", participantsMax);
 		ph.put("event_countdown_label", eventCountdownLabel);
 		ph.put("event_countdown", eventCountdown);
 		ph.put("event_countdown_display", eventCountdownDisplay);

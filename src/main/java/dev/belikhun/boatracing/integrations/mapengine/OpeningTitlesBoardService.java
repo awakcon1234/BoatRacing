@@ -157,7 +157,12 @@ public final class OpeningTitlesBoardService {
 	}
 
 	private void loadConfig() {
-		placement = BoardPlacement.load(plugin.getConfig().getConfigurationSection("mapengine.opening-titles.board"));
+		// Placement is stored under "mapengine.opening-titles.board.placement".
+		// Keep a fallback to the legacy path for safety.
+		placement = BoardPlacement.load(plugin.getConfig().getConfigurationSection("mapengine.opening-titles.board.placement"));
+		if (placement == null || !placement.isValid()) {
+			placement = BoardPlacement.load(plugin.getConfig().getConfigurationSection("mapengine.opening-titles.board"));
+		}
 		updateTicks = clamp(plugin.getConfig().getInt("mapengine.opening-titles.update-ticks", 1), 1, 200);
 		debug = plugin.getConfig().getBoolean("mapengine.opening-titles.debug", false);
 		mapBuffering = plugin.getConfig().getBoolean("mapengine.opening-titles.pipeline.buffering", true);

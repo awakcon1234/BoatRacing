@@ -36,7 +36,7 @@ event:
     intro-gap-seconds: 2
 
     # How long each racer is featured (seconds)
-    per-racer-seconds: 3
+    per-racer-seconds: 10
 
     # Lobby fly-by camera defaults (used if no explicit points are provided)
     lobby-camera:

@@ -587,6 +587,12 @@ public final class EventBoardService {
 		} catch (Throwable ignored) {
 			racers = 0;
 		}
+		int max = 0;
+		try {
+			max = (e != null) ? Math.max(0, e.maxParticipants) : 0;
+		} catch (Throwable ignored) {
+			max = 0;
+		}
 		int tracks = 0;
 		try {
 			tracks = (e != null && e.trackPool != null) ? e.trackPool.size() : 0;
@@ -610,7 +616,11 @@ public final class EventBoardService {
 				? "Chưa lên lịch"
 				: ("Bắt đầu: " + when);
 
-		return "Tay đua: " + racers
+		String racersText = String.valueOf(racers);
+		if (max > 0)
+			racersText = racersText + "/" + max;
+
+		return "Tay đua: " + racersText
 				+ " ● Đường đua: " + tracks
 				+ " ● " + whenLabel;
 	}
@@ -735,7 +745,16 @@ public final class EventBoardService {
 		Spacer leftPush = new Spacer();
 		leftPush.style().flexGrow(1);
 		leftHead.add(leftPush);
-		leftHead.add(text(racers + " TAY ĐUA", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), muted, TextElement.Align.RIGHT));
+		int max = 0;
+		try {
+			max = e != null ? Math.max(0, e.maxParticipants) : 0;
+		} catch (Throwable ignored) {
+			max = 0;
+		}
+		String racersText = String.valueOf(racers);
+		if (max > 0)
+			racersText = racersText + "/" + max;
+		leftHead.add(text(racersText + " TAY ĐUA", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), muted, TextElement.Align.RIGHT));
 		left.add(leftHead);
 		left.add(buildParticipantsRows(e, colMax, body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), fg));
 		left.add(text("ⓘ Ở gần bảng để theo dõi cập nhật.", body.deriveFont(Font.PLAIN, Math.max(13f, body.getSize2D() * 0.95f)), muted, TextElement.Align.LEFT));
@@ -858,9 +877,62 @@ public final class EventBoardService {
 			shown++;
 
 			if (i < (end - 1)) {
-				TextElement arrow = text("🡢", nameFont.deriveFont(Font.BOLD, Math.max(26f, nameFont.getSize2D() * 1.60f)), fg, TextElement.Align.CENTER);
-				arrow.style().margin(UiInsets.symmetric(0, Math.max(4, gap / 5)));
-				strip.add(arrow);
+				int arrowSize = Math.max(20, (int) Math.round(nameFont.getSize2D() * 1.45));
+				int arrowW = Math.max(34, (int) Math.round(arrowSize * 1.7));
+				int arrowH = Math.max(18, (int) Math.round(arrowSize * 1.1));
+
+				UiElement arrowEl;
+				if (iconFont != null) {
+					TextElement arrow = new TextElement("\uf178")
+							.font(iconFont.deriveFont(Font.PLAIN, (float) arrowSize))
+							.color(fg)
+							.align(TextElement.Align.CENTER)
+							.ellipsis(false);
+					arrow.style().widthPx(arrowW).heightPx(arrowH).margin(UiInsets.symmetric(0, Math.max(4, gap / 5)));
+					arrowEl = arrow;
+				} else {
+					GraphicsElement arrow = new GraphicsElement((ctx, rect) -> {
+						if (ctx == null || ctx.g == null)
+							return;
+						ctx.applyDefaultHints();
+						java.awt.Graphics2D g2 = ctx.g;
+						int x = rect.x();
+						int y = rect.y();
+						int ww = rect.w();
+						int hh = rect.h();
+						if (ww <= 0 || hh <= 0)
+							return;
+
+						int padX = Math.max(3, ww / 10);
+						int midY = y + hh / 2;
+						int headW = Math.max(8, ww / 4);
+						int headH = Math.max(8, hh / 2);
+						int x1 = x + padX;
+						int x2 = x + ww - padX - headW;
+						int xTip = x + ww - padX;
+
+						java.awt.Stroke old = g2.getStroke();
+						try {
+							g2.setColor(fg);
+							g2.setStroke(new java.awt.BasicStroke(Math.max(2f, hh / 8f), java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+							g2.drawLine(x1, midY, x2, midY);
+
+							int hy = Math.max(3, headH / 2);
+							int[] px = new int[] { xTip, x2, x2 };
+							int[] py = new int[] { midY, midY - hy, midY + hy };
+							g2.fillPolygon(px, py, 3);
+						} catch (Throwable ignored) {
+						} finally {
+							try {
+								g2.setStroke(old);
+							} catch (Throwable ignored) {
+							}
+						}
+					});
+					arrow.style().widthPx(arrowW).heightPx(arrowH).margin(UiInsets.symmetric(0, Math.max(4, gap / 5)));
+					arrowEl = arrow;
+				}
+				strip.add(arrowEl);
 			}
 		}
 
@@ -1227,17 +1299,17 @@ public final class EventBoardService {
 	}
 
 	private UiElement buildEventFinishedUi(RaceEvent e, int w, int h) {
-		boolean compact = h <= 340 || w <= 520;
-		boolean ultraCompact = h <= 280 || w <= 440;
 		double scaleD = Math.min(w / 860.0, h / 470.0);
-		if (scaleD < (ultraCompact ? 0.65 : 0.72))
-			scaleD = (ultraCompact ? 0.65 : 0.72);
+		boolean compact = scaleD < 0.92 || h <= 400;
+		boolean ultraCompact = scaleD < 0.78 || h <= 320;
+		if (scaleD < (ultraCompact ? 0.62 : 0.70))
+			scaleD = (ultraCompact ? 0.62 : 0.70);
 		if (scaleD > 1.0)
 			scaleD = 1.0;
 		float scale = (float) scaleD;
 
 		int pad = Math.max(ultraCompact ? 10 : (compact ? 12 : 16), (int) Math.round(Math.min(w, h) * (ultraCompact ? 0.018 : (compact ? 0.022 : 0.03))));
-		int gap = Math.max(ultraCompact ? 3 : (compact ? 4 : 6), (int) Math.round(pad * (ultraCompact ? 0.22 : (compact ? 0.28 : 0.35))));
+		int gap = Math.max(ultraCompact ? 3 : (compact ? 4 : 6), (int) Math.round(pad * (ultraCompact ? 0.20 : (compact ? 0.24 : 0.35))));
 
 		BroadcastTheme.Palette pal = BroadcastTheme.palette(accentFor(Screen.EVENT_FINISHED));
 		Color bg = pal.bg0();
@@ -1254,13 +1326,13 @@ public final class EventBoardService {
 		Font meta = body.deriveFont(Font.BOLD, Math.max(12f, body.getSize2D() * (1.0f * scale)));
 		Font section = title.deriveFont(Font.BOLD, Math.max(22f, title.getSize2D() * (1.40f * scale)));
 		Font heroLabel = body.deriveFont(Font.BOLD, Math.max(11f, body.getSize2D() * (0.92f * scale)));
-		Font heroTitle = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * (1.70f * scale)));
-		Font heroWinner = title.deriveFont(Font.BOLD, Math.max(32f, title.getSize2D() * (2.20f * scale)));
+		Font heroTitle = title.deriveFont(Font.BOLD, Math.max(24f, title.getSize2D() * (1.45f * scale)));
+		Font heroWinner = title.deriveFont(Font.BOLD, Math.max(30f, title.getSize2D() * (1.85f * scale)));
 		Font heroMeta = body.deriveFont(Font.BOLD, Math.max(12f, body.getSize2D() * (1.0f * scale)));
-		Font heroYear = title.deriveFont(Font.BOLD, Math.max(48f, title.getSize2D() * (3.40f * scale)));
+		Font heroYear = title.deriveFont(Font.BOLD, Math.max(44f, title.getSize2D() * (3.00f * scale)));
 
 		ColumnContainer root = new ColumnContainer().gap(gap).alignItems(UiAlign.STRETCH);
-		root.style().background(bg).padding(UiInsets.all(pad));
+		root.style().background(bg).padding(UiInsets.all(compact ? Math.max(8, pad - 2) : pad));
 		root.add(buildTopStripe(accent, pad));
 		root.add(buildHeaderBar(e, w, h, pad, gap, panel, fg, muted, header, meta, true));
 
@@ -1269,7 +1341,7 @@ public final class EventBoardService {
 		ColumnContainer bodyCol = new ColumnContainer().gap(Math.max(compact ? 8 : 12, gap)).alignItems(UiAlign.STRETCH)
 				.justifyContent((ranking.size() <= 3) ? UiJustify.CENTER : UiJustify.START);
 		bodyCol.style().flexGrow(1);
-		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(compact ? 10 : 14, pad / 2))).border(borderSoft, 2);
+		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(compact ? 8 : 14, pad / 2))).border(borderSoft, 2);
 
 		EventRankEntry first = ranking.size() > 0 ? ranking.get(0) : null;
 		EventRankEntry second = ranking.size() > 1 ? ranking.get(1) : null;
@@ -1281,10 +1353,10 @@ public final class EventBoardService {
 		Color bronze = new Color(0xCD, 0x7F, 0x32);
 
 		// Hero section (broadcast-like, typography-first)
-		RowContainer hero = new RowContainer().gap(Math.max(ultraCompact ? 10 : (compact ? 12 : 18), gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
-		hero.style().background(panel).padding(UiInsets.all(Math.max(ultraCompact ? 8 : (compact ? 10 : 14), pad / 2))).border(borderSoft, 2);
+		RowContainer hero = new RowContainer().gap(Math.max(ultraCompact ? 8 : (compact ? 10 : 14), gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+		hero.style().background(panel).padding(UiInsets.all(Math.max(ultraCompact ? 8 : (compact ? 9 : 10), pad / 2))).border(borderSoft, 2);
 
-		ColumnContainer heroLeft = new ColumnContainer().gap(Math.max(6, gap / 2)).alignItems(UiAlign.START).justifyContent(UiJustify.START);
+		ColumnContainer heroLeft = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.START).justifyContent(UiJustify.START);
 		heroLeft.style().widthPx(0).flexGrow(2);
 
 		TextElement heroChip = text("KẾT QUẢ CHUNG CUỘC", heroLabel, bg, TextElement.Align.LEFT);
@@ -1336,18 +1408,18 @@ public final class EventBoardService {
 		bodyCol.add(hero);
 
 		// Podium section (visual)
-		int podiumH = (int) Math.round(h * (ultraCompact ? 0.16 : (compact ? 0.22 : 0.38)));
-		podiumH = Math.max(ultraCompact ? 78 : (compact ? 92 : 130), podiumH);
-		podiumH = Math.min(podiumH, Math.max(ultraCompact ? 84 : (compact ? 96 : 130), (int) Math.round(h * (ultraCompact ? 0.22 : (compact ? 0.30 : 0.50)))));
+		int podiumH = (int) Math.round(h * (ultraCompact ? 0.11 : (compact ? 0.13 : 0.22)));
+		podiumH = Math.max(ultraCompact ? 76 : (compact ? 88 : 110), podiumH);
+		podiumH = Math.min(podiumH, Math.max(ultraCompact ? 80 : (compact ? 92 : 116), (int) Math.round(h * (ultraCompact ? 0.14 : (compact ? 0.18 : 0.28)))));
 
 		Font podiumTitle = section.deriveFont(Font.BOLD, Math.max(18f, section.getSize2D() * (0.78f * scale)));
 		Font cardBadge = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
 		Font cardName = title.deriveFont(Font.BOLD, Math.max(ultraCompact ? 16f : (compact ? 18f : 22f), title.getSize2D() * ((ultraCompact ? 0.95f : (compact ? 1.05f : 1.25f)) * scale)));
 		Font cardPoints = body.deriveFont(Font.BOLD, Math.max(12f, body.getSize2D() * (1.0f * scale)));
 
-		ColumnContainer podium = new ColumnContainer().gap(Math.max(8, gap / 2)).alignItems(UiAlign.STRETCH);
+		ColumnContainer podium = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.STRETCH);
 
-		ColumnContainer podiumHeader = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.CENTER);
+		ColumnContainer podiumHeader = new ColumnContainer().gap(Math.max(2, gap / 4)).alignItems(UiAlign.CENTER);
 		podiumHeader.add(text("TOP 3", podiumTitle, fg, TextElement.Align.CENTER));
 		podium.add(podiumHeader);
 
@@ -1410,20 +1482,11 @@ public final class EventBoardService {
 				return;
 
 			int inner = Math.max(10, (int) Math.round(ww * 0.035));
-			int floorH = Math.max(14, (int) Math.round(hh * 0.16));
+			int floorH = 0;
 			int baseX = x + inner;
 			int baseW = Math.max(1, ww - inner * 2);
 			int baseY = y + hh - floorH;
 			int baseH = floorH;
-
-			// Floor plate
-			try {
-				g2.setColor(a.apply(borderSoft, 140));
-				g2.fillRoundRect(baseX, baseY, baseW, baseH, Math.max(10, baseH / 2), Math.max(10, baseH / 2));
-				g2.setColor(a.apply(panel2, 255));
-				g2.fillRoundRect(baseX + 2, baseY + 2, Math.max(0, baseW - 4), Math.max(0, baseH - 4), Math.max(10, baseH / 2), Math.max(10, baseH / 2));
-			} catch (Throwable ignored) {
-			}
 
 			// Podium steps (weights: 1 | 2 | 1)
 			int wUnit = Math.max(1, baseW / 4);
@@ -1434,10 +1497,11 @@ public final class EventBoardService {
 			int x1 = baseX + w2;
 			int x3 = baseX + w2 + w1;
 
-			int stepBottom = baseY;
-			int h1 = Math.max(18, (int) Math.round(hh * 0.62));
-			int h2 = Math.max(16, (int) Math.round(hh * 0.46));
-			int h3 = Math.max(14, (int) Math.round(hh * 0.38));
+			int stepBottom = y + hh;
+			// Make steps taller to avoid a big empty band above the podium.
+			int h1 = Math.max(18, (int) Math.round(hh * 0.82));
+			int h2 = Math.max(16, (int) Math.round(hh * 0.66));
+			int h3 = Math.max(14, (int) Math.round(hh * 0.58));
 			h1 = Math.min(h1, Math.max(18, stepBottom - y - 6));
 			h2 = Math.min(h2, Math.max(18, stepBottom - y - 6));
 			h3 = Math.min(h3, Math.max(18, stepBottom - y - 6));
@@ -1516,8 +1580,10 @@ public final class EventBoardService {
 
 		bodyCol.add(podium);
 
-		// Thank-you message (skip on compact boards to avoid bottom clipping)
-		if (!compact) {
+		boolean showExtras = !compact && h >= 1600;
+
+		// Thank-you message (only show when there is plenty of vertical space)
+		if (showExtras) {
 			RowContainer thanksRow = new RowContainer().alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
 			TextElement thanks = text("Cảm ơn bạn đã tham gia sự kiện", body.deriveFont(Font.BOLD, Math.max(15f, body.getSize2D() * 1.05f)), bg, TextElement.Align.CENTER);
 			thanks.style().padding(UiInsets.symmetric(Math.max(5, pad / 4), Math.max(14, pad / 2))).background(accent);
@@ -1527,7 +1593,7 @@ public final class EventBoardService {
 
 		// Only show the final ranking section if it adds new information beyond TOP 3.
 		int restStart = Math.min(3, ranking.size());
-		if (!compact && restStart < ranking.size()) {
+		if (showExtras && restStart < ranking.size()) {
 			Spacer grow = new Spacer();
 			grow.style().flexGrow(1);
 			bodyCol.add(grow);

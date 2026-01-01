@@ -63,6 +63,7 @@ public final class EventStorage {
 		y.set("title", e.title);
 		y.set("description", e.description);
 		y.set("startTimeMillis", e.startTimeMillis);
+		y.set("maxParticipants", Math.max(0, e.maxParticipants));
 		y.set("state", (e.state == null ? EventState.DRAFT.name() : e.state.name()));
 		y.set("currentTrackIndex", e.currentTrackIndex);
 		y.set("trackPool", (e.trackPool == null ? List.of() : new ArrayList<>(e.trackPool)));
@@ -112,6 +113,7 @@ public final class EventStorage {
 		e.title = y.getString("title", "");
 		e.description = y.getString("description", "");
 		e.startTimeMillis = Math.max(0L, y.getLong("startTimeMillis", 0L));
+		e.maxParticipants = Math.max(0, y.getInt("maxParticipants", 0));
 
 		String st = y.getString("state", EventState.DRAFT.name());
 		try {

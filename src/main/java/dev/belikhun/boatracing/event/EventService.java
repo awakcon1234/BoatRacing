@@ -24,6 +24,7 @@ import net.kyori.adventure.title.Title;
 import java.time.Duration;
 
 import java.io.File;
+import org.bukkit.configuration.file.YamlConfiguration;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -371,8 +372,17 @@ public class EventService {
 		eventsById.clear();
 		for (String id : EventStorage.listEventIds(dataFolder)) {
 			RaceEvent e = EventStorage.loadEvent(dataFolder, id);
-			if (e != null && e.id != null && !e.id.isBlank())
+			if (e != null && e.id != null && !e.id.isBlank()) {
 				eventsById.put(e.id.trim(), e);
+				try {
+					int prev = Math.max(0, e.maxParticipants);
+					recomputeAndCacheMaxParticipants(e);
+					if (Math.max(0, e.maxParticipants) != prev) {
+						EventStorage.saveEvent(dataFolder, e);
+					}
+				} catch (Throwable ignored) {
+				}
+			}
 		}
 	}
 
@@ -398,9 +408,56 @@ public class EventService {
 	public synchronized void setActiveEvent(String id) {
 		this.activeEventId = (id == null || id.isBlank()) ? null : id.trim();
 		try {
+			RaceEvent e = getActiveEvent();
+			if (e != null) {
+				recomputeAndCacheMaxParticipants(e);
+				EventStorage.saveEvent(dataFolder, e);
+			}
+		} catch (Throwable ignored) {
+		}
+		try {
 			EventStorage.saveActive(dataFolder, this.activeEventId);
 		} catch (Throwable ignored) {
 		}
+	}
+
+	private int readStartSlotsFromTrackFile(String trackName) {
+		if (trackName == null || trackName.isBlank())
+			return 0;
+		try {
+			File tracksDir = new File(dataFolder, "tracks");
+			File f = new File(tracksDir, trackName.trim() + ".yml");
+			if (!f.exists())
+				return 0;
+			YamlConfiguration y = YamlConfiguration.loadConfiguration(f);
+			java.util.List<?> starts = y.getList("starts");
+			return starts == null ? 0 : Math.max(0, starts.size());
+		} catch (Throwable ignored) {
+			return 0;
+		}
+	}
+
+	private void recomputeAndCacheMaxParticipants(RaceEvent e) {
+		if (e == null) {
+			return;
+		}
+		int computed = 0;
+		try {
+			if (e.trackPool != null) {
+				for (String tn : e.trackPool) {
+					int slots = readStartSlotsFromTrackFile(tn);
+					if (slots <= 0)
+						continue;
+					if (computed <= 0)
+						computed = slots;
+					else
+						computed = Math.min(computed, slots);
+				}
+			}
+		} catch (Throwable ignored) {
+			computed = 0;
+		}
+		e.maxParticipants = Math.max(0, computed);
 	}
 
 	/**
@@ -706,6 +763,7 @@ public class EventService {
 				return TrackPoolResult.DUPLICATE;
 		}
 		e.trackPool.add(tn);
+		recomputeAndCacheMaxParticipants(e);
 		EventStorage.saveEvent(dataFolder, e);
 		return TrackPoolResult.OK;
 	}
@@ -732,6 +790,7 @@ public class EventService {
 		if (e.trackPool == null)
 			return TrackPoolResult.NOT_FOUND;
 		boolean ok = e.trackPool.removeIf(s -> s != null && s.equalsIgnoreCase(tn));
+		recomputeAndCacheMaxParticipants(e);
 		EventStorage.saveEvent(dataFolder, e);
 		return ok ? TrackPoolResult.OK : TrackPoolResult.NOT_FOUND;
 	}
@@ -931,7 +990,8 @@ public class EventService {
 						}
 						lobbyGatherDone = true;
 						introEndMillis = 0L;
-						lobbyWaitEndMillis = 0L;
+						// Give players time to prepare for track 1 after the intro sequence ends.
+						lobbyWaitEndMillis = System.currentTimeMillis() + (FIRST_TRACK_WAIT_SECONDS * 1000L);
 					});
 			} catch (Throwable ignored) {
 			}
@@ -1352,7 +1412,7 @@ public class EventService {
 		private void loadConfig() {
 			welcomeSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.welcome-seconds", 6), 1, 60);
 			introGapSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.intro-gap-seconds", 2), 0, 30);
-			perRacerSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.per-racer-seconds", 3), 1, 30);
+			perRacerSeconds = clamp(plugin.getConfig().getInt("event.opening-titles.per-racer-seconds", 5), 1, 60);
 		}
 
 		private void loadStageAndCamera() {

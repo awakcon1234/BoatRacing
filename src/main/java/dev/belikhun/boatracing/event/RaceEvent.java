@@ -11,6 +11,13 @@ public class RaceEvent {
 	public String title;
 	public String description;
 	public long startTimeMillis;
+	/**
+	 * Cached maximum allowed participants for this event, derived from the track pool.
+	 *
+	 * Policy: use the minimum start-slot count across all tracks in {@link #trackPool}.
+	 * 0 means unknown/uncomputed.
+	 */
+	public int maxParticipants;
 	public List<String> trackPool;
 	public EventState state;
 	public int currentTrackIndex;
@@ -23,6 +30,7 @@ public class RaceEvent {
 		this.title = "";
 		this.description = "";
 		this.startTimeMillis = 0L;
+		this.maxParticipants = 0;
 		this.trackPool = new ArrayList<>();
 		this.state = EventState.DRAFT;
 		this.currentTrackIndex = 0;
