@@ -261,6 +261,26 @@ public class PodiumService {
 		try {
 			if (Bukkit.getPluginManager().isPluginEnabled("FancyNpcs")) {
 				String name = (p.nameSnapshot == null || p.nameSnapshot.isBlank()) ? "(không rõ)" : p.nameSnapshot;
+				// FancyNpcs official skin loader expects an identifier (username/url/file/@none/@mirror),
+				// so use the player name rather than UUID.
+				String skinIdentifier = null;
+				try {
+					skinIdentifier = (p.nameSnapshot == null ? null : p.nameSnapshot.trim());
+					if (skinIdentifier != null && skinIdentifier.isBlank())
+						skinIdentifier = null;
+				} catch (Throwable ignored) {
+					skinIdentifier = null;
+				}
+				if (skinIdentifier == null) {
+					try {
+						String n2 = Bukkit.getOfflinePlayer(id).getName();
+						if (n2 != null && !n2.isBlank())
+							skinIdentifier = n2;
+					} catch (Throwable ignored) {
+					}
+				}
+				if (skinIdentifier == null)
+					skinIdentifier = name;
 				String line1Mini;
 				String line1Legacy;
 				try {
@@ -278,9 +298,11 @@ public class PodiumService {
 				String display = "<empty>";
 
 				String npcName = "br-event-podium-" + System.currentTimeMillis() + "-" + index;
+				dbg("spawnOne: FancyNpcs skinIdentifier=" + skinIdentifier);
 				String npcId = FancyNpcsApi.spawnPlayerNpc(
 						npcName,
-						id,
+						skinIdentifier,
+						false,
 						loc,
 						display,
 						false,

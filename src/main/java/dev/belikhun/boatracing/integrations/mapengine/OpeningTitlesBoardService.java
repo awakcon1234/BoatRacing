@@ -798,8 +798,23 @@ public final class OpeningTitlesBoardService {
 					g.setFont(f);
 					int sw = g.getFontMetrics().stringWidth(ns);
 					int sh = g.getFontMetrics().getAscent();
-					int x = rect.x() + rect.w() - sw - Math.max(14, marginX);
 					int y = rect.y() + rect.h() - Math.max(10, marginY / 2);
+
+					// Intentionally let the 2nd digit hang outside the right edge by ~50%.
+					int right = rect.x() + rect.w();
+					int x;
+					if (ns.length() >= 2) {
+						String d0 = ns.substring(0, 1);
+						String d1 = ns.substring(1, 2);
+						int w0 = g.getFontMetrics().stringWidth(d0);
+						int w1 = g.getFontMetrics().stringWidth(d1);
+						int visibleW = w0 + (w1 / 2);
+						x = right - visibleW;
+					} else {
+						x = right - (sw / 2);
+					}
+
+					// Still keep the watermark inside the right band start.
 					if (x < safeRight)
 						x = safeRight + 6;
 					Color a = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(55);
