@@ -34,6 +34,7 @@ import java.awt.Color;
 import java.awt.Font;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -75,6 +76,7 @@ public final class EventBoardService {
 	private Font titleFont;
 	private Font bodyFont;
 	private Font fallbackFont;
+	private Font iconFont;
 
 	// Logo
 	// Bundled logo resource path (inside plugin JAR)
@@ -145,6 +147,17 @@ public final class EventBoardService {
 			fallbackFont = new Font(Font.MONOSPACED, Font.PLAIN, Math.max(10, bodySize));
 		} catch (Throwable ignored) {
 			fallbackFont = null;
+		}
+
+		// Optional icon font (Font Awesome)
+		iconFont = null;
+		try (InputStream is = plugin.getResource("fonts/fa-solid-900.ttf")) {
+			if (is != null) {
+				Font fa = Font.createFont(Font.TRUETYPE_FONT, is);
+				iconFont = fa;
+			}
+		} catch (Throwable ignored) {
+			iconFont = null;
 		}
 	}
 
@@ -754,6 +767,18 @@ public final class EventBoardService {
 		timerRow.add(text(timer, countdown, fg, TextElement.Align.LEFT));
 		right.add(timerRow);
 
+		UiElement trackStrip = buildTrackProgressStrip(
+				e,
+				body.deriveFont(Font.BOLD, Math.max(16f, body.getSize2D() * 1.10f)),
+				body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f)),
+				fg,
+				bg,
+				Math.max(10, cardPad / 2),
+				Math.max(10, gap)
+		);
+		if (trackStrip != null)
+			right.add(trackStrip);
+
 		right.add(text("Hãy chuẩn bị thuyền và sẵn sàng xuất phát!", body.deriveFont(Font.PLAIN, Math.max(14f, body.getSize2D())), muted, TextElement.Align.CENTER));
 		main.add(right);
 
@@ -763,6 +788,85 @@ public final class EventBoardService {
 		root.add(buildFooterClock(panel, muted, body, pad, gap));
 
 		return root;
+	}
+
+	private UiElement buildTrackProgressStrip(
+			RaceEvent e,
+			Font nameFont,
+			Font chipFont,
+			Color fg,
+			Color chipText,
+			int pad,
+			int gap
+	) {
+		List<String> pool = (e != null ? e.trackPool : null);
+		if (pool == null || pool.isEmpty())
+			return null;
+
+		int idx = 0;
+		try {
+			idx = Math.max(0, e != null ? e.currentTrackIndex : 0);
+		} catch (Throwable ignored) {
+			idx = 0;
+		}
+		if (idx >= pool.size())
+			idx = pool.size() - 1;
+
+		int start = Math.max(0, idx - 1);
+		if (pool.size() >= 3)
+			start = Math.min(start, Math.max(0, pool.size() - 3));
+		int end = Math.min(pool.size(), start + 3);
+
+		RowContainer strip = new RowContainer()
+				.gap(Math.max(10, gap))
+				.alignItems(UiAlign.CENTER)
+				.justifyContent(UiJustify.CENTER);
+		strip.style().padding(UiInsets.all(pad));
+
+		Color done = BroadcastTheme.ACCENT_RUNNING;
+		Color next = BroadcastTheme.ACCENT_READY;
+		Color wait = BroadcastTheme.ACCENT_OFF;
+
+		int shown = 0;
+		for (int i = start; i < end; i++) {
+			String raw = pool.get(i);
+			String name = (raw == null || raw.isBlank()) ? String.format(java.util.Locale.ROOT, "TRACK%d", (i + 1)) : raw.trim();
+			name = name.toUpperCase(java.util.Locale.ROOT);
+
+			String status;
+			Color statusBg;
+			if (i < idx) {
+				status = "ĐÃ HOÀN THÀNH";
+				statusBg = done;
+			} else if (i == idx) {
+				status = "TIẾP THEO";
+				statusBg = next;
+			} else {
+				status = "ĐANG CHỜ";
+				statusBg = wait;
+			}
+
+			ColumnContainer track = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.START);
+			track.style().widthPx(0).flexGrow(1);
+			track.add(text(name, nameFont, fg, TextElement.Align.LEFT));
+
+			TextElement chip = text(status, chipFont, chipText, TextElement.Align.LEFT);
+			chip.style().padding(UiInsets.symmetric(Math.max(4, pad / 3), Math.max(10, pad))).background(statusBg);
+			track.add(chip);
+
+			strip.add(track);
+			shown++;
+
+			if (i < (end - 1)) {
+				TextElement arrow = text("🡢", nameFont.deriveFont(Font.BOLD, Math.max(26f, nameFont.getSize2D() * 1.60f)), fg, TextElement.Align.CENTER);
+				arrow.style().margin(UiInsets.symmetric(0, Math.max(4, gap / 5)));
+				strip.add(arrow);
+			}
+		}
+
+		if (shown <= 0)
+			return null;
+		return strip;
 	}
 
 	private UiElement buildTopStripe(Color accent, int pad) {
@@ -1002,6 +1106,11 @@ public final class EventBoardService {
 		Font header = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * 1.55f));
 		Font meta = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
 		Font section = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * 1.55f));
+		Font heroLabel = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
+		Font heroTitle = title.deriveFont(Font.BOLD, Math.max(42f, title.getSize2D() * 2.35f));
+		Font heroWinner = title.deriveFont(Font.BOLD, Math.max(54f, title.getSize2D() * 3.10f));
+		Font heroMeta = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
+		Font heroYear = title.deriveFont(Font.BOLD, Math.max(96f, title.getSize2D() * 5.6f));
 		Font big = title.deriveFont(Font.BOLD, Math.max(44f, title.getSize2D() * 2.55f));
 		Font huge = title.deriveFont(Font.BOLD, Math.max(60f, title.getSize2D() * 3.4f));
 
@@ -1135,6 +1244,11 @@ public final class EventBoardService {
 		Font header = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * 1.55f));
 		Font meta = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
 		Font section = title.deriveFont(Font.BOLD, Math.max(26f, title.getSize2D() * 1.55f));
+		Font heroLabel = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
+		Font heroTitle = title.deriveFont(Font.BOLD, Math.max(34f, title.getSize2D() * 1.90f));
+		Font heroWinner = title.deriveFont(Font.BOLD, Math.max(46f, title.getSize2D() * 2.60f));
+		Font heroMeta = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
+		Font heroYear = title.deriveFont(Font.BOLD, Math.max(72f, title.getSize2D() * 4.10f));
 
 		ColumnContainer root = new ColumnContainer().gap(gap).alignItems(UiAlign.STRETCH);
 		root.style().background(bg).padding(UiInsets.all(pad));
@@ -1152,11 +1266,69 @@ public final class EventBoardService {
 		EventRankEntry second = ranking.size() > 1 ? ranking.get(1) : null;
 		EventRankEntry third = ranking.size() > 2 ? ranking.get(2) : null;
 
+		// Standard podium colors: gold/silver/bronze
+		Color gold = new Color(0xD4, 0xAF, 0x37);
+		Color silver = new Color(0xC0, 0xC0, 0xC0);
+		Color bronze = new Color(0xCD, 0x7F, 0x32);
+
+		// Hero section (broadcast-like, typography-first)
+		RowContainer hero = new RowContainer().gap(Math.max(18, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.START);
+		hero.style().background(panel).padding(UiInsets.all(Math.max(14, pad / 2))).border(borderSoft, 2);
+
+		ColumnContainer heroLeft = new ColumnContainer().gap(Math.max(6, gap / 2)).alignItems(UiAlign.START).justifyContent(UiJustify.START);
+		heroLeft.style().widthPx(0).flexGrow(2);
+
+		TextElement heroChip = text("KẾT QUẢ CHUNG CUỘC", heroLabel, bg, TextElement.Align.LEFT);
+		heroChip.style().padding(UiInsets.symmetric(Math.max(3, pad / 7), Math.max(12, pad / 2))).background(gold);
+		heroLeft.add(heroChip);
+
+		String eventTitle = (e != null && e.title != null && !e.title.isBlank()) ? e.title.trim() : "SỰ KIỆN";
+		heroLeft.add(text(eventTitle.toUpperCase(java.util.Locale.ROOT), heroTitle, fg, TextElement.Align.LEFT));
+
+		String winnerName = first != null ? first.name : "—";
+		heroLeft.add(text(winnerName.toUpperCase(java.util.Locale.ROOT), heroWinner, fg, TextElement.Align.LEFT));
+		String winnerMeta = first != null
+				? String.format(java.util.Locale.ROOT, "VÔ ĐỊCH  ●  %d điểm", first.points)
+				: "CHƯA CÓ KẾT QUẢ";
+		heroLeft.add(text(winnerMeta, heroMeta, new Color(gold.getRed(), gold.getGreen(), gold.getBlue(), 255), TextElement.Align.LEFT));
+		hero.add(heroLeft);
+
+		ColumnContainer heroRight = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.END).justifyContent(UiJustify.START);
+		heroRight.style().widthPx(0).flexGrow(1);
+
+		int year = java.time.LocalDate.now().getYear();
+		try {
+			if (e != null && e.startTimeMillis > 0L) {
+				year = java.time.Instant.ofEpochMilli(e.startTimeMillis).atZone(java.time.ZoneId.systemDefault()).getYear();
+			}
+		} catch (Throwable ignored) {
+		}
+
+		if (iconFont != null) {
+			TextElement mark = new TextElement("\uf091")
+					.font(iconFont.deriveFont(Font.PLAIN, Math.max(54f, title.getSize2D() * 3.0f)))
+					.color(new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 40))
+					.align(TextElement.Align.RIGHT)
+					.ellipsis(false);
+			mark.style().widthPx(Math.max(120, (int) Math.round(w * 0.26)));
+			heroRight.add(mark);
+		}
+
+		TextElement yearEl = text(String.valueOf(year), heroYear, new Color(fg.getRed(), fg.getGreen(), fg.getBlue(), 70), TextElement.Align.RIGHT);
+		yearEl.ellipsis(false);
+		yearEl.style().widthPx(Math.max(180, (int) Math.round(w * 0.34)));
+		heroRight.add(yearEl);
+		TextElement stamp = text("BẢNG XẾP HẠNG CUỐI", heroMeta, muted, TextElement.Align.RIGHT);
+		stamp.style().widthPx(Math.max(180, (int) Math.round(w * 0.34)));
+		heroRight.add(stamp);
+
+		hero.add(heroRight);
+		bodyCol.add(hero);
+
 		// Podium section (visual)
 		int podiumH = Math.max(130, (int) Math.round(h * 0.38));
 		podiumH = Math.min(podiumH, Math.max(130, (int) Math.round(h * 0.50)));
 
-		Font chipFont = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D()));
 		Font podiumTitle = section.deriveFont(Font.BOLD, Math.max(22f, section.getSize2D() * 0.85f));
 		Font cardBadge = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
 		Font cardName = title.deriveFont(Font.BOLD, Math.max(22f, title.getSize2D() * 1.25f));
@@ -1165,9 +1337,6 @@ public final class EventBoardService {
 		ColumnContainer podium = new ColumnContainer().gap(Math.max(8, gap / 2)).alignItems(UiAlign.STRETCH);
 
 		ColumnContainer podiumHeader = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.CENTER);
-		TextElement resultChip = text("KẾT QUẢ", chipFont, bg, TextElement.Align.CENTER);
-		resultChip.style().padding(UiInsets.symmetric(Math.max(4, pad / 6), Math.max(12, pad / 2))).background(accent);
-		podiumHeader.add(resultChip);
 		podiumHeader.add(text("TOP 3", podiumTitle, fg, TextElement.Align.CENTER));
 		podium.add(podiumHeader);
 
@@ -1175,9 +1344,9 @@ public final class EventBoardService {
 		RowContainer cards = new RowContainer().gap(Math.max(10, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.CENTER);
 		cards.style().padding(UiInsets.all(0));
 
-		Color place1 = BroadcastTheme.mix(panel2, accent, 0.62);
-		Color place2 = BroadcastTheme.mix(panel2, accent, 0.42);
-		Color place3 = BroadcastTheme.mix(panel2, accent, 0.30);
+		Color place1 = BroadcastTheme.mix(panel2, gold, 0.80);
+		Color place2 = BroadcastTheme.mix(panel2, silver, 0.78);
+		Color place3 = BroadcastTheme.mix(panel2, bronze, 0.78);
 		Color cardBg = panel;
 		Color cardBorder = borderSoft;
 
@@ -1229,81 +1398,12 @@ public final class EventBoardService {
 			if (ww <= 0 || hh <= 0)
 				return;
 
-			// Subtle stage background wash
-			Color wash = a.apply(panel, 120);
-			if (wash != null) {
-				g2.setColor(wash);
-				g2.fillRect(x, y, ww, hh);
-			}
-
 			int inner = Math.max(10, (int) Math.round(ww * 0.035));
 			int floorH = Math.max(14, (int) Math.round(hh * 0.16));
 			int baseX = x + inner;
 			int baseW = Math.max(1, ww - inner * 2);
 			int baseY = y + hh - floorH;
 			int baseH = floorH;
-
-			// Spotlight beams
-			try {
-				Color beam = a.apply(accent, 30);
-				Color beam2 = a.apply(BroadcastTheme.mix(accent, fg, 0.35), 24);
-				if (beam != null) {
-					g2.setColor(beam);
-					int topY = y;
-					int midY = y + (int) Math.round(hh * 0.70);
-					java.awt.Polygon p1 = new java.awt.Polygon(
-							new int[] { x + (int) (ww * 0.22), x + (int) (ww * 0.10), x + (int) (ww * 0.34) },
-							new int[] { topY, midY, midY },
-							3);
-					java.awt.Polygon p2 = new java.awt.Polygon(
-							new int[] { x + (int) (ww * 0.50), x + (int) (ww * 0.38), x + (int) (ww * 0.62) },
-							new int[] { topY, midY, midY },
-							3);
-					java.awt.Polygon p3 = new java.awt.Polygon(
-							new int[] { x + (int) (ww * 0.78), x + (int) (ww * 0.66), x + (int) (ww * 0.90) },
-							new int[] { topY, midY, midY },
-							3);
-					g2.fillPolygon(p1);
-					g2.fillPolygon(p2);
-					g2.fillPolygon(p3);
-				}
-				if (beam2 != null) {
-					g2.setColor(beam2);
-					int topY = y;
-					int midY = y + (int) Math.round(hh * 0.62);
-					java.awt.Polygon p = new java.awt.Polygon(
-							new int[] { x + (int) (ww * 0.50), x + (int) (ww * 0.26), x + (int) (ww * 0.74) },
-							new int[] { topY, midY, midY },
-							3);
-					g2.fillPolygon(p);
-				}
-			} catch (Throwable ignored) {
-			}
-
-			// Confetti (deterministic)
-			try {
-				java.util.Random r = new java.util.Random(42L);
-				Color conf1 = a.apply(BroadcastTheme.mix(accent, fg, 0.30), 180);
-				Color conf2 = a.apply(BroadcastTheme.mix(accent, muted, 0.30), 170);
-				Color conf3 = a.apply(BroadcastTheme.mix(accent, panel2, 0.30), 160);
-				Color[] conf = new Color[] { conf1, conf2, conf3 };
-				int maxY = y + (int) Math.round(hh * 0.55);
-				for (int i = 0; i < 42; i++) {
-					int cx = x + r.nextInt(Math.max(1, ww));
-					int cy = y + r.nextInt(Math.max(1, Math.max(1, maxY - y)));
-					int sz = Math.max(3, 3 + r.nextInt(Math.max(1, ww / 120)));
-					Color cc = conf[r.nextInt(conf.length)];
-					if (cc == null)
-						continue;
-					g2.setColor(cc);
-					if ((i % 3) == 0) {
-						g2.fillOval(cx, cy, sz, sz);
-					} else {
-						g2.fillRect(cx, cy, sz, Math.max(2, sz / 2));
-					}
-				}
-			} catch (Throwable ignored) {
-			}
 
 			// Floor plate
 			try {

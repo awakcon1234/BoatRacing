@@ -190,7 +190,7 @@ public final class OpeningTitlesBoardService {
 
 		// Optional icon font (Font Awesome)
 		iconFont = null;
-		try (InputStream is = plugin.getResource("fonts/fa-regular-400.ttf")) {
+		try (InputStream is = plugin.getResource("fonts/fa-solid-900.ttf")) {
 			if (is != null) {
 				Font fa = Font.createFont(Font.TRUETYPE_FONT, is);
 				iconFont = fa;
