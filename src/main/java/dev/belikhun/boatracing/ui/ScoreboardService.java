@@ -197,11 +197,11 @@ public class ScoreboardService {
 		if (st == null)
 			return "-";
 		return switch (st) {
-			case DRAFT -> "Nháp";
-			case REGISTRATION -> "Đang đăng ký";
-			case RUNNING -> "Đang chạy";
-			case COMPLETED -> "Đã kết thúc";
-			case CANCELLED -> "Đã hủy";
+			case DRAFT -> "<gray>Nháp</gray>";
+			case REGISTRATION -> "<green>Đang mở đăng ký</green>";
+			case RUNNING -> "<aqua>Đang diễn ra</aqua>";
+			case COMPLETED -> "<gold>Đã kết thúc</gold>";
+			case CANCELLED -> "<red>Đã hủy</red>";
 		};
 	}
 
@@ -209,6 +209,60 @@ public class ScoreboardService {
 		Sidebar sb = ensureSidebar(p);
 		if (sb == null || p == null || e == null)
 			return;
+
+		String eventCountdownLabel = "-";
+		String eventCountdown = "-";
+		String eventCountdownDisplay = "-";
+		try {
+			EventService es = plugin != null ? plugin.getEventService() : null;
+			if (es != null) {
+				long now = System.currentTimeMillis();
+				long end = 0L;
+				String label = null;
+
+				long introEnd = 0L;
+				long lobbyEnd = 0L;
+				long breakEnd = 0L;
+				long trackDeadline = 0L;
+				try {
+					introEnd = es.getIntroEndMillis();
+					lobbyEnd = es.getLobbyWaitEndMillis();
+					breakEnd = es.getBreakEndMillis();
+					trackDeadline = es.getTrackDeadlineMillis();
+				} catch (Throwable ignored) {
+					introEnd = 0L;
+					lobbyEnd = 0L;
+					breakEnd = 0L;
+					trackDeadline = 0L;
+				}
+
+				if (introEnd > 0L && now < introEnd) {
+					end = introEnd;
+					label = "Bắt đầu";
+				} else if (lobbyEnd > 0L && now < lobbyEnd) {
+					end = lobbyEnd;
+					label = "Bắt đầu";
+				} else if (breakEnd > 0L && now < breakEnd) {
+					end = breakEnd;
+					label = "Chặng tiếp theo";
+				} else if (trackDeadline > 0L && now < trackDeadline) {
+					end = trackDeadline;
+					label = "Hết giờ";
+				}
+
+				if (end > now && label != null) {
+					int seconds = (int) Math.ceil((end - now) / 1000.0);
+					seconds = Math.max(0, seconds);
+					eventCountdownLabel = label;
+					eventCountdown = Time.formatCountdownSeconds(seconds);
+					eventCountdownDisplay = "<gray>⌛ " + label + ": <white>" + eventCountdown;
+				}
+			}
+		} catch (Throwable ignored) {
+			eventCountdownLabel = "-";
+			eventCountdown = "-";
+			eventCountdownDisplay = "-";
+		}
 
 		// Build ranking snapshot (points DESC)
 		java.util.List<EventRankEntry> ranking = new java.util.ArrayList<>();
@@ -297,6 +351,10 @@ public class ScoreboardService {
 		ph.put("event_position", viewerPos > 0 ? String.valueOf(viewerPos) : "-");
 		ph.put("event_position_tag", viewerPos > 0 ? colorizePlacementTag(viewerPos) : "<gray>-</gray>");
 		ph.put("event_participants", String.valueOf(ranking.size()));
+		ph.put("event_participants_max", "-");
+		ph.put("event_countdown_label", eventCountdownLabel);
+		ph.put("event_countdown", eventCountdown);
+		ph.put("event_countdown_display", eventCountdownDisplay);
 		ph.put("event_track_total", String.valueOf(e.trackPool == null ? 0 : e.trackPool.size()));
 		ph.put("event_track_index", String.valueOf(Math.max(0, e.currentTrackIndex) + 1));
 		ph.put("event_track_name", safeStr(e.currentTrackName()));

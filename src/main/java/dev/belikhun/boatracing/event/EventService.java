@@ -466,6 +466,31 @@ public class EventService {
 		e.state = EventState.DRAFT;
 		e.startTimeMillis = 0L;
 		put(e);
+
+		// If there is no ongoing active event, treat the newly created event as the new active
+		// context so UI/boards don't keep showing stale data from the previous event.
+		try {
+			RaceEvent active = getActiveEvent();
+			boolean finished = (active != null && (active.state == EventState.CANCELLED || active.state == EventState.COMPLETED));
+			if (active == null || finished) {
+				setActiveEvent(e.id);
+				activeTrackName = null;
+				trackCountdownStarted = false;
+				trackDeadlineMillis = 0L;
+				currentTrackRoster.clear();
+				trackWasRunning = false;
+				introEndMillis = 0L;
+				lobbyWaitEndMillis = 0L;
+				breakEndMillis = 0L;
+				lobbyGatherDone = false;
+				try {
+					if (podiumService != null)
+						podiumService.clear();
+				} catch (Throwable ignored) {
+				}
+			}
+		} catch (Throwable ignored) {
+		}
 		return true;
 	}
 
@@ -481,6 +506,23 @@ public class EventService {
 			return false;
 		}
 		setActiveEvent(e.id);
+
+		// Opening registration for a brand-new event should always start fresh.
+		// (Prevents stale participant scores/rosters from being carried over.)
+		try {
+			if (e.state == null || e.state == EventState.DRAFT) {
+				if (e.participants != null)
+					e.participants.clear();
+				else
+					e.participants = new java.util.HashMap<>();
+				if (e.registrationOrder != null)
+					e.registrationOrder.clear();
+				else
+					e.registrationOrder = new java.util.ArrayList<>();
+			}
+		} catch (Throwable ignored) {
+		}
+
 		e.state = EventState.REGISTRATION;
 		e.currentTrackIndex = 0;
 		e.startTimeMillis = 0L;
@@ -885,9 +927,15 @@ public class EventService {
 
 		awardPointsForTrack(e, rm);
 
-		try {
-			rm.stop(true);
-		} catch (Throwable ignored) {
+		// IMPORTANT: Do not hard-stop the race on normal completion.
+		// RaceManager triggers the completion sequence (fireworks/boards/spectator) and
+		// schedules its own cleanup stop(false). If we call stop(true) here, we cancel
+		// the firework show immediately.
+		if (timedOut) {
+			try {
+				rm.stop(false);
+			} catch (Throwable ignored) {
+			}
 		}
 
 		advanceToNextTrackOrFinish(e);

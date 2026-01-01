@@ -172,6 +172,7 @@ racing:
       # Templates: header/footer/ranking_item (multi-line) + title
       # Event placeholders:
       #   %event_id% %event_title% %event_state% %event_state_display%
+      #   %event_countdown_label% %event_countdown% %event_countdown_display%
       #   %event_points% %event_position% %event_position_tag%
       #   %event_participants% %event_track_total% %event_track_index% %event_track_name%
       # Ranking item placeholders:
@@ -181,6 +182,7 @@ racing:
         header:
           - "<yellow>%event_title%"
           - "<gray>Trạng thái: <white>%event_state_display%"
+          - "<gray>⌛ %event_countdown_label%: <white>%event_countdown%"
           - "<gray>Bạn: %racer_display% <gray>●</gray> %event_position_tag% <gray>●</gray> <white>%event_points%</white> <gray>điểm</gray>"
           - "<gray>Tổng tay đua: <white>%event_participants%"
           - ""

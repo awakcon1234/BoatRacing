@@ -167,13 +167,7 @@ public class EventRegistrationGUI implements Listener {
 
 	private ItemStack infoCard(RaceEvent e) {
 		String title = (e == null || e.title == null || e.title.isBlank()) ? "(không có)" : e.title;
-		String state = (e == null || e.state == null) ? "(không rõ)" : switch (e.state) {
-			case DRAFT -> "Nháp";
-			case REGISTRATION -> "Đang mở đăng ký";
-			case RUNNING -> "Đang diễn ra";
-			case COMPLETED -> "Đã kết thúc";
-			case CANCELLED -> "Đã hủy";
-		};
+		String state = eventStateColored(e == null ? null : e.state);
 
 		int total = 0;
 		int reg = 0;
@@ -198,8 +192,9 @@ public class EventRegistrationGUI implements Listener {
 
 		List<String> lore = new ArrayList<>();
 		lore.add("&7Tên: &f" + title);
-		lore.add("&7Trạng thái: &e" + state);
+		lore.add("&7Trạng thái: " + state);
 		lore.add("&7Đã đăng ký: &a" + reg + "&7/&f" + total);
+		lore.add("&7Tối đa: &f-");
 		if (!timeLeft.isBlank()) {
 			lore.add("&7Còn lại: &e" + timeLeft);
 		}
@@ -210,6 +205,18 @@ public class EventRegistrationGUI implements Listener {
 		}
 
 		return buttonWithLore(Material.BOOK, Text.item("&6&lThông tin sự kiện"), Action.REFRESH, lore, false, "info");
+	}
+
+	private static String eventStateColored(EventState st) {
+		if (st == null)
+			return "&7(không rõ)";
+		return switch (st) {
+			case DRAFT -> "&7Nháp";
+			case REGISTRATION -> "&aĐang mở đăng ký";
+			case RUNNING -> "&bĐang diễn ra";
+			case COMPLETED -> "&6Đã kết thúc";
+			case CANCELLED -> "&cĐã hủy";
+		};
 	}
 
 	private boolean isRegistered(Player p, RaceEvent e) {

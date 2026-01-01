@@ -1,6 +1,7 @@
 package dev.belikhun.boatracing.ui;
 
 import dev.belikhun.boatracing.BoatRacingPlugin;
+import dev.belikhun.boatracing.event.EventState;
 import dev.belikhun.boatracing.event.EventService;
 import dev.belikhun.boatracing.event.RaceEvent;
 import dev.belikhun.boatracing.util.Text;
@@ -338,10 +339,11 @@ public class AdminEventGUI implements Listener {
 
 			lore.add("&7Sự kiện đang hoạt động: &f" + (active == null ? "(không có)" : safe(active.title)));
 			lore.add("&7ID: &f" + (active == null ? "-" : safe(active.id)));
-			lore.add("&7Trạng thái: &f" + (active == null || active.state == null ? "-" : active.state.name()));
+			lore.add("&7Trạng thái: " + eventStateColored(active == null ? null : active.state));
 			int regs = (active != null && active.participants != null) ? active.participants.size() : 0;
 			int pool = (active != null && active.trackPool != null) ? active.trackPool.size() : 0;
 			lore.add("&7Đã đăng ký: &f" + regs + " &8● &7Track pool: &f" + pool);
+			lore.add("&7Tối đa: &f-");
 
 			lore.add(" ");
 			lore.add("&7Đang chọn: &f" + (sel == null ? "(chưa chọn)" : safe(sel.title)));
@@ -357,6 +359,18 @@ public class AdminEventGUI implements Listener {
 			it.setItemMeta(im);
 		}
 		return it;
+	}
+
+	private static String eventStateColored(EventState st) {
+		if (st == null)
+			return "&7-";
+		return switch (st) {
+			case DRAFT -> "&7Nháp";
+			case REGISTRATION -> "&aĐang mở đăng ký";
+			case RUNNING -> "&bĐang diễn ra";
+			case COMPLETED -> "&6Đã kết thúc";
+			case CANCELLED -> "&cĐã hủy";
+		};
 	}
 
 	private ItemStack pane(Material mat) {
@@ -413,13 +427,14 @@ public class AdminEventGUI implements Listener {
 				continue;
 			String id = e.id.trim();
 			String title = safe(e.title);
-			String state = e.state == null ? "-" : e.state.name();
+			String state = Text.colorize(eventStateColored(e.state));
 			int pool = e.trackPool == null ? 0 : e.trackPool.size();
 
 			List<String> lore = new ArrayList<>();
 			lore.add("&7ID: &f" + id);
-			lore.add("&7Trạng thái: &f" + state);
+			lore.add("&7Trạng thái: " + state);
 			lore.add("&7Track pool: &f" + pool);
+			lore.add("&7Tối đa: &f-");
 			lore.add(" ");
 			lore.add("&eBấm: &fChọn sự kiện này");
 
