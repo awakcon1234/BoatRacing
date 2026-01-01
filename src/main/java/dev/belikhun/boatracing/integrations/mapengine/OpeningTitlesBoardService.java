@@ -30,17 +30,22 @@ import javax.imageio.ImageIO;
 import java.awt.BasicStroke;
 import java.awt.Color;
 import java.awt.Font;
+import java.awt.GradientPaint;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.awt.geom.AffineTransform;
 import java.io.File;
 import java.io.InputStream;
+import java.time.Year;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * MapEngine board used during event opening titles.
@@ -585,7 +590,7 @@ public final class OpeningTitlesBoardService {
 		LayerContainer root = new LayerContainer();
 		root.style().background(pal.panel());
 
-		// Background: solid fill + minimal broadcast-style decoration.
+		// Background: clean dark layout + signature emblem (inspired by provided references).
 		root.add(new GraphicsElement((ctx, rect) -> {
 			if (ctx == null || ctx.g == null)
 				return;
@@ -602,134 +607,95 @@ public final class OpeningTitlesBoardService {
 			} catch (Throwable ignored) {
 			}
 
-			// Colorful broadcast accents (blocks/lines) using existing theme accents.
+			// Subtle vignette + top glow
 			try {
-				Color cReady = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(160);
-				Color cRun = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(150);
-				Color cCd = BroadcastTheme.palette(BroadcastTheme.ACCENT_COUNTDOWN).accentSoft(150);
-				Color cReg = BroadcastTheme.palette(BroadcastTheme.ACCENT_REGISTERING).accentSoft(150);
+				Color panel = pal.panel();
+				if (panel != null) {
+					g.setColor(panel);
+					g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
+				}
+				g.setPaint(new GradientPaint(
+						rect.x(), rect.y(), new Color(255, 255, 255, 18),
+						rect.x(), rect.y() + (int) Math.round(rect.h() * 0.35), new Color(255, 255, 255, 0)
+				));
+				g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
+				g.setPaint(new GradientPaint(
+						rect.x(), rect.y() + rect.h(), new Color(0, 0, 0, 120),
+						rect.x(), rect.y() + (int) Math.round(rect.h() * 0.55), new Color(0, 0, 0, 0)
+				));
+				g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
+			} catch (Throwable ignored) {
+			}
 
-				int barW = Math.max(10, (int) Math.round(rect.w() * 0.055));
-				int segH = Math.max(10, rect.h() / 5);
-				int x0 = rect.x();
-				int y0 = rect.y();
+			// Signature emblem on the right (3 arms) - keep inside right band
+			try {
+				Color c1 = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(230);
+				Color c2 = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(230);
+				Color c3 = BroadcastTheme.palette(BroadcastTheme.ACCENT_REGISTERING).accentSoft(230);
+				if (c1 != null && c2 != null && c3 != null) {
+					int size = (int) Math.round(Math.min(rect.w(), rect.h()) * 0.30);
+					int armW = Math.max(18, size);
+					int armH = Math.max(10, (int) Math.round(size * 0.24));
+					int r = Math.max(8, armH);
+					int cx = rect.x() + rect.w() - Math.max(18, marginX / 2);
+					int cy = rect.y() + rect.h() / 2;
 
-				if (cReady != null) {
-					g.setColor(cReady);
-					g.fillRect(x0, y0, barW, Math.min(segH, rect.h()));
-				}
-				if (cRun != null) {
-					g.setColor(cRun);
-					g.fillRect(x0, y0 + segH, barW, Math.min(segH, rect.h() - segH));
-				}
-				if (cCd != null) {
-					g.setColor(cCd);
-					g.fillRect(x0, y0 + segH * 2, barW, Math.min(segH, rect.h() - segH * 2));
-				}
-				if (cReg != null) {
-					g.setColor(cReg);
-					g.fillRect(x0, y0 + segH * 3, barW, Math.max(0, rect.h() - segH * 3));
-				}
+					// Clamp to right band only.
+					int minCx = safeRight + Math.max(10, marginX / 3);
+					cx = Math.max(cx, minCx);
+					cx = Math.min(cx, rect.x() + rect.w() - 10);
 
-				// Thin top accent line
-				Color topLine = pal.accentSoft(130);
-				if (topLine != null) {
-					g.setColor(topLine);
-					int lh = Math.max(2, (int) Math.round(rect.h() * 0.012));
-					g.fillRect(rect.x(), rect.y(), rect.w(), lh);
+					AffineTransform old = g.getTransform();
+					Color[] colors = new Color[] { c1, c2, c3 };
+					double[] angles = new double[] { 0.0, 120.0, 240.0 };
+					for (int i = 0; i < 3; i++) {
+						g.setTransform(old);
+						g.rotate(Math.toRadians(angles[i]), cx, cy);
+						Color c = colors[i];
+						int x0 = cx - armW / 2;
+						int y0 = cy - armH / 2;
+						g.setPaint(new GradientPaint(
+								x0, y0, new Color(c.getRed(), c.getGreen(), c.getBlue(), 235),
+								x0 + armW, y0, new Color(c.getRed(), c.getGreen(), c.getBlue(), 150)
+						));
+						g.fillRoundRect(x0, y0, armW, armH, r, r);
+					}
+					g.setTransform(old);
 				}
+			} catch (Throwable ignored) {
+			}
 
-				// Diagonal slash blocks (subtle) - keep inside the right margin band (avoid overlapping content)
-				Color slash = pal.accentSoft(55);
-				if (slash != null) {
-					g.setColor(slash);
-					int sw = Math.max(10, Math.min((int) Math.round(rect.w() * 0.09), Math.max(12, marginX - 8)));
-					int sh = Math.max(10, (int) Math.round(rect.h() * 0.55));
-					int sx = rect.x() + rect.w() - marginX + (int) Math.round(marginX * 0.12);
-					int sy = safeTop - (int) Math.round(marginY * 0.20);
-					sh = Math.min(sh, Math.max(10, safeBottom - sy));
-					int[] px = new int[] { sx, sx + sw, sx + sw - (int) (sw * 0.35), sx - (int) (sw * 0.35) };
-					int[] py = new int[] { sy, sy, sy + sh, sy + sh };
-					g.fillPolygon(px, py, 4);
-					int sx2 = sx + sw + (int) (sw * 0.55);
-					if (sx2 < rect.x() + rect.w() - 2) {
-						g.fillPolygon(
-								new int[] { sx2, sx2 + sw, sx2 + sw - (int) (sw * 0.35), sx2 - (int) (sw * 0.35) },
-								py,
-								4
-						);
+			// Big year watermark (bottom-right)
+			try {
+				int year = Year.now().getValue();
+				String ys = String.valueOf(year);
+				if (titleFont != null) {
+					Font f = titleFont.deriveFont(Font.BOLD, (float) clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.46), 48, 220));
+					g.setFont(f);
+					int sw = g.getFontMetrics().stringWidth(ys);
+					int sh = g.getFontMetrics().getAscent();
+					int x = rect.x() + rect.w() - sw - Math.max(14, marginX);
+					int y = rect.y() + rect.h() - Math.max(10, marginY / 2);
+					if (x < safeRight) x = safeRight + 6;
+					Color a = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(45);
+					Color b = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(45);
+					if (a != null && b != null) {
+						g.setPaint(new GradientPaint(x, y - sh, a, x + sw, y - sh, b));
+						g.drawString(ys, x, y);
 					}
 				}
 			} catch (Throwable ignored) {
 			}
 
-			// Outer border + corner marks
+			// Minimal outer frame
 			try {
-				int bw = Math.max(1, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.006));
-				g.setColor(pal.border());
-				g.setStroke(new BasicStroke(bw));
-				int half = bw / 2;
-				g.drawRect(rect.x() + half, rect.y() + half, Math.max(0, rect.w() - bw), Math.max(0, rect.h() - bw));
-
-				int m = Math.max(6, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.04));
-				int l = Math.max(10, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.07));
-				Color a = pal.accentSoft(170);
-				if (a != null) g.setColor(a);
-				// TL
-				g.drawLine(rect.x() + m, rect.y() + m, rect.x() + m + l, rect.y() + m);
-				g.drawLine(rect.x() + m, rect.y() + m, rect.x() + m, rect.y() + m + l);
-				// TR
-				g.drawLine(rect.x() + rect.w() - m - l, rect.y() + m, rect.x() + rect.w() - m, rect.y() + m);
-				g.drawLine(rect.x() + rect.w() - m, rect.y() + m, rect.x() + rect.w() - m, rect.y() + m + l);
-				// BL
-				g.drawLine(rect.x() + m, rect.y() + rect.h() - m, rect.x() + m + l, rect.y() + rect.h() - m);
-				g.drawLine(rect.x() + m, rect.y() + rect.h() - m - l, rect.x() + m, rect.y() + rect.h() - m);
-			} catch (Throwable ignored) {
-			}
-
-			// Font Awesome glyph sprinkles (optional)
-			try {
-				if (iconFont != null) {
-					int size = clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.06), 10, 28);
-					Font f = iconFont.deriveFont(Font.PLAIN, (float) size);
-					g.setFont(f);
-					Color c = pal.accentSoft(140);
-					if (c != null)
-						g.setColor(c);
-
-					// A few safe/common FA codepoints (regular set typically supports these)
-					String[] glyphs = new String[] {
-						"\uf111", // circle
-						"\uf005", // star
-						"\uf0c8", // square
-						"\uf04b", // play
-						"\uf0e7", // bolt
-						"\uf135"  // rocket
-					};
-
-					int pad = Math.max(8, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.06));
-					int xL = rect.x() + pad;
-					int xR = rect.x() + rect.w() - pad - size;
-					int yT = rect.y() + pad + size;
-					int yB = rect.y() + rect.h() - pad;
-
-					// Draw only if glyph exists in the font.
-					String g0 = glyphs[0];
-					String g1 = glyphs[1];
-					String g2 = glyphs[2];
-					String g3 = glyphs[3];
-					String g4 = glyphs[4];
-					String g5 = glyphs[5];
-					if (f.canDisplay(g0.codePointAt(0))) g.drawString(g0, xL, yT);
-					if (f.canDisplay(g1.codePointAt(0))) g.drawString(g1, xR, yT);
-					if (f.canDisplay(g2.codePointAt(0))) g.drawString(g2, xL, yB);
-					if (f.canDisplay(g3.codePointAt(0))) g.drawString(g3, xR, yB);
-					// Extra glyphs: keep in the side margin bands only
-					int midY = rect.y() + rect.h() / 2;
-					int xLeftBand = rect.x() + Math.max(6, marginX / 2);
-					int xRightBand = rect.x() + rect.w() - Math.max(6, marginX / 2) - size;
-					if (xLeftBand < safeLeft - 4 && f.canDisplay(g5.codePointAt(0))) g.drawString(g5, xLeftBand, midY);
-					if (xRightBand > safeRight + 4 && f.canDisplay(g4.codePointAt(0))) g.drawString(g4, xRightBand, midY);
+				Color bc = pal.border();
+				if (bc != null) {
+					int bw = Math.max(1, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.004));
+					g.setColor(new Color(bc.getRed(), bc.getGreen(), bc.getBlue(), 90));
+					g.setStroke(new BasicStroke(bw));
+					int half = bw / 2;
+					g.drawRect(rect.x() + half, rect.y() + half, Math.max(0, rect.w() - bw), Math.max(0, rect.h() - bw));
 				}
 			} catch (Throwable ignored) {
 			}
@@ -748,23 +714,6 @@ public final class OpeningTitlesBoardService {
 					int y0 = rect.y() + (int) Math.round(rect.h() * 0.12);
 					int y1 = rect.y() + (int) Math.round(rect.h() * 0.15);
 					g.fillRect(x, y0, bandW, Math.max(1, y1 - y0));
-				}
-			} catch (Throwable ignored) {
-			}
-
-			// Small decorative dots row
-			try {
-				Color dim = pal.textDimSoft(90);
-				if (dim != null) g.setColor(dim);
-				int baseY = rect.y() + rect.h() - Math.max(8, marginY / 2);
-				int startX = rect.x() + Math.max(10, marginX / 2);
-				int gap = Math.max(6, (int) Math.round(rect.w() * 0.015));
-				int r = Math.max(2, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.006));
-				for (int i = 0; i < 8; i++) {
-					int x = startX + i * gap;
-					if (x >= safeLeft && x <= safeRight)
-						continue;
-					g.fillOval(x, baseY, r, r);
 				}
 			} catch (Throwable ignored) {
 			}
@@ -876,34 +825,74 @@ public final class OpeningTitlesBoardService {
 			display = "&f(không rõ)";
 		}
 
-		int pad = Math.max(10, (int) Math.round(Math.min(w, h) * 0.07));
+		int padX = Math.max(14, (int) Math.round(w * 0.08));
+		int padY = Math.max(12, (int) Math.round(h * 0.10));
 		int gap = Math.max(6, (int) Math.round(Math.min(w, h) * 0.02));
 		ColumnContainer root = new ColumnContainer()
-				.alignItems(UiAlign.CENTER)
-				.justifyContent(UiJustify.CENTER)
-				.gap(gap);
-		root.style().padding(UiInsets.all(pad));
+				.alignItems(UiAlign.STRETCH)
+				.justifyContent(UiJustify.START)
+				.gap(Math.max(4, gap));
+		root.style().padding(UiInsets.symmetric(padY, padX));
 
 		Font label;
 		Font big;
+		Font micro;
 		try {
 			label = bodyFont != null ? bodyFont.deriveFont(Font.PLAIN, (float) clamp((int) Math.round(Math.min(w, h) * 0.05), 10, 26)) : bodyFont;
 			big = titleFont != null ? titleFont.deriveFont(Font.BOLD, (float) clamp((int) Math.round(Math.min(w, h) * 0.13), 16, 56)) : titleFont;
+			micro = bodyFont != null ? bodyFont.deriveFont(Font.PLAIN, (float) clamp((int) Math.round(Math.min(w, h) * 0.032), 8, 18)) : bodyFont;
 		} catch (Throwable ignored) {
 			label = bodyFont;
 			big = titleFont;
+			micro = bodyFont;
 		}
+
+		// Top micro bar (left + right)
+		RowContainer top = new RowContainer()
+				.alignItems(UiAlign.CENTER)
+				.justifyContent(UiJustify.START)
+				.gap(8);
+		LegacyTextElement topLeft = new LegacyTextElement("&7BOATRACING &8● &7MỞ ĐẦU")
+				.font(micro)
+				.defaultColor(pal.textDim())
+				.align(LegacyTextElement.Align.LEFT)
+				.trimToFit(true);
+		topLeft.style().flexGrow(1);
+		LegacyTextElement topRight = new LegacyTextElement("&7MÙA &f" + Year.now().getValue())
+				.font(micro)
+				.defaultColor(pal.textDim())
+				.align(LegacyTextElement.Align.RIGHT)
+				.trimToFit(true);
+		top.add(topLeft);
+		top.add(topRight);
+		root.add(top);
+
+		// Thin divider line
+		GraphicsElement topLine = new GraphicsElement((ctx, rect) -> {
+			try {
+				if (ctx == null || ctx.g == null)
+					return;
+				Graphics2D g = ctx.g;
+				Color a = pal.accentSoft(120);
+				if (a != null)
+					g.setColor(a);
+				g.fillRect(rect.x(), rect.y(), rect.w(), Math.max(1, rect.h()));
+			} catch (Throwable ignored) {
+			}
+		});
+		topLine.style().heightPx(Math.max(1, (int) Math.round(Math.min(w, h) * 0.004)));
+		root.add(topLine);
 
 		LegacyTextElement k = new LegacyTextElement("&7TAY ĐUA")
 				.font(label)
 				.defaultColor(pal.textDim())
-				.align(LegacyTextElement.Align.CENTER)
+				.align(LegacyTextElement.Align.LEFT)
 				.trimToFit(true);
 		root.add(k);
 
 		LegacyTextElement title = new LegacyTextElement(display)
 				.font(big)
-				.align(LegacyTextElement.Align.CENTER)
+				.align(LegacyTextElement.Align.LEFT)
 				.trimToFit(true);
 		root.add(withAppearDelay(title, showDtMs, animateIn, 100L, Math.max(6, gap)));
 
@@ -938,7 +927,7 @@ public final class OpeningTitlesBoardService {
 		} catch (Throwable ignored) {
 		}
 
-		int panelW = Math.max(160, (int) Math.round(w * 0.74));
+		int panelW = Math.max(160, (int) Math.round(w * 0.62));
 		int borderW = Math.max(1, (int) Math.round(Math.min(w, h) * 0.005));
 		int panelPad = Math.max(8, (int) Math.round(Math.min(w, h) * 0.04));
 
@@ -983,7 +972,7 @@ public final class OpeningTitlesBoardService {
 				.align(LegacyTextElement.Align.LEFT)
 				.trimToFit(true);
 		header.add(hdr);
-		panel.add(withAppearDelay(header, showDtMs, animateIn, 200L, Math.max(4, gap / 2)));
+		panel.add(withAppearDelayOffset(header, showDtMs, animateIn, 0L, Math.max(3, gap / 2)));
 
 		// Divider line
 		GraphicsElement divider = new GraphicsElement((ctx, rect) -> {
@@ -999,18 +988,34 @@ public final class OpeningTitlesBoardService {
 			}
 		});
 		divider.style().heightPx(Math.max(2, borderW));
-		panel.add(withAppearDelay(divider, showDtMs, animateIn, 240L, Math.max(3, gap / 2)));
+		panel.add(withAppearDelayOffset(divider, showDtMs, animateIn, 40L, Math.max(2, gap / 2)));
 
-		panel.add(withAppearDelay(statRow(label, "&7★ Thắng", "&f" + wins, pal), showDtMs, animateIn, 280L, Math.max(3, gap / 2)));
-		panel.add(withAppearDelay(statRow(label, "&7✔ Hoàn thành", "&f" + completed, pal), showDtMs, animateIn, 320L, Math.max(3, gap / 2)));
-		panel.add(withAppearDelay(statRow(label, "&7⌚ Thời gian đua", "&f" + formatDurationVi(timeRaced), pal), showDtMs, animateIn, 360L, Math.max(3, gap / 2)));
+		panel.add(withAppearDelayOffset(statRow(label, "&7★ Thắng", "&f" + wins, pal), showDtMs, animateIn, 80L, Math.max(2, gap / 2)));
+		panel.add(withAppearDelayOffset(statRow(label, "&7✔ Hoàn thành", "&f" + completed, pal), showDtMs, animateIn, 120L, Math.max(2, gap / 2)));
+		panel.add(withAppearDelayOffset(statRow(label, "&7⌚ Thời gian đua", "&f" + formatDurationVi(timeRaced), pal), showDtMs, animateIn, 160L, Math.max(2, gap / 2)));
 		String pbV = (bestPb > 0L) ? (formatRaceTime(bestPb) + (bestPbTrack == null || bestPbTrack.isBlank() ? "" : (" &8● &7" + trimTrack(bestPbTrack)))) : "-";
-		panel.add(withAppearDelay(statRow(label, "&7⌚ PB tốt nhất", "&f" + pbV, pal), showDtMs, animateIn, 400L, Math.max(3, gap / 2)));
+		panel.add(withAppearDelayOffset(statRow(label, "&7⌚ PB tốt nhất", "&f" + pbV, pal), showDtMs, animateIn, 200L, Math.max(2, gap / 2)));
 
 		// Stats panel itself: start after 0.2s
 		root.add(withAppearDelay(panel, showDtMs, animateIn, 200L, Math.max(8, gap)));
 
 		return root;
+	}
+
+	private UiElement withAppearDelayOffset(UiElement child, long showDtMs, boolean animateIn, long delayMs, int risePx) {
+		if (child == null)
+			return child;
+		if (!animateIn)
+			return child;
+		if (SHOW_MS <= 0L)
+			return child;
+
+		long d = Math.max(0L, delayMs);
+		long available = Math.max(1L, SHOW_MS - d);
+		double t = (double) (Math.max(0L, showDtMs - d)) / (double) available;
+		double e = easeOutCubic(t);
+		int y = (int) Math.round((1.0 - e) * (double) Math.max(0, risePx));
+		return new FxContainer().alpha(1.0).offset(0, y).child(child);
 	}
 
 	private UiElement withAppearDelay(UiElement child, long showDtMs, boolean animateIn, long delayMs, int risePx) {
