@@ -1148,17 +1148,260 @@ public final class EventBoardService {
 		bodyCol.style().flexGrow(1);
 		bodyCol.style().background(panel2).padding(UiInsets.all(Math.max(14, pad / 2))).border(borderSoft, 2);
 
-		ColumnContainer top3 = new ColumnContainer().gap(Math.max(6, gap / 2)).alignItems(UiAlign.CENTER);
-		TextElement resultChip = text("KẾT QUẢ", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), bg, TextElement.Align.CENTER);
+		EventRankEntry first = ranking.size() > 0 ? ranking.get(0) : null;
+		EventRankEntry second = ranking.size() > 1 ? ranking.get(1) : null;
+		EventRankEntry third = ranking.size() > 2 ? ranking.get(2) : null;
+
+		// Podium section (visual)
+		int podiumH = Math.max(130, (int) Math.round(h * 0.38));
+		podiumH = Math.min(podiumH, Math.max(130, (int) Math.round(h * 0.50)));
+
+		Font chipFont = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D()));
+		Font podiumTitle = section.deriveFont(Font.BOLD, Math.max(22f, section.getSize2D() * 0.85f));
+		Font cardBadge = body.deriveFont(Font.BOLD, Math.max(13f, body.getSize2D() * 0.95f));
+		Font cardName = title.deriveFont(Font.BOLD, Math.max(22f, title.getSize2D() * 1.25f));
+		Font cardPoints = body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D() * 1.0f));
+
+		ColumnContainer podium = new ColumnContainer().gap(Math.max(8, gap / 2)).alignItems(UiAlign.STRETCH);
+
+		ColumnContainer podiumHeader = new ColumnContainer().gap(Math.max(4, gap / 3)).alignItems(UiAlign.CENTER);
+		TextElement resultChip = text("KẾT QUẢ", chipFont, bg, TextElement.Align.CENTER);
 		resultChip.style().padding(UiInsets.symmetric(Math.max(4, pad / 6), Math.max(12, pad / 2))).background(accent);
-		top3.add(resultChip);
-		top3.add(text("TOP 3", section.deriveFont(Font.BOLD, Math.max(22f, section.getSize2D() * 0.85f)), fg, TextElement.Align.CENTER));
-		for (int i = 0; i < Math.min(3, ranking.size()); i++) {
-			EventRankEntry it = ranking.get(i);
-			String line = String.format(java.util.Locale.ROOT, "#%d  %s  ●  %d điểm", it.position, it.name, it.points);
-			top3.add(text(line, body.deriveFont(Font.BOLD, Math.max(16f, body.getSize2D() * 1.05f)), fg, TextElement.Align.CENTER));
-		}
-		bodyCol.add(top3);
+		podiumHeader.add(resultChip);
+		podiumHeader.add(text("TOP 3", podiumTitle, fg, TextElement.Align.CENTER));
+		podium.add(podiumHeader);
+
+		// Winner cards (aligned with the podium widths: 2nd | 1st | 3rd)
+		RowContainer cards = new RowContainer().gap(Math.max(10, gap)).alignItems(UiAlign.STRETCH).justifyContent(UiJustify.CENTER);
+		cards.style().padding(UiInsets.all(0));
+
+		Color place1 = BroadcastTheme.mix(panel2, accent, 0.62);
+		Color place2 = BroadcastTheme.mix(panel2, accent, 0.42);
+		Color place3 = BroadcastTheme.mix(panel2, accent, 0.30);
+		Color cardBg = panel;
+		Color cardBorder = borderSoft;
+
+		java.util.function.BiFunction<Color, Integer, Color> a = (c, al) -> {
+			if (c == null)
+				return null;
+			int aa = Math.max(0, Math.min(255, al == null ? 255 : al));
+			return new Color(c.getRed(), c.getGreen(), c.getBlue(), aa);
+		};
+
+		ColumnContainer c2 = new ColumnContainer().gap(Math.max(2, gap / 4)).alignItems(UiAlign.CENTER);
+		c2.style().widthPx(0).flexGrow(1).background(cardBg).padding(UiInsets.all(Math.max(10, pad / 3))).border(cardBorder, 2);
+		TextElement c2Badge = text("HẠNG 2", cardBadge, bg, TextElement.Align.CENTER);
+		c2Badge.style().padding(UiInsets.symmetric(Math.max(3, pad / 7), Math.max(10, pad / 3))).background(place2);
+		c2.add(c2Badge);
+		c2.add(text(second != null ? second.name : "—", cardName, fg, TextElement.Align.CENTER));
+		c2.add(text(second != null ? String.format(java.util.Locale.ROOT, "%d điểm", second.points) : "", cardPoints, muted, TextElement.Align.CENTER));
+		cards.add(c2);
+
+		ColumnContainer c1 = new ColumnContainer().gap(Math.max(2, gap / 4)).alignItems(UiAlign.CENTER);
+		c1.style().widthPx(0).flexGrow(2).background(cardBg).padding(UiInsets.all(Math.max(10, pad / 3))).border(a.apply(accent, 180), 2);
+		TextElement c1Badge = text("VÔ ĐỊCH", cardBadge, bg, TextElement.Align.CENTER);
+		c1Badge.style().padding(UiInsets.symmetric(Math.max(3, pad / 7), Math.max(10, pad / 3))).background(place1);
+		c1.add(c1Badge);
+		c1.add(text(first != null ? first.name : "—", cardName.deriveFont(Font.BOLD, Math.max(26f, cardName.getSize2D() * 1.05f)), fg, TextElement.Align.CENTER));
+		c1.add(text(first != null ? String.format(java.util.Locale.ROOT, "%d điểm", first.points) : "", cardPoints, muted, TextElement.Align.CENTER));
+		cards.add(c1);
+
+		ColumnContainer c3 = new ColumnContainer().gap(Math.max(2, gap / 4)).alignItems(UiAlign.CENTER);
+		c3.style().widthPx(0).flexGrow(1).background(cardBg).padding(UiInsets.all(Math.max(10, pad / 3))).border(cardBorder, 2);
+		TextElement c3Badge = text("HẠNG 3", cardBadge, bg, TextElement.Align.CENTER);
+		c3Badge.style().padding(UiInsets.symmetric(Math.max(3, pad / 7), Math.max(10, pad / 3))).background(place3);
+		c3.add(c3Badge);
+		c3.add(text(third != null ? third.name : "—", cardName, fg, TextElement.Align.CENTER));
+		c3.add(text(third != null ? String.format(java.util.Locale.ROOT, "%d điểm", third.points) : "", cardPoints, muted, TextElement.Align.CENTER));
+		cards.add(c3);
+
+		podium.add(cards);
+
+		GraphicsElement podiumGraphic = new GraphicsElement((ctx, rect) -> {
+			if (ctx == null || ctx.g == null)
+				return;
+			ctx.applyDefaultHints();
+			java.awt.Graphics2D g2 = ctx.g;
+			int x = rect.x();
+			int y = rect.y();
+			int ww = rect.w();
+			int hh = rect.h();
+			if (ww <= 0 || hh <= 0)
+				return;
+
+			// Subtle stage background wash
+			Color wash = a.apply(panel, 120);
+			if (wash != null) {
+				g2.setColor(wash);
+				g2.fillRect(x, y, ww, hh);
+			}
+
+			int inner = Math.max(10, (int) Math.round(ww * 0.035));
+			int floorH = Math.max(14, (int) Math.round(hh * 0.16));
+			int baseX = x + inner;
+			int baseW = Math.max(1, ww - inner * 2);
+			int baseY = y + hh - floorH;
+			int baseH = floorH;
+
+			// Spotlight beams
+			try {
+				Color beam = a.apply(accent, 30);
+				Color beam2 = a.apply(BroadcastTheme.mix(accent, fg, 0.35), 24);
+				if (beam != null) {
+					g2.setColor(beam);
+					int topY = y;
+					int midY = y + (int) Math.round(hh * 0.70);
+					java.awt.Polygon p1 = new java.awt.Polygon(
+							new int[] { x + (int) (ww * 0.22), x + (int) (ww * 0.10), x + (int) (ww * 0.34) },
+							new int[] { topY, midY, midY },
+							3);
+					java.awt.Polygon p2 = new java.awt.Polygon(
+							new int[] { x + (int) (ww * 0.50), x + (int) (ww * 0.38), x + (int) (ww * 0.62) },
+							new int[] { topY, midY, midY },
+							3);
+					java.awt.Polygon p3 = new java.awt.Polygon(
+							new int[] { x + (int) (ww * 0.78), x + (int) (ww * 0.66), x + (int) (ww * 0.90) },
+							new int[] { topY, midY, midY },
+							3);
+					g2.fillPolygon(p1);
+					g2.fillPolygon(p2);
+					g2.fillPolygon(p3);
+				}
+				if (beam2 != null) {
+					g2.setColor(beam2);
+					int topY = y;
+					int midY = y + (int) Math.round(hh * 0.62);
+					java.awt.Polygon p = new java.awt.Polygon(
+							new int[] { x + (int) (ww * 0.50), x + (int) (ww * 0.26), x + (int) (ww * 0.74) },
+							new int[] { topY, midY, midY },
+							3);
+					g2.fillPolygon(p);
+				}
+			} catch (Throwable ignored) {
+			}
+
+			// Confetti (deterministic)
+			try {
+				java.util.Random r = new java.util.Random(42L);
+				Color conf1 = a.apply(BroadcastTheme.mix(accent, fg, 0.30), 180);
+				Color conf2 = a.apply(BroadcastTheme.mix(accent, muted, 0.30), 170);
+				Color conf3 = a.apply(BroadcastTheme.mix(accent, panel2, 0.30), 160);
+				Color[] conf = new Color[] { conf1, conf2, conf3 };
+				int maxY = y + (int) Math.round(hh * 0.55);
+				for (int i = 0; i < 42; i++) {
+					int cx = x + r.nextInt(Math.max(1, ww));
+					int cy = y + r.nextInt(Math.max(1, Math.max(1, maxY - y)));
+					int sz = Math.max(3, 3 + r.nextInt(Math.max(1, ww / 120)));
+					Color cc = conf[r.nextInt(conf.length)];
+					if (cc == null)
+						continue;
+					g2.setColor(cc);
+					if ((i % 3) == 0) {
+						g2.fillOval(cx, cy, sz, sz);
+					} else {
+						g2.fillRect(cx, cy, sz, Math.max(2, sz / 2));
+					}
+				}
+			} catch (Throwable ignored) {
+			}
+
+			// Floor plate
+			try {
+				g2.setColor(a.apply(borderSoft, 140));
+				g2.fillRoundRect(baseX, baseY, baseW, baseH, Math.max(10, baseH / 2), Math.max(10, baseH / 2));
+				g2.setColor(a.apply(panel2, 255));
+				g2.fillRoundRect(baseX + 2, baseY + 2, Math.max(0, baseW - 4), Math.max(0, baseH - 4), Math.max(10, baseH / 2), Math.max(10, baseH / 2));
+			} catch (Throwable ignored) {
+			}
+
+			// Podium steps (weights: 1 | 2 | 1)
+			int wUnit = Math.max(1, baseW / 4);
+			int w2 = wUnit;
+			int w1 = Math.max(1, baseW - wUnit * 2);
+			int w3 = wUnit;
+			int x2 = baseX;
+			int x1 = baseX + w2;
+			int x3 = baseX + w2 + w1;
+
+			int stepBottom = baseY;
+			int h1 = Math.max(18, (int) Math.round(hh * 0.62));
+			int h2 = Math.max(16, (int) Math.round(hh * 0.46));
+			int h3 = Math.max(14, (int) Math.round(hh * 0.38));
+			h1 = Math.min(h1, Math.max(18, stepBottom - y - 6));
+			h2 = Math.min(h2, Math.max(18, stepBottom - y - 6));
+			h3 = Math.min(h3, Math.max(18, stepBottom - y - 6));
+
+			int arc = Math.max(10, (int) Math.round(Math.min(baseW, hh) * 0.05));
+			Color step1 = place1;
+			Color step2 = place2;
+			Color step3 = place3;
+			Color outline = a.apply(fg, 34);
+			Color shine = a.apply(fg, 55);
+
+			// Left (2)
+			int y2 = stepBottom - h2;
+			g2.setColor(step2);
+			g2.fillRoundRect(x2 + 2, y2, Math.max(0, w2 - 4), h2, arc, arc);
+			if (outline != null) {
+				g2.setColor(outline);
+				g2.drawRoundRect(x2 + 2, y2, Math.max(0, w2 - 4), h2, arc, arc);
+			}
+			if (shine != null) {
+				g2.setColor(shine);
+				g2.drawLine(x2 + 6, y2 + 6, x2 + w2 - 10, y2 + 6);
+			}
+
+			// Center (1)
+			int y1 = stepBottom - h1;
+			g2.setColor(step1);
+			g2.fillRoundRect(x1 + 2, y1, Math.max(0, w1 - 4), h1, arc, arc);
+			if (outline != null) {
+				g2.setColor(outline);
+				g2.drawRoundRect(x1 + 2, y1, Math.max(0, w1 - 4), h1, arc, arc);
+			}
+			if (shine != null) {
+				g2.setColor(shine);
+				g2.drawLine(x1 + 10, y1 + 8, x1 + w1 - 14, y1 + 8);
+			}
+
+			// Right (3)
+			int y3 = stepBottom - h3;
+			g2.setColor(step3);
+			g2.fillRoundRect(x3 + 2, y3, Math.max(0, w3 - 4), h3, arc, arc);
+			if (outline != null) {
+				g2.setColor(outline);
+				g2.drawRoundRect(x3 + 2, y3, Math.max(0, w3 - 4), h3, arc, arc);
+			}
+			if (shine != null) {
+				g2.setColor(shine);
+				g2.drawLine(x3 + 6, y3 + 6, x3 + w3 - 10, y3 + 6);
+			}
+
+			// Front numbers
+			try {
+				Font numFont = title.deriveFont(Font.BOLD, Math.max(34f, title.getSize2D() * 2.0f));
+				g2.setFont(numFont);
+				java.awt.FontMetrics fm = g2.getFontMetrics();
+				Color numColor = a.apply(bg, 160);
+				if (numColor == null)
+					numColor = a.apply(bg, 200);
+				g2.setColor(numColor);
+				String s1 = "1";
+				int sw1 = fm.stringWidth(s1);
+				g2.drawString(s1, x1 + (w1 - sw1) / 2, y1 + (int) Math.round(h1 * 0.70));
+				String s2 = "2";
+				int sw2 = fm.stringWidth(s2);
+				g2.drawString(s2, x2 + (w2 - sw2) / 2, y2 + (int) Math.round(h2 * 0.70));
+				String s3 = "3";
+				int sw3 = fm.stringWidth(s3);
+				g2.drawString(s3, x3 + (w3 - sw3) / 2, y3 + (int) Math.round(h3 * 0.70));
+			} catch (Throwable ignored) {
+			}
+		});
+		podiumGraphic.style().heightPx(podiumH).border(borderSoft, 2);
+		podium.add(podiumGraphic);
+
+		bodyCol.add(podium);
 
 		// Thank-you message
 		RowContainer thanksRow = new RowContainer().alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
