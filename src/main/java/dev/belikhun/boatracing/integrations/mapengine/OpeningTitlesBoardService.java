@@ -13,6 +13,7 @@ import dev.belikhun.boatracing.integrations.mapengine.ui.GraphicsElement;
 import dev.belikhun.boatracing.integrations.mapengine.ui.ImageElement;
 import dev.belikhun.boatracing.integrations.mapengine.ui.LayerContainer;
 import dev.belikhun.boatracing.integrations.mapengine.ui.LegacyTextElement;
+import dev.belikhun.boatracing.integrations.mapengine.ui.RowContainer;
 import dev.belikhun.boatracing.integrations.mapengine.ui.UiAlign;
 import dev.belikhun.boatracing.integrations.mapengine.ui.UiComposer;
 import dev.belikhun.boatracing.integrations.mapengine.ui.UiInsets;
@@ -593,6 +594,63 @@ public final class OpeningTitlesBoardService {
 			} catch (Throwable ignored) {
 			}
 
+			// Colorful broadcast accents (blocks/lines) using existing theme accents.
+			try {
+				Color cReady = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(160);
+				Color cRun = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(150);
+				Color cCd = BroadcastTheme.palette(BroadcastTheme.ACCENT_COUNTDOWN).accentSoft(150);
+				Color cReg = BroadcastTheme.palette(BroadcastTheme.ACCENT_REGISTERING).accentSoft(150);
+
+				int barW = Math.max(10, (int) Math.round(rect.w() * 0.055));
+				int segH = Math.max(10, rect.h() / 5);
+				int x0 = rect.x();
+				int y0 = rect.y();
+
+				if (cReady != null) {
+					g.setColor(cReady);
+					g.fillRect(x0, y0, barW, Math.min(segH, rect.h()));
+				}
+				if (cRun != null) {
+					g.setColor(cRun);
+					g.fillRect(x0, y0 + segH, barW, Math.min(segH, rect.h() - segH));
+				}
+				if (cCd != null) {
+					g.setColor(cCd);
+					g.fillRect(x0, y0 + segH * 2, barW, Math.min(segH, rect.h() - segH * 2));
+				}
+				if (cReg != null) {
+					g.setColor(cReg);
+					g.fillRect(x0, y0 + segH * 3, barW, Math.max(0, rect.h() - segH * 3));
+				}
+
+				// Thin top accent line
+				Color topLine = pal.accentSoft(130);
+				if (topLine != null) {
+					g.setColor(topLine);
+					int lh = Math.max(2, (int) Math.round(rect.h() * 0.012));
+					g.fillRect(rect.x(), rect.y(), rect.w(), lh);
+				}
+
+				// Diagonal slash blocks (subtle)
+				Color slash = pal.accentSoft(55);
+				if (slash != null) {
+					g.setColor(slash);
+					int sw = Math.max(10, (int) Math.round(rect.w() * 0.09));
+					int sh = Math.max(10, (int) Math.round(rect.h() * 0.55));
+					int sx = rect.x() + rect.w() - (int) Math.round(rect.w() * 0.28);
+					int sy = rect.y() + (int) Math.round(rect.h() * 0.10);
+					int[] px = new int[] { sx, sx + sw, sx + sw - (int) (sw * 0.35), sx - (int) (sw * 0.35) };
+					int[] py = new int[] { sy, sy, sy + sh, sy + sh };
+					g.fillPolygon(px, py, 4);
+					g.fillPolygon(
+							new int[] { sx + sw + (int) (sw * 0.45), sx + sw + (int) (sw * 1.45), sx + sw + (int) (sw * 1.10), sx + sw + (int) (sw * 0.10) },
+							py,
+							4
+					);
+				}
+			} catch (Throwable ignored) {
+			}
+
 			// Outer border + corner marks
 			try {
 				int bw = Math.max(1, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.006));
@@ -623,7 +681,7 @@ public final class OpeningTitlesBoardService {
 					int size = clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.06), 10, 28);
 					Font f = iconFont.deriveFont(Font.PLAIN, (float) size);
 					g.setFont(f);
-					Color c = pal.textDimSoft(120);
+					Color c = pal.accentSoft(140);
 					if (c != null)
 						g.setColor(c);
 
@@ -632,7 +690,9 @@ public final class OpeningTitlesBoardService {
 						"\uf111", // circle
 						"\uf005", // star
 						"\uf0c8", // square
-						"\uf04b"  // play
+						"\uf04b", // play
+						"\uf0e7", // bolt
+						"\uf135"  // rocket
 					};
 
 					int pad = Math.max(8, (int) Math.round(Math.min(rect.w(), rect.h()) * 0.06));
@@ -646,10 +706,16 @@ public final class OpeningTitlesBoardService {
 					String g1 = glyphs[1];
 					String g2 = glyphs[2];
 					String g3 = glyphs[3];
+					String g4 = glyphs[4];
+					String g5 = glyphs[5];
 					if (f.canDisplay(g0.codePointAt(0))) g.drawString(g0, xL, yT);
 					if (f.canDisplay(g1.codePointAt(0))) g.drawString(g1, xR, yT);
 					if (f.canDisplay(g2.codePointAt(0))) g.drawString(g2, xL, yB);
 					if (f.canDisplay(g3.codePointAt(0))) g.drawString(g3, xR, yB);
+					int midY = rect.y() + rect.h() / 2;
+					int xMid = rect.x() + rect.w() - pad - size - (int) Math.round(rect.w() * 0.07);
+					if (f.canDisplay(g4.codePointAt(0))) g.drawString(g4, xMid, midY);
+					if (f.canDisplay(g5.codePointAt(0))) g.drawString(g5, rect.x() + pad + (int) Math.round(rect.w() * 0.08), midY);
 				}
 			} catch (Throwable ignored) {
 			}
@@ -750,11 +816,18 @@ public final class OpeningTitlesBoardService {
 			mid = bodyFont;
 		}
 
-		LegacyTextElement headline = new LegacyTextElement("&f&lBOAT RACING")
+		LegacyTextElement headline = new LegacyTextElement("&f&lĐUA THUYỀN")
 				.font(big)
 				.align(LegacyTextElement.Align.CENTER)
 				.trimToFit(true);
 		root.add(headline);
+
+		LegacyTextElement brand = new LegacyTextElement("&8BoatRacing")
+				.font(mid)
+				.defaultColor(pal.textDim())
+				.align(LegacyTextElement.Align.CENTER)
+				.trimToFit(true);
+		root.add(brand);
 
 		LegacyTextElement sub = new LegacyTextElement("&7MỞ ĐẦU SỰ KIỆN")
 				.font(mid)
@@ -787,10 +860,13 @@ public final class OpeningTitlesBoardService {
 			display = "&f(không rõ)";
 		}
 
+		int pad = Math.max(10, (int) Math.round(Math.min(w, h) * 0.07));
+		int gap = Math.max(6, (int) Math.round(Math.min(w, h) * 0.02));
 		ColumnContainer root = new ColumnContainer()
 				.alignItems(UiAlign.CENTER)
-				.justifyContent(UiJustify.CENTER);
-		root.style().padding(UiInsets.all(Math.max(10, (int) Math.round(Math.min(w, h) * 0.07))));
+				.justifyContent(UiJustify.CENTER)
+				.gap(gap);
+		root.style().padding(UiInsets.all(pad));
 
 		Font label;
 		Font big;
@@ -815,7 +891,165 @@ public final class OpeningTitlesBoardService {
 				.trimToFit(true);
 		root.add(title);
 
+		// Stats panel (wins/completed/time raced/personal best)
+		int wins = 0;
+		int completed = 0;
+		long timeRaced = 0L;
+		long bestPb = 0L;
+		String bestPbTrack = "";
+		try {
+			PlayerProfileManager pm = plugin.getProfileManager();
+			if (pm != null && id != null) {
+				wins = pm.getWins(id);
+				completed = pm.getCompleted(id);
+				timeRaced = pm.getTimeRacedMillis(id);
+				PlayerProfileManager.Profile prof = pm.get(id);
+				if (prof != null && prof.personalBests != null && !prof.personalBests.isEmpty()) {
+					for (var e : prof.personalBests.entrySet()) {
+						if (e == null)
+							continue;
+						String tn = e.getKey();
+						Long ms = e.getValue();
+						if (tn == null || tn.isBlank() || ms == null || ms <= 0L)
+							continue;
+						if (bestPb <= 0L || ms < bestPb) {
+							bestPb = ms;
+							bestPbTrack = tn;
+						}
+					}
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+
+		int panelW = Math.max(160, (int) Math.round(w * 0.74));
+		int borderW = Math.max(1, (int) Math.round(Math.min(w, h) * 0.005));
+		int panelPad = Math.max(8, (int) Math.round(Math.min(w, h) * 0.04));
+
+		ColumnContainer panel = new ColumnContainer()
+				.alignItems(UiAlign.STRETCH)
+				.justifyContent(UiJustify.START)
+				.gap(Math.max(2, gap / 2));
+		panel.style()
+				.widthPx(panelW)
+				.padding(UiInsets.all(panelPad))
+				.background(pal.panel2())
+				.border(pal.border(), borderW);
+
+		// Panel header with accent block
+		RowContainer header = new RowContainer()
+				.alignItems(UiAlign.CENTER)
+				.justifyContent(UiJustify.START)
+				.gap(Math.max(6, gap));
+		GraphicsElement accentBlock = new GraphicsElement((ctx, rect) -> {
+			try {
+				if (ctx == null || ctx.g == null)
+					return;
+				Graphics2D g = ctx.g;
+				Color a = pal.accentSoft(220);
+				if (a != null)
+					g.setColor(a);
+				g.fillRect(rect.x(), rect.y(), rect.w(), rect.h());
+				// small cut corner
+				Color cut = pal.panel();
+				if (cut != null)
+					g.setColor(cut);
+				int s = Math.max(3, rect.h() / 3);
+				g.fillRect(rect.x() + rect.w() - s, rect.y(), s, s);
+			} catch (Throwable ignored) {
+			}
+		});
+		accentBlock.style().widthPx(Math.max(10, borderW * 2 + 8)).heightPx(Math.max(14, (int) Math.round(Math.min(w, h) * 0.045)));
+		header.add(accentBlock);
+
+		LegacyTextElement hdr = new LegacyTextElement("&f&lTHÀNH TÍCH")
+				.font(label)
+				.align(LegacyTextElement.Align.LEFT)
+				.trimToFit(true);
+		header.add(hdr);
+		panel.add(header);
+
+		// Divider line
+		GraphicsElement divider = new GraphicsElement((ctx, rect) -> {
+			try {
+				if (ctx == null || ctx.g == null)
+					return;
+				Graphics2D g = ctx.g;
+				Color c = pal.border();
+				if (c != null)
+					g.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(), 180));
+				g.fillRect(rect.x(), rect.y() + rect.h() / 2, rect.w(), Math.max(1, rect.h() / 2));
+			} catch (Throwable ignored) {
+			}
+		});
+		divider.style().heightPx(Math.max(2, borderW));
+		panel.add(divider);
+
+		panel.add(statRow(label, "&7★ Thắng", "&f" + wins, pal));
+		panel.add(statRow(label, "&7✔ Hoàn thành", "&f" + completed, pal));
+		panel.add(statRow(label, "&7⌚ Thời gian đua", "&f" + formatDurationVi(timeRaced), pal));
+		String pbV = (bestPb > 0L) ? (formatRaceTime(bestPb) + (bestPbTrack == null || bestPbTrack.isBlank() ? "" : (" &8● &7" + trimTrack(bestPbTrack)))) : "-";
+		panel.add(statRow(label, "&7⌚ PB tốt nhất", "&f" + pbV, pal));
+
+		root.add(panel);
+
 		return root;
+	}
+
+	private static RowContainer statRow(Font font, String label, String value, BroadcastTheme.Palette pal) {
+		RowContainer row = new RowContainer()
+				.alignItems(UiAlign.CENTER)
+				.justifyContent(UiJustify.START)
+				.gap(10);
+		LegacyTextElement l = new LegacyTextElement(label)
+				.font(font)
+				.defaultColor(pal.textDim())
+				.align(LegacyTextElement.Align.LEFT)
+				.trimToFit(true);
+		l.style().flexGrow(1);
+		LegacyTextElement v = new LegacyTextElement(value)
+				.font(font)
+				.align(LegacyTextElement.Align.RIGHT)
+				.trimToFit(true);
+		row.add(l);
+		row.add(v);
+		return row;
+	}
+
+	private static String formatDurationVi(long millis) {
+		long ms = Math.max(0L, millis);
+		long totalSeconds = ms / 1000L;
+		long seconds = totalSeconds % 60L;
+		long totalMinutes = totalSeconds / 60L;
+		long minutes = totalMinutes % 60L;
+		long hours = totalMinutes / 60L;
+		if (hours > 0L) {
+			return hours + "g " + String.format(Locale.ROOT, "%02dp %02ds", minutes, seconds);
+		}
+		return String.format(Locale.ROOT, "%dp %02ds", minutes, seconds);
+	}
+
+	private static String formatRaceTime(long millis) {
+		long ms = Math.max(0L, millis);
+		long totalSeconds = ms / 1000L;
+		long seconds = totalSeconds % 60L;
+		long totalMinutes = totalSeconds / 60L;
+		long minutes = totalMinutes % 60L;
+		long hours = totalMinutes / 60L;
+		long remMs = ms % 1000L;
+		if (hours > 0L) {
+			return String.format(Locale.ROOT, "%d:%02d:%02d.%03d", hours, minutes, seconds, remMs);
+		}
+		return String.format(Locale.ROOT, "%d:%02d.%03d", minutes, seconds, remMs);
+	}
+
+	private static String trimTrack(String trackName) {
+		if (trackName == null)
+			return "";
+		String t = trackName.trim();
+		if (t.length() <= 18)
+			return t;
+		return t.substring(0, 18) + "…";
 	}
 
 	private static double easeInCubic(double t) {
