@@ -167,7 +167,8 @@ public final class EventCommands {
 					Text.tell(p, "&7 - &f/" + label + " event opening board set [north|south|east|west] &7(Dùng selection hiện tại; bỏ trống để tự chọn)");
 					Text.tell(p, "&7 - &f/" + label + " event opening board clear");
 					Text.tell(p, "&7 - &f/" + label + " event opening board status");
-					Text.tell(p, "&7 - &f/" + label + " event opening board preview");
+					Text.tell(p, "&7 - &f/" + label + " event opening board preview [tên] &7(Xem UI theo tay đua)");
+					Text.tell(p, "&7 - &f/" + label + " event opening board reset &7(Trả về hiển thị bình thường)");
 					return true;
 				}
 
@@ -258,7 +259,8 @@ public final class EventCommands {
 							Text.tell(p, "&7 - &f/" + label + " event opening board set [north|south|east|west]");
 							Text.tell(p, "&7 - &f/" + label + " event opening board clear");
 							Text.tell(p, "&7 - &f/" + label + " event opening board status");
-							Text.tell(p, "&7 - &f/" + label + " event opening board preview");
+							Text.tell(p, "&7 - &f/" + label + " event opening board preview [tên] &7(Xem UI theo tay đua)");
+							Text.tell(p, "&7 - &f/" + label + " event opening board reset &7(Trả về hiển thị bình thường)");
 							return true;
 						}
 
@@ -271,8 +273,24 @@ public final class EventCommands {
 								return true;
 							}
 							case "preview" -> {
-								svc.previewOpeningTitlesBoard(p);
-								Text.msg(p, "&aĐã gửi bản xem trước bảng mở đầu.");
+								org.bukkit.entity.Player subject = p;
+								if (args.length >= 5) {
+									String name = args[4];
+									subject = org.bukkit.Bukkit.getPlayerExact(name);
+									if (subject == null)
+										subject = org.bukkit.Bukkit.getPlayer(name);
+									if (subject == null || !subject.isOnline()) {
+										Text.msg(p, "&cKhông tìm thấy người chơi đang online: &f" + name);
+										return true;
+									}
+								}
+								svc.previewOpeningTitlesBoard(p, subject);
+								Text.msg(p, "&aĐã gửi bản xem trước bảng mở đầu &7(theo tay đua: &f" + subject.getName() + "&7). ");
+								return true;
+							}
+							case "reset" -> {
+								svc.resetOpeningTitlesBoardPreview(p);
+								Text.msg(p, "&aĐã reset bảng mở đầu cho bạn. ");
 								return true;
 							}
 							case "clear" -> {
@@ -475,13 +493,51 @@ public final class EventCommands {
 					Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
 					return true;
 				}
-				if (args.length < 3 || !args[2].matches("\\d+")) {
-					Text.msg(p, "&eDùng: /" + label + " event schedule <giây_từ_bây_giờ>");
+				if (args.length < 3) {
+					Text.msg(p, "&eDùng: /" + label + " event schedule <unix_timestamp|Xs>");
+					Text.msg(p, "&7Ví dụ: &f1735689600 &7(giây), &f1735689600000 &7(ms), hoặc &f1000s &7(giây từ bây giờ)");
 					return true;
 				}
-				int sec = Integer.parseInt(args[2]);
-				boolean ok = svc.scheduleActiveEvent(sec);
-				Text.msg(p, ok ? "&aĐã đặt giờ bắt đầu sau &f" + sec + "&a giây." : "&cKhông thể đặt lịch lúc này.");
+				String raw = args[2].trim();
+				if (raw.isBlank()) {
+					Text.msg(p, "&cBạn chưa nhập giá trị.");
+					return true;
+				}
+				long startMs;
+				if (raw.toLowerCase(java.util.Locale.ROOT).endsWith("s")) {
+					String num = raw.substring(0, raw.length() - 1).trim();
+					long sec;
+					try {
+						if (num.isBlank() || !num.matches("\\d+"))
+							throw new IllegalArgumentException("not_number");
+						sec = Long.parseLong(num);
+					} catch (Throwable ignored) {
+						Text.msg(p, "&cSố giây không hợp lệ. &7Ví dụ: &f1000s");
+						return true;
+					}
+					startMs = System.currentTimeMillis() + Math.max(0L, sec) * 1000L;
+				} else {
+					if (!raw.matches("\\d+")) {
+						Text.msg(p, "&cTimestamp không hợp lệ.");
+						return true;
+					}
+					long unix;
+					try {
+						unix = Long.parseLong(raw);
+					} catch (Throwable ignored) {
+						Text.msg(p, "&cTimestamp không hợp lệ.");
+						return true;
+					}
+					startMs = (unix < 100_000_000_000L) ? (unix * 1000L) : unix;
+				}
+				boolean ok = svc.scheduleActiveEventAtMillis(startMs);
+				if (!ok) {
+					Text.msg(p, "&cKhông thể đặt lịch lúc này. &7Hãy đảm bảo đang ở REGISTRATION.");
+					return true;
+				}
+				long remainSec = Math.max(0L, (startMs - System.currentTimeMillis()) / 1000L);
+				Text.msg(p, "&aĐã đặt lịch bắt đầu (Unix): &f" + (startMs / 1000L));
+				Text.msg(p, "&7Còn lại: &f" + dev.belikhun.boatracing.util.Time.formatCountdownSeconds((int) Math.min(Integer.MAX_VALUE, remainSec)));
 				return true;
 			}
 			case "start" -> {

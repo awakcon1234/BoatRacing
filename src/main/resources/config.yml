@@ -6,6 +6,10 @@ player-actions:
 
 # Event opening titles (F1-style)
 event:
+  podium:
+    # Debug toggles (logs to console). Keep these off unless troubleshooting.
+    debug: false
+
   opening-titles:
     # Enable the event opening titles sequence.
     enabled: false

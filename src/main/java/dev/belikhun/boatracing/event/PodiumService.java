@@ -34,6 +34,28 @@ public class PodiumService {
 		this.podiumKey = new NamespacedKey(plugin, "boatracing_event_podium");
 	}
 
+	private boolean isDebug() {
+		try {
+			return plugin != null && plugin.getConfig().getBoolean("event.podium.debug", false);
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	private void dbg(String msg) {
+		if (!isDebug())
+			return;
+		try {
+			if (plugin != null)
+				plugin.getLogger().info("[PodiumDBG] " + msg);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	public boolean hasSpawnedAnything() {
+		return !spawned.isEmpty() || !spawnedFancyNpcIds.isEmpty();
+	}
+
 	public void clear() {
 		// Remove FancyNpcs NPCs first (if used)
 		for (String id : new ArrayList<>(spawnedFancyNpcIds)) {
@@ -78,11 +100,17 @@ public class PodiumService {
 	public void spawnTop3(RaceEvent event) {
 		if (plugin == null || event == null)
 			return;
+		dbg("spawnTop3: eventId=" + (event.id == null ? "<no-id>" : event.id)
+				+ " state=" + (event.state == null ? "<null>" : event.state.name())
+				+ " participants=" + (event.participants == null ? 0 : event.participants.size()));
 		clear();
 
 		Location spawn = readPodiumBase();
-		if (spawn == null)
+		if (spawn == null) {
+			dbg("spawnTop3: readPodiumBase() returned null (no world loaded?)");
 			return;
+		}
+		dbg("spawnTop3: base=" + safeLoc(spawn));
 
 		List<EventParticipant> sorted = new ArrayList<>();
 		if (event.participants != null)
@@ -102,15 +130,35 @@ public class PodiumService {
 				break;
 		}
 		if (top.isEmpty())
+		{
+			dbg("spawnTop3: no eligible participants for podium.");
 			return;
+		}
+		try {
+			StringBuilder sb = new StringBuilder();
+			for (int i = 0; i < top.size(); i++) {
+				EventParticipant ep = top.get(i);
+				if (ep == null)
+					continue;
+				if (sb.length() > 0)
+					sb.append(" | ");
+				sb.append("#").append(i + 1).append(":")
+						.append(ep.nameSnapshot == null ? "<no-name>" : ep.nameSnapshot)
+						.append("(").append(ep.pointsTotal).append(")");
+			}
+			dbg("spawnTop3: top=" + sb);
+		} catch (Throwable ignored) {
+		}
 
 		// Positions:
 		// - If top1/top2/top3 are configured, use them exactly.
 		// - Otherwise fall back to a simple layout around base and snap to surface.
 		Location base = spawn.clone().add(0.5, 0.0, 0.5);
+		ensureChunkLoaded(base);
 		Location first = readConfigured("event.podium.positions.top1");
 		Location second = readConfigured("event.podium.positions.top2");
 		Location third = readConfigured("event.podium.positions.top3");
+		dbg("spawnTop3: configured top1=" + safeLoc(first) + " top2=" + safeLoc(second) + " top3=" + safeLoc(third));
 
 		if (first == null)
 			first = snapToSurface(base.clone().add(0.0, 0.0, 2.0));
@@ -119,11 +167,16 @@ public class PodiumService {
 		if (third == null)
 			third = snapToSurface(base.clone().add(1.5, 0.0, 2.0));
 
+		ensureChunkLoaded(first);
+		ensureChunkLoaded(second);
+		ensureChunkLoaded(third);
+
 		spawnOne(top, 0, first);
 		if (top.size() >= 2)
 			spawnOne(top, 1, second);
 		if (top.size() >= 3)
 			spawnOne(top, 2, third);
+		dbg("spawnTop3: done (spawnedEntities=" + spawned.size() + ", spawnedFancyNpcs=" + spawnedFancyNpcIds.size() + ")");
 	}
 
 	private Location readConfigured(String path) {
@@ -195,10 +248,14 @@ public class PodiumService {
 	private void spawnOne(List<EventParticipant> top, int index, Location loc) {
 		if (loc == null || loc.getWorld() == null)
 			return;
+		ensureChunkLoaded(loc);
 		if (index < 0 || index >= top.size())
 			return;
 		EventParticipant p = top.get(index);
 		UUID id = p.id;
+		dbg("spawnOne: index=" + index + " loc=" + safeLoc(loc)
+				+ " fancynpcsEnabled=" + Bukkit.getPluginManager().isPluginEnabled("FancyNpcs")
+				+ " playerId=" + id);
 
 		// Prefer a proper PLAYER NPC (full skin) when FancyNpcs is available.
 		try {
@@ -231,12 +288,15 @@ public class PodiumService {
 				);
 				if (npcId != null && !npcId.isBlank()) {
 					spawnedFancyNpcIds.add(npcId);
+					dbg("spawnOne: FancyNpcs spawned npcId=" + npcId);
 					// Lower by 1 block compared to the previous placement.
 					spawnNpcFrontTextBlock(loc, line1Legacy + "\n" + line2Legacy, 0.35, 0.38, 0.95f);
 					return;
 				}
+				dbg("spawnOne: FancyNpcs spawn returned empty npcId");
 			}
 		} catch (Throwable ignored) {
+			dbg("spawnOne: FancyNpcs exception: " + ignored.getMessage());
 		}
 
 		// ArmorStand "body" holding the player head.
@@ -257,6 +317,7 @@ public class PodiumService {
 		}
 		if (as == null)
 			return;
+		dbg("spawnOne: fallback ArmorStand spawned=" + as.getUniqueId());
 
 		try {
 			ItemStack head = new ItemStack(Material.PLAYER_HEAD);
@@ -286,9 +347,18 @@ public class PodiumService {
 		spawnPointsLine(loc, "&e" + p.pointsTotal + " &7điểm", 1.25);
 	}
 
+	private String safeLoc(Location l) {
+		if (l == null)
+			return "<null>";
+		World w = l.getWorld();
+		String wn = (w == null ? "<null-world>" : w.getName());
+		return wn + String.format("@(%.2f,%.2f,%.2f yaw=%.1f)", l.getX(), l.getY(), l.getZ(), l.getYaw());
+	}
+
 	private void spawnNpcFrontTextBlock(Location base, String legacyMultiline, double yOffset, double forward, float scale) {
 		if (base == null || base.getWorld() == null)
 			return;
+		ensureChunkLoaded(base);
 
 		org.bukkit.Location dirLoc = base.clone();
 		dirLoc.setPitch(0.0f);
@@ -361,6 +431,7 @@ public class PodiumService {
 	private void spawnTextLine(Location base, String legacy, double yOffset, float scale) {
 		if (base == null || base.getWorld() == null)
 			return;
+		ensureChunkLoaded(base);
 		Location tl = base.clone().add(0.0, yOffset, 0.0);
 		try {
 			TextDisplay td = tl.getWorld().spawn(tl, TextDisplay.class, d -> {
@@ -405,6 +476,23 @@ public class PodiumService {
 			});
 			spawned.add(td.getUniqueId());
 		} catch (Throwable ignored) {
+		}
+	}
+
+	private void ensureChunkLoaded(Location l) {
+		if (l == null)
+			return;
+		World w = l.getWorld();
+		if (w == null)
+			return;
+		try {
+			org.bukkit.Chunk c = w.getChunkAt(l);
+			if (c != null && !c.isLoaded()) {
+				boolean ok = c.load();
+				dbg("ensureChunkLoaded: world=" + w.getName() + " chunk=" + c.getX() + "," + c.getZ() + " loaded=" + ok);
+			}
+		} catch (Throwable ignored) {
+			dbg("ensureChunkLoaded: exception: " + ignored.getMessage());
 		}
 	}
 }

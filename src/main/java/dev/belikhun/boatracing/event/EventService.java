@@ -85,6 +85,13 @@ public class EventService {
 		loadAll();
 		String active = EventStorage.loadActive(dataFolder);
 		setActiveEvent(active);
+		boolean tmpPodiumDebug = false;
+		try {
+			tmpPodiumDebug = plugin != null && plugin.getConfig().getBoolean("event.podium.debug", false);
+		} catch (Throwable ignored) {
+			tmpPodiumDebug = false;
+		}
+		final boolean podiumDebug = tmpPodiumDebug;
 		try {
 			if (eventBoardService != null)
 				eventBoardService.reloadFromConfig();
@@ -100,13 +107,73 @@ public class EventService {
 		// Auto-spawn podium after restart if the active event is already completed.
 		try {
 			RaceEvent e = getActiveEvent();
+			if (podiumDebug) {
+				try {
+					String eid = (e == null ? "<null>" : (e.id == null ? "<no-id>" : e.id));
+					String st = (e == null || e.state == null) ? "<null>" : e.state.name();
+					plugin.getLogger().info("[Event][PodiumDBG] Startup: activeEventId=" + activeEventId + " loadedEventId=" + eid + " state=" + st);
+				} catch (Throwable ignored) {
+				}
+			}
 			if (e != null && e.state == EventState.COMPLETED && podiumService != null) {
-				Bukkit.getScheduler().runTask(plugin, () -> {
+				if (podiumDebug) {
 					try {
-						podiumService.spawnTop3(e);
+						plugin.getLogger().info("[Event][PodiumDBG] Active event is COMPLETED; scheduling podium auto-spawn retries.");
 					} catch (Throwable ignored) {
 					}
-				});
+				}
+				// Retry a few times in case chunks/plugins aren't ready immediately.
+				final int maxAttempts = 5;
+				for (int i = 0; i < maxAttempts; i++) {
+					final int attempt = i + 1;
+					long delay = 20L + (i * 40L); // 1s, 3s, 5s, 7s, 9s
+					if (podiumDebug) {
+						try {
+							plugin.getLogger().info("[Event][PodiumDBG] Scheduling auto-spawn attempt " + attempt + "/" + maxAttempts + " in " + delay + " ticks.");
+						} catch (Throwable ignored) {
+						}
+					}
+					Bukkit.getScheduler().runTaskLater(plugin, () -> {
+						try {
+							if (podiumDebug) {
+								try {
+									plugin.getLogger().info("[Event][PodiumDBG] Running auto-spawn attempt " + attempt + "/" + maxAttempts
+											+ " (alreadySpawned=" + podiumService.hasSpawnedAnything() + ")");
+								} catch (Throwable ignored) {
+								}
+							}
+							if (podiumService.hasSpawnedAnything())
+								return;
+							podiumService.spawnTop3(e);
+							if (podiumDebug) {
+								try {
+									plugin.getLogger().info("[Event][PodiumDBG] Attempt " + attempt + " completed (spawnedAnything=" + podiumService.hasSpawnedAnything() + ")");
+								} catch (Throwable ignored) {
+								}
+							}
+						} catch (Throwable ignored) {
+							if (podiumDebug) {
+								try {
+									plugin.getLogger().warning("[Event][PodiumDBG] Exception while spawning podium on attempt " + attempt + ": " + ignored.getMessage());
+								} catch (Throwable ignored2) {
+								}
+							}
+						}
+						try {
+							if (!podiumService.hasSpawnedAnything() && attempt == maxAttempts) {
+								plugin.getLogger().warning("[Event] Podium auto-spawn failed after restart (no entities spawned).");
+							}
+						} catch (Throwable ignored) {
+						}
+					}, delay);
+				}
+			} else if (podiumDebug) {
+				try {
+					String st = (e == null || e.state == null) ? "<null>" : e.state.name();
+					plugin.getLogger().info("[Event][PodiumDBG] Skipping auto-spawn (event=" + (e == null ? "null" : "present") + ", state=" + st
+							+ ", podiumService=" + (podiumService == null ? "null" : "present") + ")");
+				} catch (Throwable ignored) {
+				}
 			}
 		} catch (Throwable ignored) {
 		}
@@ -171,6 +238,27 @@ public class EventService {
 		try {
 			if (openingTitlesBoardService != null)
 				openingTitlesBoardService.previewTo(p);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	public void previewOpeningTitlesBoard(Player viewer, Player racer) {
+		if (viewer == null)
+			return;
+		Player subject = (racer != null ? racer : viewer);
+		try {
+			if (openingTitlesBoardService != null)
+				openingTitlesBoardService.previewRacerCardTo(viewer, subject.getUniqueId(), subject.getName());
+		} catch (Throwable ignored) {
+		}
+	}
+
+	public void resetOpeningTitlesBoardPreview(Player viewer) {
+		if (viewer == null)
+			return;
+		try {
+			if (openingTitlesBoardService != null)
+				openingTitlesBoardService.resetViewer(viewer);
 		} catch (Throwable ignored) {
 		}
 	}
@@ -404,6 +492,18 @@ public class EventService {
 			return false;
 		int sec = Math.max(0, secondsFromNow);
 		e.startTimeMillis = System.currentTimeMillis() + (sec * 1000L);
+		EventStorage.saveEvent(dataFolder, e);
+		return true;
+	}
+
+	public synchronized boolean scheduleActiveEventAtMillis(long startTimeMillis) {
+		RaceEvent e = getActiveEvent();
+		if (e == null)
+			return false;
+		if (e.state != EventState.REGISTRATION)
+			return false;
+		long t = Math.max(0L, startTimeMillis);
+		e.startTimeMillis = t;
 		EventStorage.saveEvent(dataFolder, e);
 		return true;
 	}

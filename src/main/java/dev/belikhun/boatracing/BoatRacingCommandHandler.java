@@ -1056,8 +1056,21 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 			}
 			if (args.length == 4 && args[1].equalsIgnoreCase("opening") && args[2].equalsIgnoreCase("board")) {
 				String pref4 = args[3] == null ? "" : args[3].toLowerCase();
-				return java.util.List.of("help", "set", "status", "clear", "preview")
+				return java.util.List.of("help", "set", "status", "clear", "preview", "reset")
 						.stream().filter(s -> s.startsWith(pref4)).toList();
+			}
+			if (args.length == 5 && args[1].equalsIgnoreCase("opening") && args[2].equalsIgnoreCase("board")
+					&& args[3].equalsIgnoreCase("preview")) {
+				String pref5 = args[4] == null ? "" : args[4].toLowerCase();
+				java.util.List<String> names = new java.util.ArrayList<>();
+				for (org.bukkit.entity.Player pl : org.bukkit.Bukkit.getOnlinePlayers()) {
+					if (pl == null)
+						continue;
+					String n = pl.getName();
+					if (n != null && n.toLowerCase().startsWith(pref5))
+						names.add(n);
+				}
+				return names;
 			}
 			if (args.length == 5 && args[1].equalsIgnoreCase("opening") && args[2].equalsIgnoreCase("board")
 					&& args[3].equalsIgnoreCase("set")) {

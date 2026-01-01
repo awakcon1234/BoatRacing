@@ -142,10 +142,10 @@ public class AdminEventGUI implements Listener {
 
 		inv.setItem(15, buttonWithLore(Material.CLOCK, Text.item("&e&lĐặt lịch"), Action.SCHEDULE,
 				List.of(
-						"&7Đặt giờ bắt đầu sau X giây.",
+						"&7Đặt giờ bắt đầu theo Unix timestamp.",
 						"&8Chỉ dùng khi đang ở REGISTRATION.",
 						" ",
-						"&eBấm: &fNhập số giây"
+						"&eBấm: &fNhập timestamp"
 				), true, null));
 
 		inv.setItem(16, buttonWithLore(Material.EMERALD_BLOCK, Text.item("&2&lBắt đầu"), Action.START,
@@ -913,33 +913,84 @@ public class AdminEventGUI implements Listener {
 	private void beginSchedule(Player p) {
 		p.closeInventory();
 
+		final long nowMs = System.currentTimeMillis();
+		final long suggestUnixSec = Math.max(0L, (nowMs / 1000L) + 60L);
+
 		new AnvilGUI.Builder()
 				.plugin(plugin)
-				.title(Text.plain(Text.title("Nhập số giây")))
+				.title(Text.plain(Text.title("Nhập Unix timestamp")))
 				.itemLeft(new ItemStack(Material.CLOCK))
-				.text("30")
+				.text(String.valueOf(suggestUnixSec))
 				.onClick((slot, state) -> {
 					if (slot != AnvilGUI.Slot.OUTPUT)
 						return List.of();
 					String s = state.getText() == null ? "" : state.getText().trim();
-					int sec;
-					try {
-						sec = Integer.parseInt(s);
-					} catch (Throwable t) {
-						Text.msg(p, "&cSố không hợp lệ.");
+					if (s.isBlank()) {
+						Text.msg(p, "&cBạn chưa nhập giá trị.");
 						return List.of(AnvilGUI.ResponseAction.close());
 					}
+
+					long now = System.currentTimeMillis();
+					long startMs;
+					// Special: suffix 's' means seconds-from-now (e.g. 1000s).
+					if (s.toLowerCase(java.util.Locale.ROOT).endsWith("s")) {
+						String num = s.substring(0, s.length() - 1).trim();
+						long sec;
+						try {
+							if (num.isBlank() || !num.matches("\\d+"))
+								throw new IllegalArgumentException("not_number");
+							sec = Long.parseLong(num);
+						} catch (Throwable t) {
+							Text.msg(p, "&cSố giây không hợp lệ. &7Ví dụ: &f1000s");
+							return List.of(AnvilGUI.ResponseAction.close());
+						}
+						startMs = now + Math.max(0L, sec) * 1000L;
+					} else {
+						long unix;
+						try {
+							if (!s.matches("\\d+"))
+								throw new IllegalArgumentException("not_number");
+							unix = Long.parseLong(s);
+						} catch (Throwable t) {
+							Text.msg(p, "&cTimestamp không hợp lệ.");
+							return List.of(AnvilGUI.ResponseAction.close());
+						}
+						// Accept both Unix seconds (10 digits) and Unix millis (13 digits).
+						startMs = (unix < 100_000_000_000L) ? (unix * 1000L) : unix;
+					}
+					if (startMs < 0L)
+						startMs = 0L;
+
 					EventService svc = svc();
 					if (svc == null) {
 						Text.msg(p, "&cTính năng sự kiện đang bị tắt.");
 						return List.of(AnvilGUI.ResponseAction.close());
 					}
-					boolean ok = svc.scheduleActiveEvent(sec);
+					// Guard: scheduling applies to the ACTIVE event in REGISTRATION.
+					String selected = selectedEventId(p);
+					dev.belikhun.boatracing.event.RaceEvent active = null;
+					try {
+						active = svc.getActiveEvent();
+					} catch (Throwable ignored) {
+						active = null;
+					}
+					if (selected != null && active != null && active.id != null && !selected.equals(active.id)) {
+						Text.msg(p, "&cSự kiện bạn chọn không phải là sự kiện đang hoạt động.");
+						Text.msg(p, "&7Hãy &eMở đăng ký&7 cho sự kiện đó trước.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+						Bukkit.getScheduler().runTask(plugin, () -> open(p));
+						return List.of(AnvilGUI.ResponseAction.close());
+					}
+
+					boolean ok = svc.scheduleActiveEventAtMillis(startMs);
 					if (!ok) {
 						Text.msg(p, "&cKhông thể đặt lịch lúc này. &7Hãy đảm bảo đang ở REGISTRATION.");
 						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
 					} else {
-						Text.msg(p, "&a⏳ Đã đặt giờ bắt đầu sau &f" + sec + "&a giây.");
+						long now2 = System.currentTimeMillis();
+						long remainSec = Math.max(0L, (startMs - now2) / 1000L);
+						Text.msg(p, "&a⏳ Đã đặt lịch bắt đầu (Unix): &f" + (startMs / 1000L));
+						Text.msg(p, "&7Còn lại: &f" + dev.belikhun.boatracing.util.Time.formatCountdownSeconds((int) Math.min(Integer.MAX_VALUE, remainSec)));
 						p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
 					}
 					Bukkit.getScheduler().runTask(plugin, () -> open(p));
