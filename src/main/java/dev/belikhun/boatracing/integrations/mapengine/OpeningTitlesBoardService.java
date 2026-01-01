@@ -814,9 +814,17 @@ public final class OpeningTitlesBoardService {
 						x = right - (sw / 2);
 					}
 
-					// Still keep the watermark inside the right band start.
-					if (x < safeRight)
-						x = safeRight + 6;
+					// Allow the watermark to bleed into the safe area slightly so the 2nd digit is visible.
+					// We cap the bleed to roughly one digit width to avoid covering the main content.
+					if (ns.length() >= 2) {
+						String d0 = ns.substring(0, 1);
+						int w0 = g.getFontMetrics().stringWidth(d0);
+						int minX = safeRight - Math.max(0, w0);
+						x = Math.max(x, minX);
+					} else {
+						x = Math.max(x, safeRight);
+					}
+					x = Math.max(x, rect.x() + 6);
 					Color a = BroadcastTheme.palette(BroadcastTheme.ACCENT_READY).accentSoft(55);
 					Color b = BroadcastTheme.palette(BroadcastTheme.ACCENT_RUNNING).accentSoft(55);
 					if (a != null && b != null) {
