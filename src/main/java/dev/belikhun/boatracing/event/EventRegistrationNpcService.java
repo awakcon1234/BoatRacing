@@ -166,7 +166,7 @@ public class EventRegistrationNpcService {
 		// and also on first player join.
 		if (!fancyOk && fancyEnabled) {
 			try {
-				if (Bukkit.getOnlinePlayers().isEmpty())
+				if (!dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.isReady())
 					return;
 			} catch (Throwable ignored) {
 				return;

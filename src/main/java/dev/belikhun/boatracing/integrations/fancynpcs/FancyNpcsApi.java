@@ -14,6 +14,13 @@ public final class FancyNpcsApi {
 	private FancyNpcsApi() {
 	}
 
+	/**
+	 * Returns true if FancyNpcs' NpcManager is loaded and can spawn NPCs.
+	 */
+	public static boolean isReady() {
+		return isNpcManagerReady();
+	}
+
 	private static boolean isNpcManagerReady() {
 		try {
 			var fancy = FancyNpcsPlugin.get();
@@ -109,6 +116,183 @@ public final class FancyNpcsApi {
 		} catch (Throwable ignored) {
 		}
 		return false;
+	}
+
+	private static String[] tryGetOnlinePlayerTextures(UUID playerId) {
+		if (playerId == null)
+			return null;
+		try {
+			org.bukkit.entity.Player p = org.bukkit.Bukkit.getPlayer(playerId);
+			if (p == null)
+				return null;
+
+			// Paper/Spigot API does not reliably expose the base64 texture value+signature.
+			// Use reflection against CraftPlayer -> GameProfile -> PropertyMap.
+			Object gameProfile;
+			try {
+				java.lang.reflect.Method m = p.getClass().getMethod("getProfile");
+				gameProfile = m.invoke(p);
+			} catch (Throwable ignored) {
+				gameProfile = null;
+			}
+			if (gameProfile == null)
+				return null;
+
+			Object props;
+			try {
+				java.lang.reflect.Method m = gameProfile.getClass().getMethod("getProperties");
+				props = m.invoke(gameProfile);
+			} catch (Throwable ignored) {
+				props = null;
+			}
+			if (props == null)
+				return null;
+
+			Object textures;
+			try {
+				java.lang.reflect.Method m = props.getClass().getMethod("get", Object.class);
+				textures = m.invoke(props, "textures");
+			} catch (Throwable ignored) {
+				textures = null;
+			}
+			if (textures == null)
+				return null;
+
+			java.util.Iterator<?> it;
+			try {
+				it = ((java.lang.Iterable<?>) textures).iterator();
+			} catch (Throwable ignored) {
+				try {
+					java.lang.reflect.Method m = textures.getClass().getMethod("iterator");
+					Object o = m.invoke(textures);
+					it = (o instanceof java.util.Iterator<?> i) ? i : null;
+				} catch (Throwable ignored2) {
+					it = null;
+				}
+			}
+			if (it == null || !it.hasNext())
+				return null;
+			Object prop = it.next();
+			if (prop == null)
+				return null;
+
+			String v;
+			String s;
+			try {
+				java.lang.reflect.Method mv = prop.getClass().getMethod("getValue");
+				Object ov = mv.invoke(prop);
+				v = (ov == null ? null : ov.toString());
+			} catch (Throwable ignored) {
+				v = null;
+			}
+			try {
+				java.lang.reflect.Method ms = prop.getClass().getMethod("getSignature");
+				Object os = ms.invoke(prop);
+				s = (os == null ? "" : os.toString());
+			} catch (Throwable ignored) {
+				s = "";
+			}
+
+			if (v == null || v.isBlank())
+				return null;
+			return new String[] { v, (s == null ? "" : s) };
+		} catch (Throwable ignored) {
+		}
+		return null;
+	}
+
+	private static Object tryBuildSkinDataFromTextures(String value, String signature, boolean slim) {
+		if (value == null || value.isBlank())
+			return null;
+		try {
+			Class<?> skinDataClass = Class.forName("de.oliver.fancynpcs.api.skins.SkinData");
+
+			// Prefer static factories if present.
+			for (String mname : new String[] { "fromTexture", "ofTextures", "of" }) {
+				try {
+					java.lang.reflect.Method m = skinDataClass.getMethod(mname, String.class, String.class);
+					Object sd = m.invoke(null, value, signature);
+					if (sd != null)
+						return sd;
+				} catch (Throwable ignored) {
+				}
+			}
+
+			// Try constructors.
+			for (java.lang.reflect.Constructor<?> c : skinDataClass.getConstructors()) {
+				try {
+					Class<?>[] p = c.getParameterTypes();
+					if (p.length == 2 && p[0] == String.class && p[1] == String.class) {
+						return c.newInstance(value, signature);
+					}
+				} catch (Throwable ignored) {
+				}
+			}
+
+			// No-arg + setters.
+			Object sd;
+			try {
+				sd = skinDataClass.getDeclaredConstructor().newInstance();
+			} catch (Throwable ignored) {
+				sd = null;
+			}
+			if (sd == null)
+				return null;
+
+			boolean any = false;
+			for (String mname : new String[] { "setTexture", "setTextures", "setValue" }) {
+				try {
+					java.lang.reflect.Method m = skinDataClass.getMethod(mname, String.class);
+					m.invoke(sd, value);
+					any = true;
+					break;
+				} catch (Throwable ignored) {
+				}
+			}
+			for (String mname : new String[] { "setSignature", "setTextureSignature" }) {
+				try {
+					java.lang.reflect.Method m = skinDataClass.getMethod(mname, String.class);
+					m.invoke(sd, signature);
+					any = true;
+					break;
+				} catch (Throwable ignored) {
+				}
+			}
+
+			// Optional variant; ignore failures.
+			if (slim) {
+				try {
+					Class<?> variantClass = Class.forName("de.oliver.fancynpcs.api.skins.SkinData$SkinVariant");
+					Object variant = java.lang.Enum.valueOf((Class) variantClass, "SLIM");
+					java.lang.reflect.Method m = skinDataClass.getMethod("setVariant", variantClass);
+					m.invoke(sd, variant);
+				} catch (Throwable ignored) {
+				}
+			}
+
+			return any ? sd : null;
+		} catch (Throwable ignored) {
+			return null;
+		}
+	}
+
+	private static boolean tryApplyTextureSkin(NpcData data, String value, String signature, boolean slim, String identifierForDebug) {
+		if (data == null)
+			return false;
+		Object sd = tryBuildSkinDataFromTextures(value, signature, slim);
+		if (sd == null)
+			return false;
+		trySetMirrorSkin(data, false);
+		if (!trySetSkinData(data, sd))
+			return false;
+		try {
+			if (identifierForDebug != null && !identifierForDebug.isBlank()) {
+				java.lang.reflect.Method setIdentifier = sd.getClass().getMethod("setIdentifier", String.class);
+				setIdentifier.invoke(sd, identifierForDebug);
+			}
+		} catch (Throwable ignored) {
+		}
+		return true;
 	}
 
 	/**
@@ -256,6 +440,93 @@ public final class FancyNpcsApi {
 		npc.create();
 		npc.spawnForAll();
 
+		return data.getId();
+	}
+
+	/**
+	 * Spawn a temporary PLAYER NPC by preferring live texture properties (value+signature)
+	 * from an online player profile, then falling back to UUID string, then username identifier.
+	 */
+	public static String spawnPlayerNpcPreferTextures(String npcName, UUID playerId, String playerName, boolean slim, Location location,
+			String displayNameMini, boolean collidable, boolean showInTab) {
+		if (npcName == null || npcName.isBlank())
+			return null;
+		if (location == null || location.getWorld() == null)
+			return null;
+		if (!isNpcManagerReady())
+			return null;
+
+		var fancy = FancyNpcsPlugin.get();
+		var npcManager = fancy.getNpcManager();
+
+		NpcData data = new NpcData(npcName, UUID.randomUUID(), location);
+
+		boolean applied = false;
+		try {
+			String[] tex = tryGetOnlinePlayerTextures(playerId);
+			if (tex != null && tex.length >= 1) {
+				String v = tex[0];
+				String s = (tex.length >= 2 ? tex[1] : "");
+				applied = tryApplyTextureSkin(data, v, s, slim, playerName);
+			}
+		} catch (Throwable ignored) {
+			applied = false;
+		}
+
+		if (!applied) {
+			// Fallback #1: UUID string (older FancyNpcs versions accepted this)
+			try {
+				if (playerId != null)
+					data.setSkin(playerId.toString());
+				applied = true;
+			} catch (Throwable ignored) {
+				applied = false;
+			}
+		}
+
+		if (!applied) {
+			// Fallback #2: username identifier
+			try {
+				String idf = (playerName == null ? "" : playerName.trim());
+				if (!idf.isBlank()) {
+					data.setSkin(idf);
+					applied = true;
+				}
+			} catch (Throwable ignored) {
+				applied = false;
+			}
+		}
+
+		if (!applied) {
+			// Last resort: keep default skin
+		}
+
+		tryApplySlimFlag(data, slim);
+
+		try {
+			if (displayNameMini != null)
+				data.setDisplayName(displayNameMini);
+		} catch (Throwable ignored) {
+		}
+		try {
+			data.setCollidable(collidable);
+		} catch (Throwable ignored) {
+		}
+		try {
+			data.setShowInTab(showInTab);
+		} catch (Throwable ignored) {
+		}
+
+		Npc npc = fancy.getNpcAdapter().apply(data);
+		if (npc == null)
+			return null;
+		try {
+			npc.setSaveToFile(false);
+		} catch (Throwable ignored) {
+		}
+		npcManager.registerNpc(npc);
+		npc.create();
+		npc.spawnForAll();
 		return data.getId();
 	}
 

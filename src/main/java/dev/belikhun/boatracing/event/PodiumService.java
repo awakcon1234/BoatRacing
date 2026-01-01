@@ -299,8 +299,9 @@ public class PodiumService {
 
 				String npcName = "br-event-podium-" + System.currentTimeMillis() + "-" + index;
 				dbg("spawnOne: FancyNpcs skinIdentifier=" + skinIdentifier);
-				String npcId = FancyNpcsApi.spawnPlayerNpc(
+				String npcId = FancyNpcsApi.spawnPlayerNpcPreferTextures(
 						npcName,
+						id,
 						skinIdentifier,
 						false,
 						loc,
@@ -317,12 +318,12 @@ public class PodiumService {
 				}
 				dbg("spawnOne: FancyNpcs spawn returned empty npcId");
 
-				// FancyNpcs may not be fully ready yet during early startup (NpcManager not loaded).
-				// If no players are online, do NOT fall back to the ArmorStand head variant;
-				// let the caller retry later so we can still spawn real FancyNpcs player models.
+				// FancyNpcs may not be fully ready yet during early startup.
+				// If the manager isn't ready, do NOT fall back to the ArmorStand head variant;
+				// let the caller retry later.
 				try {
-					if (Bukkit.getOnlinePlayers().isEmpty()) {
-						dbg("spawnOne: deferring fallback (no players online)");
+					if (!FancyNpcsApi.isReady()) {
+						dbg("spawnOne: deferring fallback (FancyNpcs not ready)");
 						return;
 					}
 				} catch (Throwable ignored) {
