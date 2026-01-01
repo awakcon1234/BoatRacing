@@ -485,6 +485,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 									p.setGameMode(org.bukkit.GameMode.ADVENTURE);
 								} catch (Throwable ignored) {
 								}
+								try {
+									BoatRacingPlugin.this.applyLobbyFlight(p);
+								} catch (Throwable ignored) {
+								}
 								p.setFallDistance(0f);
 							} catch (Throwable ignored) {
 							}
@@ -647,6 +651,19 @@ public class BoatRacingPlugin extends JavaPlugin {
 			return getConfig().getBoolean("racing.lobby.spawn.enabled", false);
 		} catch (Throwable ignored) {
 			return false;
+		}
+	}
+
+	/**
+	 * Lobby UX: allow players to fly even in Adventure mode.
+	 * This should be applied when a player is teleported to the lobby.
+	 */
+	public void applyLobbyFlight(org.bukkit.entity.Player p) {
+		if (p == null)
+			return;
+		try {
+			p.setAllowFlight(true);
+		} catch (Throwable ignored) {
 		}
 	}
 

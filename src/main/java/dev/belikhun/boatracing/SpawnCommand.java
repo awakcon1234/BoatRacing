@@ -71,6 +71,11 @@ public class SpawnCommand implements CommandExecutor {
 			if (spawn != null)
 				p.teleport(spawn);
 			p.setFallDistance(0f);
+			try {
+				if (plugin != null)
+					plugin.applyLobbyFlight(p);
+			} catch (Throwable ignored2) {
+			}
 
 			Text.msg(p, "&aĐã dịch chuyển về sảnh.");
 			p.playSound(p.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.2f);

@@ -157,6 +157,11 @@ public class HotbarService {
 								spawn = p.getWorld().getSpawnLocation();
 							if (spawn != null)
 								p.teleport(spawn);
+							try {
+								if (plugin != null)
+									plugin.applyLobbyFlight(p);
+							} catch (Throwable ignored3) {
+							}
 						} catch (Throwable ignored2) {}
 					}
 				} catch (Throwable ignored) {}

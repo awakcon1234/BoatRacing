@@ -3930,6 +3930,12 @@ public class RaceManager {
 		if (added) {
 			// Start the waiting countdown only after the first racer joins.
 			ensureRegistrationCountdownScheduledIfNeeded();
+			// Lobby may allow flight; ensure racers can't fly.
+			try {
+				p.setAllowFlight(false);
+				p.setFlying(false);
+			} catch (Throwable ignored) {
+			}
 			try {
 				// Ensure player isn't stuck in an old vehicle when joining.
 				if (p.isInsideVehicle())
@@ -5188,6 +5194,11 @@ public class RaceManager {
 					if (spawn != null)
 						p.teleport(spawn);
 					p.setFallDistance(0f);
+					try {
+						if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br)
+							br.applyLobbyFlight(p);
+					} catch (Throwable ignored) {
+					}
 				} catch (Throwable ignored) {
 				}
 			}

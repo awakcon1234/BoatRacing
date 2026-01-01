@@ -233,6 +233,10 @@ public class RaceService {
 			if (spawn != null)
 				p.teleport(spawn);
 			p.setFallDistance(0f);
+			try {
+				plugin.applyLobbyFlight(p);
+			} catch (Throwable ignored2) {
+			}
 		} catch (Throwable ignored) {
 		}
 	}
@@ -290,6 +294,11 @@ public class RaceService {
 					if (spawn != null)
 						p.teleport(spawn);
 					p.setFallDistance(0f);
+					try {
+						if (plugin != null)
+							plugin.applyLobbyFlight(p);
+					} catch (Throwable ignored2) {
+					}
 				} catch (Throwable ignored) {
 				}
 			});
@@ -334,6 +343,11 @@ public class RaceService {
 					: (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null));
 			if (spawn != null) p.teleport(spawn);
 			p.setFallDistance(0f);
+			try {
+				if (plugin != null)
+					plugin.applyLobbyFlight(p);
+			} catch (Throwable ignored2) {
+			}
 		} catch (Throwable ignored) {}
 
 		// Player-facing confirmation (Vietnamese UX rule)
