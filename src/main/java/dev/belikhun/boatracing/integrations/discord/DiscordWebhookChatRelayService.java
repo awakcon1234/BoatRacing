@@ -4,9 +4,11 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
+import org.bukkit.plugin.EventExecutor;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
 
@@ -18,7 +20,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -31,6 +35,8 @@ public final class DiscordWebhookChatRelayService {
 	private final HttpClient http;
 	private final AtomicReference<Config> config = new AtomicReference<>(Config.disabled());
 	private Listener listener;
+	private Listener ventureChatListener;
+	private final ConcurrentHashMap<UUID, LastMessage> lastMessageByPlayer = new ConcurrentHashMap<>();
 
 	public DiscordWebhookChatRelayService(BoatRacingPlugin plugin) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -50,6 +56,7 @@ public final class DiscordWebhookChatRelayService {
 		}
 
 		ensureListener();
+		ensureVentureChatListener();
 	}
 
 	public void stop() {
@@ -57,9 +64,13 @@ public final class DiscordWebhookChatRelayService {
 			if (listener != null) {
 				HandlerList.unregisterAll(listener);
 			}
+			if (ventureChatListener != null) {
+				HandlerList.unregisterAll(ventureChatListener);
+			}
 		} catch (Throwable ignored) {
 		} finally {
 			listener = null;
+			ventureChatListener = null;
 		}
 	}
 
@@ -121,22 +132,7 @@ public final class DiscordWebhookChatRelayService {
 					return;
 
 				String plain = toPlainText(e.message());
-				String renderedContent = renderTemplate(p, plain, cfg.messageTemplate);
-				String renderedUsername = renderTemplate(p, plain, cfg.usernameTemplate);
-				String renderedAvatarUrl = renderTemplate(p, plain, cfg.avatarUrlTemplate);
-
-				renderedContent = DiscordWebhookSanitizer.stripAllFormatting(renderedContent);
-				renderedUsername = DiscordWebhookSanitizer.stripAllFormatting(renderedUsername);
-				renderedAvatarUrl = DiscordWebhookSanitizer.stripAllFormatting(renderedAvatarUrl);
-
-				if (cfg.trimTo2000 && renderedContent.length() > 2000) {
-					renderedContent = renderedContent.substring(0, 1997) + "...";
-				}
-
-				if (renderedContent.isBlank())
-					return;
-
-				sendWebhook(cfg, renderedContent, renderedUsername, renderedAvatarUrl);
+				enqueueSend(p.getUniqueId(), plain);
 			}
 		};
 
@@ -146,6 +142,165 @@ public final class DiscordWebhookChatRelayService {
 			listener = null;
 			plugin.getLogger().warning("[Discord] Không thể đăng ký chat listener: " + t.getMessage());
 		}
+	}
+
+	private void ensureVentureChatListener() {
+		if (ventureChatListener != null)
+			return;
+		try {
+			if (!Bukkit.getPluginManager().isPluginEnabled("VentureChat"))
+				return;
+		} catch (Throwable ignored) {
+			return;
+		}
+
+		final Class<? extends Event> eventClass;
+		try {
+			Class<?> c = Class.forName("mineverse.Aust1n46.chat.api.events.VentureChatEvent");
+			if (!Event.class.isAssignableFrom(c))
+				return;
+			@SuppressWarnings("unchecked")
+			Class<? extends Event> cc = (Class<? extends Event>) c;
+			eventClass = cc;
+		} catch (Throwable ignored) {
+			return;
+		}
+
+		ventureChatListener = new Listener() {
+			// no @EventHandler (registered dynamically)
+		};
+
+		EventExecutor exec = (l, e) -> {
+			try {
+				if (e == null)
+					return;
+				Config cfg = config.get();
+				if (!cfg.enabled)
+					return;
+				if (cfg.webhookUrl.isBlank())
+					return;
+
+				Player p = resolveVentureChatPlayer(e);
+				if (p == null)
+					return;
+
+				String raw = resolveVentureChatMessage(e);
+				if (raw == null)
+					raw = "";
+				enqueueSend(p.getUniqueId(), raw);
+			} catch (Throwable ignored) {
+			}
+		};
+
+		try {
+			Bukkit.getPluginManager().registerEvent(eventClass, ventureChatListener,
+					org.bukkit.event.EventPriority.MONITOR, exec, plugin, true);
+			plugin.getLogger().info("[Discord] Đã bật hook VentureChat để relay chat.");
+		} catch (Throwable t) {
+			ventureChatListener = null;
+			plugin.getLogger().warning("[Discord] Không thể đăng ký hook VentureChat: " + t.getMessage());
+		}
+	}
+
+	private void enqueueSend(UUID playerId, String message) {
+		if (playerId == null)
+			return;
+		if (message == null)
+			message = "";
+
+		String plain = DiscordWebhookSanitizer.stripAllFormatting(message);
+		if (plain.isBlank())
+			return;
+
+		long now = System.currentTimeMillis();
+		LastMessage prev = lastMessageByPlayer.get(playerId);
+		if (prev != null && prev.message != null && prev.message.equals(plain) && (now - prev.atMs) <= 750L) {
+			return;
+		}
+		lastMessageByPlayer.put(playerId, new LastMessage(plain, now));
+
+		String msgFinal = plain;
+		Bukkit.getScheduler().runTask(plugin, () -> {
+			try {
+				Config cfg = config.get();
+				if (!cfg.enabled)
+					return;
+				if (cfg.webhookUrl.isBlank())
+					return;
+				Player p = Bukkit.getPlayer(playerId);
+				if (p == null || !p.isOnline())
+					return;
+
+				String renderedContent = renderTemplate(p, msgFinal, cfg.messageTemplate);
+				String renderedUsername = renderTemplate(p, msgFinal, cfg.usernameTemplate);
+				String renderedAvatarUrl = renderTemplate(p, msgFinal, cfg.avatarUrlTemplate);
+
+				renderedContent = DiscordWebhookSanitizer.stripAllFormatting(renderedContent);
+				renderedUsername = DiscordWebhookSanitizer.stripAllFormatting(renderedUsername);
+				renderedAvatarUrl = DiscordWebhookSanitizer.stripAllFormatting(renderedAvatarUrl);
+
+				if (cfg.trimTo2000 && renderedContent.length() > 2000) {
+					renderedContent = renderedContent.substring(0, 1997) + "...";
+				}
+				if (renderedContent.isBlank())
+					return;
+
+				sendWebhook(cfg, renderedContent, renderedUsername, renderedAvatarUrl);
+			} catch (Throwable ignored) {
+			}
+		});
+	}
+
+	private Player resolveVentureChatPlayer(Object ventureChatEvent) {
+		if (ventureChatEvent == null)
+			return null;
+		// Prefer MineverseChatPlayer -> getPlayer()
+		try {
+			Object mcp = ventureChatEvent.getClass().getMethod("getMineverseChatPlayer").invoke(ventureChatEvent);
+			if (mcp != null) {
+				Object bp = mcp.getClass().getMethod("getPlayer").invoke(mcp);
+				if (bp instanceof Player p)
+					return p;
+			}
+		} catch (Throwable ignored) {
+		}
+
+		// Fallback: direct getPlayer()
+		try {
+			Object bp = ventureChatEvent.getClass().getMethod("getPlayer").invoke(ventureChatEvent);
+			if (bp instanceof Player p)
+				return p;
+		} catch (Throwable ignored) {
+		}
+
+		// Last resort: username -> Bukkit player
+		try {
+			Object u = ventureChatEvent.getClass().getMethod("getUsername").invoke(ventureChatEvent);
+			if (u instanceof String name && !name.isBlank()) {
+				return Bukkit.getPlayerExact(name);
+			}
+		} catch (Throwable ignored) {
+		}
+
+		return null;
+	}
+
+	private String resolveVentureChatMessage(Object ventureChatEvent) {
+		if (ventureChatEvent == null)
+			return "";
+		try {
+			Object chat = ventureChatEvent.getClass().getMethod("getChat").invoke(ventureChatEvent);
+			if (chat instanceof String s)
+				return s;
+		} catch (Throwable ignored) {
+		}
+		try {
+			Object msg = ventureChatEvent.getClass().getMethod("getMessage").invoke(ventureChatEvent);
+			if (msg instanceof String s)
+				return s;
+		} catch (Throwable ignored) {
+		}
+		return "";
 	}
 
 	private static String toPlainText(Component c) {
@@ -224,6 +379,8 @@ public final class DiscordWebhookChatRelayService {
 	private static String safe(String s) {
 		return s == null ? "" : s;
 	}
+
+	private record LastMessage(String message, long atMs) {}
 
 	private record Config(
 			boolean enabled,
