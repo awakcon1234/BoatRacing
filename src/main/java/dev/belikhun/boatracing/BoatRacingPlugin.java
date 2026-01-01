@@ -432,6 +432,21 @@ public class BoatRacingPlugin extends JavaPlugin {
 				} catch (Throwable ignored) {
 				}
 
+				// Ensure the event registration NPC initializes correctly after startup.
+				// FancyNpcs may not be ready during onEnable; retry on first player join.
+				try {
+					if (eventService != null) {
+						dev.belikhun.boatracing.event.RaceEvent ev = eventService.getActiveEvent();
+						if (ev != null && ev.state == dev.belikhun.boatracing.event.EventState.REGISTRATION) {
+							dev.belikhun.boatracing.event.EventRegistrationNpcService rs = eventService.getRegistrationNpcService();
+							if (rs != null) {
+								rs.tick(ev);
+							}
+						}
+					}
+				} catch (Throwable ignored) {
+				}
+
 				// Ensure non-admin players always spawn at lobby (world spawn) and are in Adventure.
 				// Delayed by 1 tick so it doesn't fight with pending restore flows above.
 				try {

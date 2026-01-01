@@ -129,8 +129,10 @@ public class EventRegistrationNpcService {
 
 		// Prefer a proper PLAYER NPC (full skin) when FancyNpcs is available.
 		boolean fancyOk = false;
+		boolean fancyEnabled = false;
 		try {
 			if (Bukkit.getPluginManager().isPluginEnabled("FancyNpcs")) {
+				fancyEnabled = true;
 				String display = "<empty>";
 				String skin = readSkinString();
 				boolean slim = readSkinSlim();
@@ -157,6 +159,18 @@ public class EventRegistrationNpcService {
 			}
 		} catch (Throwable ignored) {
 			fancyOk = false;
+		}
+
+		// If FancyNpcs is installed but not ready during early startup, don't immediately
+		// fall back to the ArmorStand head (skull) variant. We'll retry later (tick)
+		// and also on first player join.
+		if (!fancyOk && fancyEnabled) {
+			try {
+				if (Bukkit.getOnlinePlayers().isEmpty())
+					return;
+			} catch (Throwable ignored) {
+				return;
+			}
 		}
 
 		if (!fancyOk) {
