@@ -63,6 +63,18 @@ racing:
   laps: 3
   registration-seconds: 30
 
+  # Lobby spawn managed by BoatRacing (used for teleporting racers back to the lobby).
+  # If disabled, the plugin will fall back to the world's spawn location.
+  lobby:
+    spawn:
+      enabled: false
+      world: ""
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+      pitch: 0.0
+
   # Intro cinematic before the start countdown (Mario Kart style fly-by).
   intro:
     enabled: true

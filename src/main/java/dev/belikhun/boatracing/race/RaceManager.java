@@ -51,6 +51,28 @@ public class RaceManager {
 	// across reloads).
 	// TrackConfig.currentName is set by TrackConfig.load(name).
 	private final String trackId;
+
+	// Cached keys (avoid re-allocating NamespacedKey objects in hot paths).
+	private final NamespacedKey keySpawnedBoat;
+	private final NamespacedKey keyCheckpointDisplay;
+	private final NamespacedKey keyCheckpointDisplayIndex;
+	private final NamespacedKey keyCheckpointDisplayTrack;
+
+	// Dashboard caches (reduce per-tick allocations/recalcs).
+	private final java.util.Set<UUID> dashboardActiveTmp = new java.util.LinkedHashSet<>();
+	private final java.util.List<UUID> dashboardRemoveTmp = new java.util.ArrayList<>();
+	private int dashboardBarCacheCells = -1;
+	private String[] dashboardBarCacheRed;
+	private String[] dashboardBarCacheYellow;
+	private String[] dashboardBarCacheGreen;
+	private int dashboardYellowKmhCached = 5;
+	private int dashboardGreenKmhCached = 20;
+	private long dashboardThresholdsNextRefreshMs = 0L;
+	private int dashboardBarCellsCached = 30;
+	private long dashboardBarCellsNextRefreshMs = 0L;
+
+	// Reused list for removing offline racers in race ticker.
+	private final java.util.List<UUID> offlineRacerTmp = new java.util.ArrayList<>();
 	private boolean running = false;
 	private boolean registering = false;
 	private final Set<UUID> registered = new HashSet<>();
@@ -101,6 +123,8 @@ public class RaceManager {
 	private final java.util.Map<UUID, org.bukkit.entity.TextDisplay> dashboardByPlayer = new java.util.HashMap<>();
 	private final java.util.Map<UUID, org.bukkit.Location> dashboardLastBoatLoc = new java.util.HashMap<>();
 	private final java.util.Map<UUID, Long> dashboardLastBoatLocTime = new java.util.HashMap<>();
+	private final java.util.Map<UUID, Double> dashboardLastBps = new java.util.HashMap<>();
+	private final java.util.Map<UUID, Integer> dashboardStationaryTicks = new java.util.HashMap<>();
 	private final java.util.Map<UUID, org.bukkit.Location> countdownLockLocation = new java.util.HashMap<>();
 	private final java.util.Map<UUID, Long> countdownDebugLastLog = new java.util.HashMap<>();
 	private final java.util.Map<Block, BlockData> countdownBarrierRestore = new java.util.HashMap<>();
@@ -682,6 +706,12 @@ public class RaceManager {
 			n = null;
 		}
 		this.trackId = (n == null ? "" : n);
+
+		// Cache namespaced keys for this plugin instance.
+		this.keySpawnedBoat = (plugin != null ? new NamespacedKey(plugin, "boatracing_spawned_boat") : null);
+		this.keyCheckpointDisplay = (plugin != null ? new NamespacedKey(plugin, "boatracing_checkpoint_display") : null);
+		this.keyCheckpointDisplayIndex = (plugin != null ? new NamespacedKey(plugin, "boatracing_checkpoint_display_index") : null);
+		this.keyCheckpointDisplayTrack = (plugin != null ? new NamespacedKey(plugin, "boatracing_checkpoint_display_track") : null);
 	}
 
 	// test-only constructor that avoids needing a Plugin instance in unit tests
@@ -695,6 +725,10 @@ public class RaceManager {
 			n = null;
 		}
 		this.trackId = (n == null ? "" : n);
+		this.keySpawnedBoat = null;
+		this.keyCheckpointDisplay = null;
+		this.keyCheckpointDisplayIndex = null;
+		this.keyCheckpointDisplayTrack = null;
 	}
 
 	private void ensureCheckpointHolos() {
@@ -730,25 +764,30 @@ public class RaceManager {
 				return;
 			}
 
-			java.util.Set<UUID> active = new java.util.LinkedHashSet<>();
-			active.addAll(countdownPlayers);
+			// Reuse a single Set/List each tick to avoid allocations.
+			dashboardActiveTmp.clear();
+			dashboardActiveTmp.addAll(countdownPlayers);
 			// Only show for racers that are still racing (not finished).
 			for (var en : participants.entrySet()) {
 				UUID id = en.getKey();
 				ParticipantState st = en.getValue();
 				if (id == null || st == null || st.finished)
 					continue;
-				active.add(id);
+				dashboardActiveTmp.add(id);
 			}
 
 			// Remove dashboards for players who are no longer active.
-			for (UUID id : new java.util.HashSet<>(dashboardByPlayer.keySet())) {
-				if (!active.contains(id))
-					removeDashboard(id);
+			dashboardRemoveTmp.clear();
+			for (UUID id : dashboardByPlayer.keySet()) {
+				if (id != null && !dashboardActiveTmp.contains(id))
+					dashboardRemoveTmp.add(id);
+			}
+			for (UUID id : dashboardRemoveTmp) {
+				removeDashboard(id);
 			}
 
 			// Update/create dashboards.
-			for (UUID id : active) {
+			for (UUID id : dashboardActiveTmp) {
 				Player p = Bukkit.getPlayer(id);
 				if (p == null || !p.isOnline()) {
 					removeDashboard(id);
@@ -757,6 +796,46 @@ public class RaceManager {
 				updateDashboard(p, finalPeriodTicks);
 			}
 		}, 1L, finalPeriodTicks);
+	}
+
+	private void refreshDashboardThresholdsIfNeeded(long nowMs) {
+		if (plugin == null)
+			return;
+		if (nowMs < dashboardThresholdsNextRefreshMs)
+			return;
+		// Refresh at most once per second.
+		dashboardThresholdsNextRefreshMs = nowMs + 1000L;
+		try {
+			dashboardYellowKmhCached = plugin.getConfig().getInt("scoreboard.speed.yellow_kmh", 5);
+		} catch (Throwable ignored) {
+			dashboardYellowKmhCached = 5;
+		}
+		try {
+			dashboardGreenKmhCached = plugin.getConfig().getInt("scoreboard.speed.green_kmh", 20);
+		} catch (Throwable ignored) {
+			dashboardGreenKmhCached = 20;
+		}
+		if (dashboardGreenKmhCached < dashboardYellowKmhCached) {
+			int t = dashboardGreenKmhCached;
+			dashboardGreenKmhCached = dashboardYellowKmhCached;
+			dashboardYellowKmhCached = t;
+		}
+	}
+
+	private int getDashboardBarCellsCached(long nowMs) {
+		if (plugin == null)
+			return Math.max(1, Math.min(80, dashboardBarCellsCached));
+		if (nowMs >= dashboardBarCellsNextRefreshMs) {
+			dashboardBarCellsNextRefreshMs = nowMs + 1000L;
+			int v = 30;
+			try {
+				v = plugin.getConfig().getInt("racing.dashboard.bar-cells", 30);
+			} catch (Throwable ignored) {
+				v = 30;
+			}
+			dashboardBarCellsCached = Math.max(1, Math.min(80, v));
+		}
+		return dashboardBarCellsCached;
 	}
 
 	private void stopDashboardTask() {
@@ -770,9 +849,12 @@ public class RaceManager {
 	}
 
 	private void clearAllDashboards() {
-		for (UUID id : new java.util.HashSet<>(dashboardByPlayer.keySet())) {
+		dashboardRemoveTmp.clear();
+		dashboardRemoveTmp.addAll(dashboardByPlayer.keySet());
+		for (UUID id : dashboardRemoveTmp) {
 			removeDashboard(id);
 		}
+		dashboardRemoveTmp.clear();
 	}
 
 	private void removeDashboard(UUID playerId) {
@@ -792,6 +874,14 @@ public class RaceManager {
 		}
 		try {
 			dashboardLastBoatLocTime.remove(playerId);
+		} catch (Throwable ignored) {
+		}
+		try {
+			dashboardLastBps.remove(playerId);
+		} catch (Throwable ignored) {
+		}
+		try {
+			dashboardStationaryTicks.remove(playerId);
 		} catch (Throwable ignored) {
 		}
 		try {
@@ -849,24 +939,10 @@ public class RaceManager {
 		// Color tiering for the dashboard bar.
 		// Uses the same config keys as the scoreboard speed coloring.
 		double v = Double.isFinite(kmh) ? Math.max(0.0, kmh) : 0.0;
-
-		int yellow = 5;
-		int green = 20;
-		try {
-			yellow = plugin != null ? plugin.getConfig().getInt("scoreboard.speed.yellow_kmh", 5) : 5;
-		} catch (Throwable ignored) {
-		}
-		try {
-			green = plugin != null ? plugin.getConfig().getInt("scoreboard.speed.green_kmh", 20) : 20;
-		} catch (Throwable ignored) {
-		}
-
-		// Ensure ordering even if misconfigured.
-		if (green < yellow) {
-			int t = green;
-			green = yellow;
-			yellow = t;
-		}
+		long now = System.currentTimeMillis();
+		refreshDashboardThresholdsIfNeeded(now);
+		int yellow = dashboardYellowKmhCached;
+		int green = dashboardGreenKmhCached;
 
 		if (v < (double) yellow)
 			return "&c"; // red
@@ -875,11 +951,44 @@ public class RaceManager {
 		return "&a"; // green
 	}
 
-	private String buildDashboardBar(double kmh, int cells) {
-		// User preference: use ONLY the "▎" glyph for both filled and empty portions,
-		// and increase bar width for higher resolution.
+	private void ensureDashboardBarCache(int cells) {
+		int n = Math.max(1, Math.min(80, cells));
+		if (dashboardBarCacheCells == n && dashboardBarCacheRed != null && dashboardBarCacheYellow != null
+				&& dashboardBarCacheGreen != null)
+			return;
 
-		int n = Math.max(1, cells);
+		dashboardBarCacheCells = n;
+		dashboardBarCacheRed = new String[n + 1];
+		dashboardBarCacheYellow = new String[n + 1];
+		dashboardBarCacheGreen = new String[n + 1];
+
+		String all = "▎".repeat(n);
+		for (int i = 0; i <= n; i++) {
+			if (i <= 0) {
+				String s = "&8" + all;
+				dashboardBarCacheRed[i] = s;
+				dashboardBarCacheYellow[i] = s;
+				dashboardBarCacheGreen[i] = s;
+				continue;
+			}
+			if (i >= n) {
+				dashboardBarCacheRed[i] = "&c" + all;
+				dashboardBarCacheYellow[i] = "&e" + all;
+				dashboardBarCacheGreen[i] = "&a" + all;
+				continue;
+			}
+			String fill = "▎".repeat(i);
+			String rem = "▎".repeat(n - i);
+			dashboardBarCacheRed[i] = "&c" + fill + "&8" + rem;
+			dashboardBarCacheYellow[i] = "&e" + fill + "&8" + rem;
+			dashboardBarCacheGreen[i] = "&a" + fill + "&8" + rem;
+		}
+	}
+
+	private String buildDashboardBar(double kmh, int cells) {
+		// User preference: use ONLY the "▎" glyph for both filled and empty portions.
+		int n = Math.max(1, Math.min(80, cells));
+		ensureDashboardBarCache(n);
 
 		// Scale: keep roughly the same max range as before (≈ 0..80 km/h), but
 		// distribute across more cells for finer granularity.
@@ -892,17 +1001,13 @@ public class RaceManager {
 		int filled = (int) Math.round(v / kmhPerCell);
 		filled = Math.max(0, Math.min(n, filled));
 
-		String fillColor = dashboardSpeedColorLegacy(kmh);
-
-		StringBuilder sb = new StringBuilder(n + 16);
-		if (filled > 0) {
-			sb.append(fillColor).append("▎".repeat(filled));
-		}
-		int remaining = n - filled;
-		if (remaining > 0) {
-			sb.append("&8").append("▎".repeat(remaining));
-		}
-		return sb.toString();
+		long now = System.currentTimeMillis();
+		refreshDashboardThresholdsIfNeeded(now);
+		if (v < (double) dashboardYellowKmhCached)
+			return dashboardBarCacheRed[filled];
+		if (v < (double) dashboardGreenKmhCached)
+			return dashboardBarCacheYellow[filled];
+		return dashboardBarCacheGreen[filled];
 	}
 
 	private void updateDashboard(Player p, int periodTicks) {
@@ -944,13 +1049,29 @@ public class RaceManager {
 
 		// Compute speed from movement delta so it updates reliably even when entity
 		// velocity is flaky.
-		// Clamp extremely small dt (ms resolution) and ignore teleport-like jumps to
-		// prevent 1-tick spikes.
+		// Also: boat location sampling can occasionally return the same position for a
+		// tick (scheduler/physics ordering, chunk sync, etc.) which used to cause the
+		// dashboard to flash 0. We hold the last speed briefly, and only drop to 0 after
+		// a short stationary streak.
 		long nowMs = System.currentTimeMillis();
 		double bps = 0.0;
 		try {
 			org.bukkit.Location prev = dashboardLastBoatLoc.get(id);
 			Long prevT = dashboardLastBoatLocTime.get(id);
+			double last = 0.0;
+			try {
+				Double v = dashboardLastBps.get(id);
+				last = (v != null && Double.isFinite(v)) ? Math.max(0.0, v) : 0.0;
+			} catch (Throwable ignored2) {
+				last = 0.0;
+			}
+			int stillTicks = 0;
+			try {
+				Integer v = dashboardStationaryTicks.get(id);
+				stillTicks = (v != null ? Math.max(0, v.intValue()) : 0);
+			} catch (Throwable ignored2) {
+				stillTicks = 0;
+			}
 
 			if (prev != null && prevT != null
 					&& prev.getWorld() != null && bl.getWorld() != null
@@ -967,33 +1088,74 @@ public class RaceManager {
 						dist = 0.0;
 					}
 
+					// Very small deltas are often just "no new sample this tick".
+					final double eps = 1.0E-4;
+					final int holdTicks = 2;
+
 					// Ignore big jumps (teleports / chunk re-sync / countdown snaps).
 					// A reasonable bound: a few blocks per tick. Anything larger is not real
 					// movement.
 					double maxDist = 5.0 * (double) Math.max(1, periodTicks);
-					if (Double.isFinite(dist) && dist >= 0.0 && dist <= maxDist) {
+					if (!Double.isFinite(dist) || dist < 0.0) {
+						// Bad sample: keep last.
+						bps = last;
+					} else if (dist <= eps) {
+						stillTicks++;
+						if (stillTicks <= holdTicks && last > 0.0) {
+							// Hold last speed; do NOT advance the sample so the next real movement
+							// accumulates distance over a longer dt.
+							bps = last;
+						} else {
+							// Truly stopped (or held long enough): allow 0 and advance sample so we
+							// don't get a huge dt later.
+							bps = 0.0;
+							try {
+								dashboardLastBoatLoc.put(id, bl.clone());
+								dashboardLastBoatLocTime.put(id, nowMs);
+							} catch (Throwable ignored3) {
+							}
+						}
+					} else if (dist > maxDist) {
+						// Teleport-like jump: keep last speed for this tick, but advance the sample.
+						bps = last;
+						stillTicks = 0;
+						try {
+							dashboardLastBoatLoc.put(id, bl.clone());
+							dashboardLastBoatLocTime.put(id, nowMs);
+						} catch (Throwable ignored3) {
+						}
+					} else {
 						bps = Math.max(0.0, dist / (dtMs / 1000.0));
+						stillTicks = 0;
 					}
 				}
 			}
+
+			try {
+				dashboardStationaryTicks.put(id, stillTicks);
+			} catch (Throwable ignored2) {
+			}
+			try {
+				dashboardLastBps.put(id, bps);
+			} catch (Throwable ignored2) {
+			}
 		} catch (Throwable ignored) {
 		}
+		// Only advance the sample when we have a valid movement delta or when we
+		// intentionally accepted a stop/teleport case above.
 		try {
-			dashboardLastBoatLoc.put(id, bl.clone());
-			dashboardLastBoatLocTime.put(id, nowMs);
+			org.bukkit.Location prev = dashboardLastBoatLoc.get(id);
+			if (prev == null) {
+				dashboardLastBoatLoc.put(id, bl.clone());
+				dashboardLastBoatLocTime.put(id, nowMs);
+			}
 		} catch (Throwable ignored) {
 		}
 		double kmh = bps * 3.6;
 
 		// Futuristic 2-line dashboard with a thin + more accurate bar speedometer.
 		// Bar width is configurable; default is wider for better resolution.
-		int barCells = 30;
-		try {
-			barCells = plugin != null ? plugin.getConfig().getInt("racing.dashboard.bar-cells", 30) : 30;
-		} catch (Throwable ignored) {
-			barCells = 30;
-		}
-		barCells = Math.max(1, Math.min(80, barCells));
+		int barCells = getDashboardBarCellsCached(nowMs);
 		String bar = buildDashboardBar(kmh, barCells);
 
 		// User request: only 2 lines (speed number + bar)
@@ -1468,33 +1630,15 @@ public class RaceManager {
 	}
 
 	private NamespacedKey checkpointDisplayKey() {
-		try {
-			if (plugin == null)
-				return null;
-			return new NamespacedKey(plugin, "boatracing_checkpoint_display");
-		} catch (Throwable ignored) {
-			return null;
-		}
+		return keyCheckpointDisplay;
 	}
 
 	private NamespacedKey checkpointDisplayIndexKey() {
-		try {
-			if (plugin == null)
-				return null;
-			return new NamespacedKey(plugin, "boatracing_checkpoint_display_index");
-		} catch (Throwable ignored) {
-			return null;
-		}
+		return keyCheckpointDisplayIndex;
 	}
 
 	private NamespacedKey checkpointDisplayTrackKey() {
-		try {
-			if (plugin == null)
-				return null;
-			return new NamespacedKey(plugin, "boatracing_checkpoint_display_track");
-		} catch (Throwable ignored) {
-			return null;
-		}
+		return keyCheckpointDisplayTrack;
 	}
 
 	private String checkpointDisplayTrackId() {
@@ -4556,6 +4700,15 @@ public class RaceManager {
 			stopDashboardTask();
 		} catch (Throwable ignored) {
 		}
+		try {
+			dashboardDisabledPlayers.clear();
+		} catch (Throwable ignored) {
+		}
+		try {
+			dashboardActiveTmp.clear();
+			dashboardRemoveTmp.clear();
+		} catch (Throwable ignored) {
+		}
 
 		if (postFinishCleanupTask != null) {
 			try {
@@ -4896,13 +5049,7 @@ public class RaceManager {
 	}
 
 	private NamespacedKey spawnedBoatKey() {
-		try {
-			if (plugin == null)
-				return null;
-			return new NamespacedKey(plugin, "boatracing_spawned_boat");
-		} catch (Throwable ignored) {
-			return null;
-		}
+		return keySpawnedBoat;
 	}
 
 	private void markSpawnedBoat(Entity e) {
@@ -4990,7 +5137,12 @@ public class RaceManager {
 
 			if (teleportToSpawn) {
 				try {
-					org.bukkit.Location spawn = p.getWorld() != null ? p.getWorld().getSpawnLocation() : null;
+					org.bukkit.Location spawn = null;
+					if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br) {
+						spawn = br.resolveLobbySpawn(p);
+					} else if (p.getWorld() != null) {
+						spawn = p.getWorld().getSpawnLocation();
+					}
 					if (spawn != null)
 						p.teleport(spawn);
 					p.setFallDistance(0f);
@@ -5010,10 +5162,15 @@ public class RaceManager {
 					return;
 				}
 				boolean anyActive = false;
+				offlineRacerTmp.clear();
 				for (var e : participantPlayers.entrySet()) {
+					UUID id = e.getKey();
 					Player p = e.getValue();
-					if (p == null || !p.isOnline())
+					if (p == null || !p.isOnline()) {
+						if (id != null)
+							offlineRacerTmp.add(id);
 						continue;
+					}
 					ParticipantState st = participants.get(e.getKey());
 					if (st == null || st.finished)
 						continue;
@@ -5023,6 +5180,14 @@ public class RaceManager {
 						org.bukkit.Location loc = (veh != null ? veh.getLocation() : p.getLocation());
 						tickPlayer(p, null, loc);
 					} catch (Throwable ignored) {
+					}
+				}
+				if (!offlineRacerTmp.isEmpty()) {
+					for (UUID id : offlineRacerTmp) {
+						try {
+							handleRacerDisconnect(id);
+						} catch (Throwable ignored) {
+						}
 					}
 				}
 				if (!anyActive) {

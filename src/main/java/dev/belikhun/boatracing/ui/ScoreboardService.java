@@ -34,14 +34,20 @@ public class ScoreboardService {
 	private int updatePeriodTicks = 5;
 	private ScoreboardLibrary lib;
 	private volatile boolean debug = false;
+	private static final MiniMessage MINI = MiniMessage.miniMessage();
 
 	private static final class PlayerEntry {
 		Sidebar sidebar;
 		int lastLineCount;
 		String lastState;
-		org.bukkit.Location lastLoc;
+		boolean hasLastLoc;
+		java.util.UUID lastWorldId;
+		double lastX;
+		double lastY;
+		double lastZ;
 		long lastLocTimeMs;
 		double lastBps;
+		int lastPlayerEntityId;
 	}
 
 	private static final class TemplateUsage {
@@ -53,6 +59,30 @@ public class ScoreboardService {
 
 	private TemplateUsage usage = new TemplateUsage();
 	private final java.util.Map<java.util.UUID, PlayerEntry> players = new java.util.HashMap<>();
+	private final java.util.Set<java.util.UUID> onlineIdsTmp = new java.util.HashSet<>();
+	private final java.util.Map<RaceManager, TickContext> ctxByRaceTmp = new java.util.IdentityHashMap<>();
+	private final java.util.Map<RaceManager, TickContext> ctxCache = new java.util.WeakHashMap<>();
+	private boolean placeholderApiEnabled = false;
+	private long placeholderApiNextRefreshMs = 0L;
+	private final java.util.LinkedHashMap<java.util.UUID, String> nameCache = new java.util.LinkedHashMap<>(256, 0.75f, true) {
+		@Override
+		protected boolean removeEldestEntry(java.util.Map.Entry<java.util.UUID, String> eldest) {
+			return size() > 512;
+		}
+	};
+
+	private static final class SpeedColorCfg {
+		double yellow;
+		double green;
+		String low;
+		String mid;
+		String high;
+	}
+
+	private final SpeedColorCfg speedCfgBps = new SpeedColorCfg();
+	private final SpeedColorCfg speedCfgKmh = new SpeedColorCfg();
+	private final SpeedColorCfg speedCfgBph = new SpeedColorCfg();
+	private long speedCfgNextRefreshMs = 0L;
 
 	public ScoreboardService(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
@@ -116,14 +146,16 @@ public class ScoreboardService {
 			return;
 		}
 		log("tick: online=" + Bukkit.getOnlinePlayers().size() + ", libLoaded=" + (lib != null));
+		refreshPlaceholderApiEnabledIfNeeded(nowMs);
+		ctxByRaceTmp.clear();
 
-		java.util.Set<java.util.UUID> onlineIds = players.isEmpty() ? null : new java.util.HashSet<>();
-		if (onlineIds != null) {
+		java.util.Set<java.util.UUID> onlineIds = null;
+		if (!players.isEmpty()) {
+			onlineIdsTmp.clear();
 			for (Player p : Bukkit.getOnlinePlayers())
-				onlineIds.add(p.getUniqueId());
+				onlineIdsTmp.add(p.getUniqueId());
+			onlineIds = onlineIdsTmp;
 		}
-
-		java.util.Map<RaceManager, TickContext> ctxByRace = new java.util.HashMap<>();
 
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			try {
@@ -156,7 +188,16 @@ public class ScoreboardService {
 					clearActionBar(p);
 					continue;
 				}
-				TickContext ctx = ctxByRace.computeIfAbsent(rm, this::buildTickContext);
+				TickContext ctx = ctxByRaceTmp.get(rm);
+				if (ctx == null) {
+					ctx = ctxCache.get(rm);
+					if (ctx == null) {
+						ctx = new TickContext();
+						ctxCache.put(rm, ctx);
+					}
+					refreshTickContext(ctx, rm);
+					ctxByRaceTmp.put(rm, ctx);
+				}
 
 				if (usage != null && usage.needsSpeed) {
 					updateSpeedCache(p, nowMs);
@@ -169,6 +210,19 @@ public class ScoreboardService {
 		// Prevent memory growth when players disconnect/reconnect.
 		if (onlineIds != null)
 			pruneOfflineCaches(onlineIds);
+	}
+
+	private void refreshPlaceholderApiEnabledIfNeeded(long nowMs) {
+		if (nowMs < placeholderApiNextRefreshMs)
+			return;
+		placeholderApiNextRefreshMs = nowMs + 5000L;
+		boolean enabled = false;
+		try {
+			enabled = Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI");
+		} catch (Throwable ignored) {
+			enabled = false;
+		}
+		placeholderApiEnabled = enabled;
 	}
 
 	private static boolean isEventParticipant(RaceEvent e, java.util.UUID playerId) {
@@ -292,7 +346,7 @@ public class ScoreboardService {
 						continue;
 					if (ep.status == EventParticipantStatus.LEFT)
 						continue;
-					String n = (ep.nameSnapshot == null || ep.nameSnapshot.isBlank()) ? nameOf(id) : ep.nameSnapshot;
+					String n = (ep.nameSnapshot == null || ep.nameSnapshot.isBlank()) ? nameOfCached(id) : ep.nameSnapshot;
 					ranking.add(new EventRankEntry(id, n, ep.pointsTotal));
 				}
 			}
@@ -438,22 +492,36 @@ public class ScoreboardService {
 
 	private void pruneOfflineCaches(java.util.Set<java.util.UUID> onlineIds) {
 		final java.util.Set<java.util.UUID> online = (onlineIds == null) ? java.util.Set.of() : onlineIds;
-
-		for (java.util.UUID id : new java.util.HashSet<>(players.keySet())) {
+		java.util.Iterator<java.util.Map.Entry<java.util.UUID, PlayerEntry>> it = players.entrySet().iterator();
+		while (it.hasNext()) {
+			java.util.Map.Entry<java.util.UUID, PlayerEntry> ent = it.next();
+			java.util.UUID id = ent.getKey();
 			if (online.contains(id))
 				continue;
-			PlayerEntry e = players.remove(id);
+			PlayerEntry e = ent.getValue();
 			try {
 				if (e != null && e.sidebar != null)
 					e.sidebar.close();
 			} catch (Throwable ignored) {
 			}
+			it.remove();
 		}
 	}
 
-	private TickContext buildTickContext(RaceManager rm) {
-		TickContext ctx = new TickContext();
-		if (rm == null) return ctx;
+	private void refreshTickContext(TickContext ctx, RaceManager rm) {
+		if (ctx == null)
+			return;
+		if (rm == null) {
+			ctx.running = false;
+			ctx.registering = false;
+			ctx.countdown = false;
+			ctx.anyFinished = false;
+			ctx.allFinished = false;
+			ctx.liveOrder = java.util.List.of();
+			ctx.positionById.clear();
+			ctx.standings = null;
+			return;
+		}
 
 		boolean running = rm.isRunning();
 		boolean registering = rm.isRegistering();
@@ -464,14 +532,14 @@ public class ScoreboardService {
 
 		if (running) {
 			ctx.liveOrder = rm.getLiveOrder();
-			ctx.positionById = new java.util.HashMap<>();
-			for (int i = 0; i < ctx.liveOrder.size(); i++) ctx.positionById.put(ctx.liveOrder.get(i), i + 1);
+			ctx.positionById.clear();
+			for (int i = 0; i < ctx.liveOrder.size(); i++)
+				ctx.positionById.put(ctx.liveOrder.get(i), i + 1);
 		} else {
 			ctx.liveOrder = java.util.List.of();
-			ctx.positionById = java.util.Map.of();
+			ctx.positionById.clear();
 		}
 
-		// Avoid sorting standings unless we actually need to render them.
 		ctx.standings = null;
 		if (!registering) {
 			ctx.anyFinished = rm.hasAnyFinishedParticipant();
@@ -480,7 +548,6 @@ public class ScoreboardService {
 			ctx.anyFinished = false;
 			ctx.allFinished = false;
 		}
-		return ctx;
 	}
 
 	private String safeTrackName(UUID playerId) {
@@ -1005,7 +1072,7 @@ public class ScoreboardService {
 
 			for (RaceManager.ParticipantState s : standings) {
 				if (!s.finished) continue;
-				String name = nameOf(s.id);
+				String name = nameOfCached(s.id);
 				long t = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + s.penaltySeconds * 1000L;
 				long delta = Math.max(0L, t - best);
 				java.util.Map<String,String> ph = new java.util.HashMap<>();
@@ -1080,7 +1147,7 @@ public class ScoreboardService {
 				wroteFinishedHeader = true;
 			}
 
-			String name = nameOf(s.id);
+			String name = nameOfCached(s.id);
 			long t = Math.max(0L, s.finishTimeMillis - rm.getRaceStartMillis()) + s.penaltySeconds * 1000L;
 			java.util.Map<String,String> ph = new java.util.HashMap<>();
 			ph.put("racer_name", name);
@@ -1120,7 +1187,7 @@ public class ScoreboardService {
 				wroteUnfinishedHeader = true;
 			}
 
-			String name = nameOf(id);
+			String name = nameOfCached(id);
 			double lapProgressPct = rm.getLapProgressRatio(id) * 100.0;
 			double trackProgressPct;
 			double lapRatio = Math.max(0.0, Math.min(1.0, rm.getLapProgressRatio(id)));
@@ -1150,13 +1217,20 @@ public class ScoreboardService {
 		if (sb == null) {
 			sb = lib.createSidebar();
 			e.sidebar = sb;
+			e.lastPlayerEntityId = p.getEntityId();
 			try { sb.addPlayer(p); } catch (Throwable ignored) {}
 			log("Created sidebar for " + p.getName());
 		}
-
 		// Edge case: player disconnects/reconnects while we keep the Sidebar cached by UUID.
 		// ScoreboardLibrary requires adding the (new) Player instance again after reconnect.
-		try { sb.addPlayer(p); } catch (Throwable ignored) {}
+		try {
+			int eid = p.getEntityId();
+			if (e.lastPlayerEntityId != eid) {
+				e.lastPlayerEntityId = eid;
+				sb.addPlayer(p);
+			}
+		} catch (Throwable ignored) {
+		}
 		return sb;
 	}
 
@@ -1356,59 +1430,108 @@ public class ScoreboardService {
 		boolean anyFinished;
 		boolean allFinished;
 		java.util.List<java.util.UUID> liveOrder = java.util.List.of();
-		java.util.Map<java.util.UUID, Integer> positionById = java.util.Map.of();
-		java.util.List<RaceManager.ParticipantState> standings = java.util.List.of();
+		final java.util.HashMap<java.util.UUID, Integer> positionById = new java.util.HashMap<>();
+		java.util.List<RaceManager.ParticipantState> standings;
 	}
 
 	private String resolveSpeedColorByUnit(double bps, String unit) {
-		double yellow;
-		double green;
+		refreshSpeedCfgIfNeeded(System.currentTimeMillis());
+		SpeedColorCfg cfg;
+		double v;
 		if ("bps".equals(unit)) {
+			cfg = speedCfgBps;
+			v = bps;
+		} else if ("kmh".equals(unit)) {
+			cfg = speedCfgKmh;
+			v = bps * 3.6;
+		} else {
+			cfg = speedCfgBph;
+			v = bps * 3600.0;
+		}
+		if (cfg == null)
+			return "red";
+		if (v < cfg.yellow)
+			return cfg.low;
+		if (v < cfg.green)
+			return cfg.mid;
+		return cfg.high;
+	}
+
+	private void refreshSpeedCfgIfNeeded(long nowMs) {
+		if (nowMs < speedCfgNextRefreshMs)
+			return;
+		speedCfgNextRefreshMs = nowMs + 1000L;
+
+		// bps
+		{
 			int y = cfgInt("scoreboard.speed.yellow_bps", -1);
 			int g = cfgInt("scoreboard.speed.green_bps", -1);
-			if (y >= 0 && g >= 0) { yellow = y; green = g; }
-			else {
+			double yellow;
+			double green;
+			if (y >= 0 && g >= 0) {
+				yellow = y;
+				green = g;
+			} else {
 				int yb = cfgInt("scoreboard.speed.yellow_bph", 5000);
 				int gb = cfgInt("scoreboard.speed.green_bph", 20000);
-				yellow = yb / 3600.0; green = gb / 3600.0;
+				yellow = yb / 3600.0;
+				green = gb / 3600.0;
 			}
-			double v = bps;
-			if (green < yellow) { double t = green; green = yellow; yellow = t; }
-			String low = cfgString("scoreboard.speed.colors.bps.low", cfgString("scoreboard.speed.colors.low", "red"));
-			String mid = cfgString("scoreboard.speed.colors.bps.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
-			String high = cfgString("scoreboard.speed.colors.bps.high", cfgString("scoreboard.speed.colors.high", "green"));
-			if (v < yellow) return low;
-			if (v < green) return mid;
-			return high;
-		} else if ("kmh".equals(unit)) { // km/h
+			if (green < yellow) {
+				double t = green;
+				green = yellow;
+				yellow = t;
+			}
+			speedCfgBps.yellow = yellow;
+			speedCfgBps.green = green;
+			speedCfgBps.low = cfgString("scoreboard.speed.colors.bps.low", cfgString("scoreboard.speed.colors.low", "red"));
+			speedCfgBps.mid = cfgString("scoreboard.speed.colors.bps.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
+			speedCfgBps.high = cfgString("scoreboard.speed.colors.bps.high", cfgString("scoreboard.speed.colors.high", "green"));
+		}
+
+		// km/h
+		{
 			int y = cfgInt("scoreboard.speed.yellow_kmh", -1);
 			int g = cfgInt("scoreboard.speed.green_kmh", -1);
-			if (y >= 0 && g >= 0) { yellow = y; green = g; }
-			else {
+			double yellow;
+			double green;
+			if (y >= 0 && g >= 0) {
+				yellow = y;
+				green = g;
+			} else {
 				int yb = cfgInt("scoreboard.speed.yellow_bph", 5000);
 				int gb = cfgInt("scoreboard.speed.green_bph", 20000);
-				yellow = yb / 1000.0; green = gb / 1000.0;
+				yellow = yb / 1000.0;
+				green = gb / 1000.0;
 			}
-			double v = bps * 3.6;
-			if (green < yellow) { double t = green; green = yellow; yellow = t; }
-			String low = cfgString("scoreboard.speed.colors.kmh.low", cfgString("scoreboard.speed.colors.low", "red"));
-			String mid = cfgString("scoreboard.speed.colors.kmh.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
-			String high = cfgString("scoreboard.speed.colors.kmh.high", cfgString("scoreboard.speed.colors.high", "green"));
-			if (v < yellow) return low;
-			if (v < green) return mid;
-			return high;
-		} else { // bph
+			if (green < yellow) {
+				double t = green;
+				green = yellow;
+				yellow = t;
+			}
+			speedCfgKmh.yellow = yellow;
+			speedCfgKmh.green = green;
+			speedCfgKmh.low = cfgString("scoreboard.speed.colors.kmh.low", cfgString("scoreboard.speed.colors.low", "red"));
+			speedCfgKmh.mid = cfgString("scoreboard.speed.colors.kmh.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
+			speedCfgKmh.high = cfgString("scoreboard.speed.colors.kmh.high", cfgString("scoreboard.speed.colors.high", "green"));
+		}
+
+		// bph
+		{
 			int yb = cfgInt("scoreboard.speed.yellow_bph", 5000);
 			int gb = cfgInt("scoreboard.speed.green_bph", 20000);
-			double v = bps * 3600.0;
-			yellow = yb; green = gb;
-			if (green < yellow) { double t = green; green = yellow; yellow = t; }
-			String low = cfgString("scoreboard.speed.colors.bph.low", cfgString("scoreboard.speed.colors.low", "red"));
-			String mid = cfgString("scoreboard.speed.colors.bph.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
-			String high = cfgString("scoreboard.speed.colors.bph.high", cfgString("scoreboard.speed.colors.high", "green"));
-			if (v < yellow) return low;
-			if (v < green) return mid;
-			return high;
+			double yellow = yb;
+			double green = gb;
+			if (green < yellow) {
+				double t = green;
+				green = yellow;
+				yellow = t;
+			}
+			speedCfgBph.yellow = yellow;
+			speedCfgBph.green = green;
+			speedCfgBph.low = cfgString("scoreboard.speed.colors.bph.low", cfgString("scoreboard.speed.colors.low", "red"));
+			speedCfgBph.mid = cfgString("scoreboard.speed.colors.bph.mid", cfgString("scoreboard.speed.colors.mid", "yellow"));
+			speedCfgBph.high = cfgString("scoreboard.speed.colors.bph.high", cfgString("scoreboard.speed.colors.high", "green"));
 		}
 	}
 
@@ -1438,7 +1561,7 @@ public class ScoreboardService {
 		String expanded = expandPlaceholders(p, raw, placeholders);
 		if (expanded == null) return Component.empty();
 		try {
-			return MiniMessage.miniMessage().deserialize(expanded);
+			return MINI.deserialize(expanded);
 		} catch (Throwable ignored) {
 			return Text.c(expanded);
 		}
@@ -1457,7 +1580,7 @@ public class ScoreboardService {
 			}
 		}
 		// PlaceholderAPI if present
-		if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+		if (placeholderApiEnabled) {
 			try {
 				s = me.clip.placeholderapi.PlaceholderAPI.setPlaceholders(p, s);
 			} catch (Throwable ignored) {}
@@ -1467,7 +1590,7 @@ public class ScoreboardService {
 
 	private Component deserializeMini(String expanded) {
 		if (expanded == null) return null;
-		try { return MiniMessage.miniMessage().deserialize(expanded); } catch (Throwable ignored) { return Text.c(expanded); }
+		try { return MINI.deserialize(expanded); } catch (Throwable ignored) { return Text.c(expanded); }
 	}
 
 	private static boolean isBoatLike(Entity e) {
@@ -1544,7 +1667,7 @@ public class ScoreboardService {
 		ph.put(pfx + "_position", colorizePlacement(placement));
 		ph.put(pfx + "_position_tag", colorizePlacementTag(placement));
 
-		String name = nameOf(id);
+		String name = nameOfCached(id);
 		ph.put(pfx + "_racer_name", name);
 		ph.put(pfx + "_racer_display", racerDisplay(id, name));
 
@@ -1622,11 +1745,26 @@ public class ScoreboardService {
 
 	private static boolean empty(String s) { return s == null || s.isEmpty(); }
 
-	private static String nameOf(UUID id) {
-		OfflinePlayer op = Bukkit.getOfflinePlayer(id);
-		if (op != null && op.getName() != null) return op.getName();
-		String s = id.toString();
-		return s.substring(0, 8);
+	private String nameOfCached(UUID id) {
+		if (id == null)
+			return "-";
+		String cached = nameCache.get(id);
+		if (cached != null)
+			return cached;
+		String name = null;
+		try {
+			OfflinePlayer op = Bukkit.getOfflinePlayer(id);
+			if (op != null)
+				name = op.getName();
+		} catch (Throwable ignored) {
+			name = null;
+		}
+		if (name == null || name.isBlank()) {
+			String s = id.toString();
+			name = s.substring(0, 8);
+		}
+		nameCache.put(id, name);
+		return name;
 	}
 
 	private void setState(Player p, String state) {
@@ -1662,19 +1800,27 @@ public class ScoreboardService {
 		if (now == null)
 			now = p.getLocation();
 
-		org.bukkit.Location prev = e.lastLoc;
 		long prevT = e.lastLocTimeMs;
 		double bps = 0.0;
+		java.util.UUID worldId = null;
+		try {
+			if (now.getWorld() != null)
+				worldId = now.getWorld().getUID();
+		} catch (Throwable ignored) {
+			worldId = null;
+		}
 
-		if (prev != null && prevT > 0L && prev.getWorld() != null && now.getWorld() != null
-				&& prev.getWorld().equals(now.getWorld())) {
+		if (e.hasLastLoc && prevT > 0L && worldId != null && e.lastWorldId != null && e.lastWorldId.equals(worldId)) {
 			long dtMsRaw = nowMs - prevT;
 			if (dtMsRaw > 0L) {
 				long expectedMs = Math.max(1L, (long) Math.max(1, updatePeriodTicks) * 50L);
 				long dtMs = Math.max(dtMsRaw, expectedMs);
 				double dist;
 				try {
-					dist = now.distance(prev);
+					double dx = now.getX() - e.lastX;
+					double dy = now.getY() - e.lastY;
+					double dz = now.getZ() - e.lastZ;
+					dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 				} catch (Throwable ignored) {
 					dist = 0.0;
 				}
@@ -1690,10 +1836,16 @@ public class ScoreboardService {
 		}
 
 		e.lastBps = bps;
+		e.hasLastLoc = true;
+		e.lastWorldId = worldId;
 		try {
-			e.lastLoc = now.clone();
+			e.lastX = now.getX();
+			e.lastY = now.getY();
+			e.lastZ = now.getZ();
 		} catch (Throwable ignored) {
-			e.lastLoc = now;
+			e.lastX = 0.0;
+			e.lastY = 0.0;
+			e.lastZ = 0.0;
 		}
 		e.lastLocTimeMs = nowMs;
 	}

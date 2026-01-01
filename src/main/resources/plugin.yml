@@ -2,7 +2,7 @@ name: BoatRacing
 main: dev.belikhun.boatracing.BoatRacingPlugin
 version: ${version}
 api-version: '1.21'
-authors: [Jaie55]
+authors: [Belikhun]
 description: Plugin đua thuyền băng phong cách F1 cho Bukkit/Spigot với giao diện đơn giản, giống vanilla. Tương thích Paper/Purpur. Cấu hình đường đua bằng công cụ chọn BoatRacing tích hợp, chạy các cuộc đua tính thời gian với điểm kiểm tra và trình hướng dẫn thiết lập.
 website: https://modrinth.com/plugin/boatracing
 softdepend: [MapEngine, FancyNpcs]
@@ -12,12 +12,21 @@ commands:
     usage: /<command> profile|race|setup|admin|reload|version|scoreboard
     aliases: [br, race]
     permission: boatracing.use
+  event:
+    description: Lệnh sự kiện (viết tắt của /boatracing event)
+    usage: /<command> help|status|join|leave
+    permission: boatracing.use
+  spawn:
+    description: Dịch chuyển về sảnh (spawn)
+    usage: /<command>
+    permission: boatracing.spawn
 permissions:
   boatracing.*:
     description: Cấp TẤT CẢ quyền của BoatRacing
     default: false
     children:
       boatracing.use: true
+      boatracing.spawn: true
       boatracing.version: true
       boatracing.reload: true
       boatracing.setup: true
@@ -34,6 +43,7 @@ permissions:
     description: Quyền meta cho việc dùng cơ bản BoatRacing
     default: true
     children:
+      boatracing.spawn: true
       boatracing.version: true
       boatracing.event.join: true
       boatracing.event.leave: true
@@ -41,6 +51,9 @@ permissions:
       boatracing.race.join: true
       boatracing.race.leave: true
       boatracing.race.status: true
+  boatracing.spawn:
+    description: Dùng /spawn để về sảnh
+    default: true
   boatracing.version:
     description: Dùng /boatracing version
     default: true

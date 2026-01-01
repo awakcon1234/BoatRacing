@@ -26,6 +26,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private dev.belikhun.boatracing.ui.EventRegistrationGUI eventRegistrationGUI;
 	private dev.belikhun.boatracing.ui.HotbarService hotbarService;
 	private dev.belikhun.boatracing.ui.ScoreboardService scoreboardService;
+	private dev.belikhun.boatracing.ui.SpawnConfirmGUI spawnConfirmGUI;
 	private String prefix;
 	private TrackConfig trackConfig;
 	private TrackLibrary trackLibrary;
@@ -83,6 +84,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 
 	public dev.belikhun.boatracing.ui.ScoreboardService getScoreboardService() {
 		return scoreboardService;
+	}
+
+	public dev.belikhun.boatracing.ui.SpawnConfirmGUI getSpawnConfirmGUI() {
+		return spawnConfirmGUI;
 	}
 
 	public dev.belikhun.boatracing.race.RaceService getRaceService() {
@@ -150,6 +155,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		this.tracksGUI = new dev.belikhun.boatracing.ui.AdminTracksGUI(this, trackLibrary);
 		this.lobbyBoardService = new dev.belikhun.boatracing.integrations.mapengine.LobbyBoardService(this);
 		this.cinematicCameraService = new dev.belikhun.boatracing.cinematic.CinematicCameraService(this);
+		this.spawnConfirmGUI = new dev.belikhun.boatracing.ui.SpawnConfirmGUI(this);
 		// Team GUI removed
 		Bukkit.getPluginManager().registerEvents(adminGUI, this);
 		Bukkit.getPluginManager().registerEvents(tracksGUI, this);
@@ -158,6 +164,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 		Bukkit.getPluginManager().registerEvents(profileGUI, this);
 		Bukkit.getPluginManager().registerEvents(trackSelectGUI, this);
 		Bukkit.getPluginManager().registerEvents(eventRegistrationGUI, this);
+		Bukkit.getPluginManager().registerEvents(spawnConfirmGUI, this);
 		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.event.EventRegistrationNpcListener(this), this);
 		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.ui.HotbarListener(this, hotbarService),
 				this);
@@ -471,7 +478,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 										p.leaveVehicle();
 								} catch (Throwable ignored) {
 								}
-								org.bukkit.Location spawn = (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null);
+								org.bukkit.Location spawn = BoatRacingPlugin.this.resolveLobbySpawn(p);
 								if (spawn != null)
 									p.teleport(spawn);
 								try {
@@ -502,6 +509,15 @@ public class BoatRacingPlugin extends JavaPlugin {
 			BoatRacingCommandHandler handler = new BoatRacingCommandHandler(this);
 			getCommand("boatracing").setExecutor(handler);
 			getCommand("boatracing").setTabCompleter(handler);
+			if (getCommand("event") != null) {
+				getCommand("event").setExecutor(handler);
+				getCommand("event").setTabCompleter(handler);
+			}
+		}
+
+		if (getCommand("spawn") != null) {
+			SpawnCommand handler = new SpawnCommand(this);
+			getCommand("spawn").setExecutor(handler);
 		}
 
 		// Start event service (single-active-event orchestrator)
@@ -601,6 +617,71 @@ public class BoatRacingPlugin extends JavaPlugin {
 
 	public void reloadPrefixFromConfig() {
 		this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
+	}
+
+	// --- Lobby spawn (plugin-managed) ---
+	/**
+	 * Resolve the lobby spawn location.
+	 * If configured in config.yml (racing.lobby.spawn.*), that location is used.
+	 * Otherwise falls back to the player's world spawn (or first loaded world).
+	 */
+	public org.bukkit.Location resolveLobbySpawn(org.bukkit.entity.Player p) {
+		org.bukkit.Location cfg = getLobbySpawnFromConfig();
+		if (cfg != null && cfg.getWorld() != null)
+			return cfg;
+		try {
+			if (p != null && p.getWorld() != null)
+				return p.getWorld().getSpawnLocation();
+		} catch (Throwable ignored) {
+		}
+		try {
+			org.bukkit.World w = org.bukkit.Bukkit.getWorlds().isEmpty() ? null : org.bukkit.Bukkit.getWorlds().get(0);
+			return w != null ? w.getSpawnLocation() : null;
+		} catch (Throwable ignored) {
+			return null;
+		}
+	}
+
+	public boolean isLobbySpawnConfigured() {
+		try {
+			return getConfig().getBoolean("racing.lobby.spawn.enabled", false);
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	public void setLobbySpawn(org.bukkit.Location loc) {
+		if (loc == null || loc.getWorld() == null)
+			return;
+		getConfig().set("racing.lobby.spawn.enabled", true);
+		getConfig().set("racing.lobby.spawn.world", loc.getWorld().getName());
+		getConfig().set("racing.lobby.spawn.x", loc.getX());
+		getConfig().set("racing.lobby.spawn.y", loc.getY());
+		getConfig().set("racing.lobby.spawn.z", loc.getZ());
+		getConfig().set("racing.lobby.spawn.yaw", (double) loc.getYaw());
+		getConfig().set("racing.lobby.spawn.pitch", (double) loc.getPitch());
+		saveConfig();
+	}
+
+	private org.bukkit.Location getLobbySpawnFromConfig() {
+		try {
+			if (!getConfig().getBoolean("racing.lobby.spawn.enabled", false))
+				return null;
+			String wn = getConfig().getString("racing.lobby.spawn.world", "");
+			if (wn == null || wn.isBlank())
+				return null;
+			org.bukkit.World w = org.bukkit.Bukkit.getWorld(wn);
+			if (w == null)
+				return null;
+			double x = getConfig().getDouble("racing.lobby.spawn.x", w.getSpawnLocation().getX());
+			double y = getConfig().getDouble("racing.lobby.spawn.y", w.getSpawnLocation().getY());
+			double z = getConfig().getDouble("racing.lobby.spawn.z", w.getSpawnLocation().getZ());
+			float yaw = (float) getConfig().getDouble("racing.lobby.spawn.yaw", (double) w.getSpawnLocation().getYaw());
+			float pitch = (float) getConfig().getDouble("racing.lobby.spawn.pitch", (double) w.getSpawnLocation().getPitch());
+			return new org.bukkit.Location(w, x, y, z, yaw, pitch);
+		} catch (Throwable ignored) {
+			return null;
+		}
 	}
 
 }

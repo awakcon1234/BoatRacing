@@ -31,8 +31,20 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 		}
 
 		Player p = (Player) sender;
-		if (!command.getName().equalsIgnoreCase("boatracing"))
+		boolean isRoot = command.getName().equalsIgnoreCase("boatracing");
+		boolean isEventShortcut = command.getName().equalsIgnoreCase("event");
+		if (!isRoot && !isEventShortcut)
 			return true;
+
+		// /event ... is shorthand for /boatracing event ...
+		if (isEventShortcut) {
+			String[] shifted = new String[(args != null ? args.length : 0) + 1];
+			shifted[0] = "event";
+			if (args != null && args.length > 0)
+				System.arraycopy(args, 0, shifted, 1, args.length);
+			args = shifted;
+			label = "boatracing";
+		}
 
 		if (args.length == 0) {
 			Text.msg(p, "&cCách dùng: /" + label + " profile|race|setup|event|reload|version|debug");
@@ -607,6 +619,7 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				Text.tell(p, "&7 - &f/" + label + " setup pos2 &7(Đặt góc B = vị trí hiện tại)");
 				Text.tell(p, "&7 - &f/" + label + " setup setbounds &7(Đặt vùng bao đường đua từ selection hiện tại)");
 				Text.tell(p, "&7 - &f/" + label + " setup setwaitspawn &7(Đặt điểm spawn chờ từ vị trí hiện tại)");
+				Text.tell(p, "&7 - &f/" + label + " setup setlobbyspawn &7(Đặt spawn sảnh (lobby) từ vị trí hiện tại)");
 				Text.tell(p, "&7 - &f/" + label + " setup setfinish &7(Sử dụng selection của bạn để đặt vùng vạch đích)");
 				Text.tell(p,
 						"&7 - &f/" + label + " setup addcheckpoint &7(Thêm checkpoint từ selection; có thể thêm nhiều. Thứ tự quan trọng)");
@@ -667,6 +680,14 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 					SetupWizard sw = plugin.getSetupWizard();
 					if (sw != null)
 						sw.afterAction(p);
+					return true;
+				}
+				case "setlobbyspawn" -> {
+					org.bukkit.Location loc = p.getLocation();
+					plugin.setLobbySpawn(loc);
+					Text.msg(p, "&aĐã đặt spawn sảnh tại &f" + Text.fmtPos(loc)
+							+ " &7(yaw=" + Math.round(loc.getYaw()) + ", pitch=" + Math.round(loc.getPitch()) + ")");
+					p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.9f, 1.2f);
 					return true;
 				}
 				case "wand" -> {
@@ -944,8 +965,19 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 
 	@Override
 	public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-		if (!command.getName().equalsIgnoreCase("boatracing"))
+		boolean isRoot = command.getName().equalsIgnoreCase("boatracing");
+		boolean isEventShortcut = command.getName().equalsIgnoreCase("event");
+		if (!isRoot && !isEventShortcut)
 			return Collections.emptyList();
+
+		// /event ... is shorthand for /boatracing event ...
+		if (isEventShortcut) {
+			String[] shifted = new String[(args != null ? args.length : 0) + 1];
+			shifted[0] = "event";
+			if (args != null && args.length > 0)
+				System.arraycopy(args, 0, shifted, 1, args.length);
+			args = shifted;
+		}
 
 		// Root suggestions (handle no-arg and first arg prefix)
 		if (args.length == 0 || (args.length == 1 && (args[0] == null || args[0].isEmpty()))) {
@@ -1193,7 +1225,8 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				return Collections.emptyList();
 			if (args.length == 2)
 				return List.of("help", "addstart", "clearstarts", "pos1", "pos2", "setbounds", "setwaitspawn",
-						"setfinish", "addcheckpoint", "clearcheckpoints", "addlight", "clearlights", "setpos", "clearpos",
+						"setlobbyspawn", "setfinish", "addcheckpoint", "clearcheckpoints", "addlight", "clearlights",
+						"setpos", "clearpos",
 						"show", "selinfo", "wand", "wizard");
 			if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
 				// Suggest player names (online + known offline)

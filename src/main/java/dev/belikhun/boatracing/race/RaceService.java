@@ -198,6 +198,46 @@ public class RaceService {
 	}
 
 	/**
+	 * Abandon the current race immediately for an online player.
+	 *
+	 * Unlike {@link #handleDisconnect(UUID)}, this does not mark the player as
+	 * pending lobby teleport; it is intended for interactive actions like /spawn.
+	 */
+	public void abandonNow(org.bukkit.entity.Player p, boolean teleportToLobby) {
+		if (p == null)
+			return;
+		UUID id = p.getUniqueId();
+		if (id == null)
+			return;
+		RaceManager rm;
+		synchronized (this) {
+			rm = findRaceFor(id);
+			if (rm != null) {
+				try {
+					rm.handleRacerDisconnect(id);
+				} catch (Throwable ignored) {
+				}
+				trackByPlayer.remove(id);
+				pendingLobbyTeleport.remove(id);
+			}
+		}
+		if (!teleportToLobby || plugin == null)
+			return;
+		try {
+			if (p.isInsideVehicle())
+				p.leaveVehicle();
+		} catch (Throwable ignored) {
+		}
+		try {
+			org.bukkit.Location spawn = plugin.resolveLobbySpawn(p);
+			if (spawn != null)
+				p.teleport(spawn);
+			p.setFallDistance(0f);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	/**
 	 * If a player disconnected while in a race/intro, they can't be teleported immediately.
 	 * On next join, force them back to their world spawn (lobby).
 	 */
@@ -245,7 +285,8 @@ public class RaceService {
 							p.leaveVehicle();
 					} catch (Throwable ignored) {
 					}
-					org.bukkit.Location spawn = (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null);
+					org.bukkit.Location spawn = (plugin != null ? plugin.resolveLobbySpawn(p)
+							: (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null));
 					if (spawn != null)
 						p.teleport(spawn);
 					p.setFallDistance(0f);
@@ -289,7 +330,8 @@ public class RaceService {
 		} catch (Throwable ignored) {}
 
 		try {
-			org.bukkit.Location spawn = (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null);
+			org.bukkit.Location spawn = (plugin != null ? plugin.resolveLobbySpawn(p)
+					: (p.getWorld() != null ? p.getWorld().getSpawnLocation() : null));
 			if (spawn != null) p.teleport(spawn);
 			p.setFallDistance(0f);
 		} catch (Throwable ignored) {}

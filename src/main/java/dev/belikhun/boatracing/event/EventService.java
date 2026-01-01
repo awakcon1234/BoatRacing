@@ -1136,6 +1136,16 @@ public class EventService {
 	private org.bukkit.Location resolveEventLobbySpawn() {
 		if (plugin == null)
 			return null;
+
+		// Prefer plugin-managed lobby spawn if configured.
+		try {
+			if (plugin.isLobbySpawnConfigured()) {
+				org.bukkit.Location cfg = plugin.resolveLobbySpawn(null);
+				if (cfg != null && cfg.getWorld() != null)
+					return cfg;
+			}
+		} catch (Throwable ignored) {
+		}
 		org.bukkit.World w = null;
 
 		// Prefer the registration NPC world if configured.

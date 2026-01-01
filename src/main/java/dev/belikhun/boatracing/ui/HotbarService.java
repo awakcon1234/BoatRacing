@@ -152,7 +152,11 @@ public class HotbarService {
 					if (!ok) {
 						// Still ensure they're in a clean state.
 						try {
-							if (p.getWorld() != null) p.teleport(p.getWorld().getSpawnLocation());
+							org.bukkit.Location spawn = plugin != null ? plugin.resolveLobbySpawn(p) : null;
+							if (spawn == null && p.getWorld() != null)
+								spawn = p.getWorld().getSpawnLocation();
+							if (spawn != null)
+								p.teleport(spawn);
 						} catch (Throwable ignored2) {}
 					}
 				} catch (Throwable ignored) {}
