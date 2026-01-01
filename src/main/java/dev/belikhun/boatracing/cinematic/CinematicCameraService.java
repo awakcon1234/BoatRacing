@@ -33,6 +33,7 @@ public class CinematicCameraService {
 	private static final class Running {
 		final String id;
 		final Set<UUID> players;
+		final Set<UUID> allPlayers;
 		final Map<UUID, GameMode> previousGameModes = new HashMap<>();
 		final CinematicSequence sequence;
 		final Runnable onComplete;
@@ -42,6 +43,7 @@ public class CinematicCameraService {
 		Running(String id, Set<UUID> players, CinematicSequence sequence, Runnable onComplete) {
 			this.id = id;
 			this.players = players;
+			this.allPlayers = new HashSet<>(players);
 			this.sequence = sequence;
 			this.onComplete = onComplete;
 			this.tick = 0;
@@ -51,6 +53,8 @@ public class CinematicCameraService {
 	private final Map<String, Running> runningById = new HashMap<>();
 	private final Map<UUID, String> idByPlayer = new HashMap<>();
 	private final Map<UUID, GameMode> pendingRestoreGameModes = new HashMap<>();
+	// viewerId -> set of targetIds that must be shown again once both are online.
+	private final Map<UUID, Set<UUID>> pendingRestoreVisibility = new HashMap<>();
 
 	public CinematicCameraService(Plugin plugin) {
 		this.plugin = plugin;
@@ -110,6 +114,9 @@ public class CinematicCameraService {
 			}
 		}
 
+		// Prevent spectator players from seeing each other's heads during cinematic.
+		applyMutualHide(online);
+
 		runningById.put(id, r);
 		for (UUID pid : ids) {
 			idByPlayer.put(pid, id);
@@ -123,6 +130,48 @@ public class CinematicCameraService {
 		}, 0L, 1L);
 
 		return true;
+	}
+
+	private void applyMutualHide(List<Player> players) {
+		if (players == null || players.size() < 2)
+			return;
+		for (Player viewer : players) {
+			if (viewer == null || !viewer.isOnline())
+				continue;
+			for (Player target : players) {
+				if (target == null || !target.isOnline())
+					continue;
+				if (viewer.getUniqueId().equals(target.getUniqueId()))
+					continue;
+				try {
+					viewer.hidePlayer(plugin, target);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
+	private void restoreVisibilityBetween(Set<UUID> viewers, Set<UUID> targets) {
+		if (viewers == null || targets == null || viewers.isEmpty() || targets.isEmpty())
+			return;
+		for (UUID viewerId : new HashSet<>(viewers)) {
+			Player viewer = Bukkit.getPlayer(viewerId);
+			if (viewer == null || !viewer.isOnline())
+				continue;
+			for (UUID targetId : new HashSet<>(targets)) {
+				if (targetId == null || targetId.equals(viewerId))
+					continue;
+				Player target = Bukkit.getPlayer(targetId);
+				if (target == null || !target.isOnline()) {
+					pendingRestoreVisibility.computeIfAbsent(viewerId, k -> new HashSet<>()).add(targetId);
+					continue;
+				}
+				try {
+					viewer.showPlayer(plugin, target);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
 	}
 
 	private static float wrapAngleDeg(float a) {
@@ -329,6 +378,11 @@ public class CinematicCameraService {
 			return;
 		idByPlayer.remove(playerId);
 
+		// When a player leaves the cinematic early, restore their own visibility of the
+		// remaining cinematic players. Keep them hidden from the remaining spectators
+		// until the cinematic ends, to avoid visible heads at the shared camera.
+		restoreVisibilityBetween(Set.of(playerId), r.players);
+
 		if (restoreMode) {
 			GameMode gm = r.previousGameModes.remove(playerId);
 			Player p = Bukkit.getPlayer(playerId);
@@ -367,10 +421,63 @@ public class CinematicCameraService {
 		}
 	}
 
+	/**
+	 * Restore pending visibility pairs that could not be restored because one side
+	 * was offline when the cinematic stopped.
+	 */
+	public synchronized void restorePendingVisibility(Player player) {
+		if (player == null)
+			return;
+		UUID pid = player.getUniqueId();
+		if (pid == null)
+			return;
+
+		// If this player is a viewer with pending targets, try to show them now.
+		Set<UUID> targets = pendingRestoreVisibility.get(pid);
+		if (targets != null && !targets.isEmpty()) {
+			for (UUID tid : new HashSet<>(targets)) {
+				Player t = Bukkit.getPlayer(tid);
+				if (t == null || !t.isOnline())
+					continue;
+				try {
+					player.showPlayer(plugin, t);
+					targets.remove(tid);
+				} catch (Throwable ignored) {
+				}
+			}
+			if (targets.isEmpty())
+				pendingRestoreVisibility.remove(pid);
+		}
+
+		// If this player is a target for other viewers, restore those too.
+		for (Map.Entry<UUID, Set<UUID>> e : new HashMap<>(pendingRestoreVisibility).entrySet()) {
+			UUID viewerId = e.getKey();
+			Set<UUID> ts = e.getValue();
+			if (viewerId == null || ts == null || ts.isEmpty())
+				continue;
+			if (!ts.contains(pid))
+				continue;
+			Player viewer = Bukkit.getPlayer(viewerId);
+			if (viewer == null || !viewer.isOnline())
+				continue;
+			try {
+				viewer.showPlayer(plugin, player);
+				ts.remove(pid);
+			} catch (Throwable ignored) {
+			}
+			if (ts.isEmpty())
+				pendingRestoreVisibility.remove(viewerId);
+		}
+	}
+
 	private synchronized void stopSequenceInternal(String id, boolean restoreMode, boolean finished) {
 		Running r = runningById.remove(id);
 		if (r == null)
 			return;
+
+		// Always attempt to restore visibility between all cinematic participants.
+		// Some targets may be offline; those are restored on next join.
+		restoreVisibilityBetween(r.allPlayers, r.allPlayers);
 
 		// Optional: tiny UX cue when a cinematic ends naturally.
 		if (finished) {

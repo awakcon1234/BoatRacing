@@ -1458,6 +1458,13 @@ public class EventService {
 			loadStageAndCamera();
 			buildRacerOrder(e);
 
+			// Ensure the MapEngine opening board has viewers; otherwise it will self-stop
+			// and the screen appears blank during the intro.
+			try {
+				updateOpeningBoardViewers(e);
+			} catch (Throwable ignored) {
+			}
+
 			// Start MapEngine board if available (optional).
 			try {
 				if (board != null)
@@ -1473,6 +1480,34 @@ public class EventService {
 			running = true;
 			startCameraTask();
 			beginWelcome(e);
+		}
+
+		private void updateOpeningBoardViewers(RaceEvent e) {
+			if (board == null || eventService == null)
+				return;
+			java.util.Set<java.util.UUID> viewers = new java.util.HashSet<>();
+			try {
+				if (e != null && e.participants != null && !e.participants.isEmpty()) {
+					for (java.util.UUID id : e.participants.keySet()) {
+						if (id == null)
+							continue;
+						if (!eventService.isEligible(e, id))
+							continue;
+						org.bukkit.entity.Player p = org.bukkit.Bukkit.getPlayer(id);
+						if (p == null || !p.isOnline())
+							continue;
+						viewers.add(id);
+					}
+				}
+			} catch (Throwable ignored) {
+				viewers.clear();
+			}
+			try {
+				board.setViewers(viewers);
+				if (!viewers.isEmpty())
+					board.start();
+			} catch (Throwable ignored) {
+			}
 		}
 
 		void stop(boolean restorePlayers) {
@@ -1567,6 +1602,11 @@ public class EventService {
 			flybyCenter = guessLobbyCenter();
 			flybyPoints = buildFlybyPoints();
 
+			try {
+				updateOpeningBoardViewers(e);
+			} catch (Throwable ignored) {
+			}
+
 			// Audio cue: start of intro.
 			try {
 				playSoundToAudience(e, Sound.BLOCK_NOTE_BLOCK_BASS, 0.9f, 0.7f);
@@ -1594,6 +1634,11 @@ public class EventService {
 			phaseStartMs = System.currentTimeMillis();
 			phaseDurationMs = introGapSeconds * 1000L;
 
+			try {
+				updateOpeningBoardViewers(e);
+			} catch (Throwable ignored) {
+			}
+
 			// Audio cue: moving into racer roll call.
 			try {
 				playSoundToAudience(e, Sound.BLOCK_NOTE_BLOCK_HAT, 0.8f, 1.1f);
@@ -1618,6 +1663,11 @@ public class EventService {
 			if (!running)
 				return;
 			phase = Phase.RACERS;
+
+			try {
+				updateOpeningBoardViewers(e);
+			} catch (Throwable ignored) {
+			}
 
 			Player featured = pickNextFeaturedOnline(e);
 			if (featured == null) {
@@ -1683,6 +1733,11 @@ public class EventService {
 			featuredRacer = null;
 			phaseStartMs = System.currentTimeMillis();
 			phaseDurationMs = 2000L;
+
+			try {
+				updateOpeningBoardViewers(e);
+			} catch (Throwable ignored) {
+			}
 
 			// Finale cue.
 			try {

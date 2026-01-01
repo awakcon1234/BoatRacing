@@ -307,7 +307,8 @@ public class PodiumService {
 						loc,
 						display,
 						false,
-						false
+						false,
+						512
 				);
 				if (npcId != null && !npcId.isBlank()) {
 					spawnedFancyNpcIds.add(npcId);
@@ -433,7 +434,7 @@ public class PodiumService {
 				} catch (Throwable ignored) {
 				}
 				try {
-					d.setViewRange(256.0f);
+					d.setViewRange(512.0f);
 				} catch (Throwable ignored) {
 				}
 				try {
@@ -491,8 +492,8 @@ public class PodiumService {
 				} catch (Throwable ignored) {
 				}
 				try {
-					// 16 chunks = 256 blocks
-					d.setViewRange(256.0f);
+					// 32 chunks = 512 blocks
+					d.setViewRange(512.0f);
 				} catch (Throwable ignored) {
 				}
 				try {

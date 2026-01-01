@@ -449,6 +449,17 @@ public final class FancyNpcsApi {
 	 */
 	public static String spawnPlayerNpcPreferTextures(String npcName, UUID playerId, String playerName, boolean slim, Location location,
 			String displayNameMini, boolean collidable, boolean showInTab) {
+		return spawnPlayerNpcPreferTextures(npcName, playerId, playerName, slim, location, displayNameMini, collidable, showInTab, -1);
+	}
+
+	/**
+	 * Same as {@link #spawnPlayerNpcPreferTextures(String, UUID, String, boolean, Location, String, boolean, boolean)}
+	 * but allows overriding the NPC visibility distance.
+	 *
+	 * visibilityDistanceBlocks: pass a positive number to override, or <= 0 to keep FancyNpcs defaults.
+	 */
+	public static String spawnPlayerNpcPreferTextures(String npcName, UUID playerId, String playerName, boolean slim, Location location,
+			String displayNameMini, boolean collidable, boolean showInTab, int visibilityDistanceBlocks) {
 		if (npcName == null || npcName.isBlank())
 			return null;
 		if (location == null || location.getWorld() == null)
@@ -514,6 +525,12 @@ public final class FancyNpcsApi {
 		}
 		try {
 			data.setShowInTab(showInTab);
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (visibilityDistanceBlocks > 0)
+				data.setVisibilityDistance(visibilityDistanceBlocks);
 		} catch (Throwable ignored) {
 		}
 

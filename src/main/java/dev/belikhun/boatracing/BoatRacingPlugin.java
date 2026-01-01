@@ -422,6 +422,11 @@ public class BoatRacingPlugin extends JavaPlugin {
 				} catch (Throwable ignored) {
 				}
 				try {
+					if (cinematicCameraService != null)
+						cinematicCameraService.restorePendingVisibility(p);
+				} catch (Throwable ignored) {
+				}
+				try {
 					if (eventService != null)
 						eventService.restorePendingOpeningTitles(p);
 				} catch (Throwable ignored) {
