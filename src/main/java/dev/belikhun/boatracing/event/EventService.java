@@ -2020,16 +2020,68 @@ public class EventService {
 			Location center = flybyCenter;
 			if (center == null || center.getWorld() == null)
 				return java.util.Collections.emptyList();
-			double radius = plugin.getConfig().getDouble("event.opening-titles.lobby-camera.radius", 16.0);
-			double height = plugin.getConfig().getDouble("event.opening-titles.lobby-camera.height", 12.0);
-			int points = 4;
+
+			// Explicit points override the default orbit.
 			try {
 				java.util.List<?> raw = plugin.getConfig().getList("event.opening-titles.lobby-camera.points");
 				if (raw != null && !raw.isEmpty()) {
-					// If admins filled explicit points, ignore for now (future extension).
+					java.util.List<Location> explicit = new java.util.ArrayList<>();
+					for (Object o : raw) {
+						if (o == null)
+							continue;
+						Location loc = null;
+						if (o instanceof Location l) {
+							loc = l;
+						} else if (o instanceof java.util.Map<?, ?> m) {
+							try {
+								@SuppressWarnings("unchecked")
+								java.util.Map<String, Object> mm = (java.util.Map<String, Object>) m;
+								loc = Location.deserialize(mm);
+							} catch (Throwable ignored) {
+								loc = null;
+							}
+						}
+						if (loc == null)
+							continue;
+						if (loc.getWorld() == null) {
+							try {
+								loc = loc.clone();
+								loc.setWorld(center.getWorld());
+							} catch (Throwable ignored) {
+								continue;
+							}
+						}
+						if (!loc.getWorld().equals(center.getWorld()))
+							continue;
+						try {
+							explicit.add(loc.clone());
+						} catch (Throwable ignored) {
+						}
+					}
+
+					if (explicit.size() >= 2) {
+						// Close the loop if needed (for smooth interpolation across the full duration).
+						try {
+							Location first = explicit.get(0);
+							Location last = explicit.get(explicit.size() - 1);
+							double dx = first.getX() - last.getX();
+							double dy = first.getY() - last.getY();
+							double dz = first.getZ() - last.getZ();
+							double d2 = dx * dx + dy * dy + dz * dz;
+							if (d2 > 0.01) {
+								explicit.add(first.clone());
+							}
+						} catch (Throwable ignored) {
+						}
+						return explicit;
+					}
 				}
 			} catch (Throwable ignored) {
 			}
+
+			double radius = plugin.getConfig().getDouble("event.opening-titles.lobby-camera.radius", 16.0);
+			double height = plugin.getConfig().getDouble("event.opening-titles.lobby-camera.height", 12.0);
+			int points = 4;
 
 			java.util.List<Location> out = new java.util.ArrayList<>();
 			for (int i = 0; i <= points; i++) {

@@ -295,6 +295,12 @@ public final class EventCommands {
 					Text.tell(p, "&7 - &f/" + label + " event opening camera set &7(Lấy vị trí hiện tại)");
 					Text.tell(p, "&7 - &f/" + label + " event opening camera clear");
 					Text.tell(p, "");
+					Text.tell(p, "&eFly-by sảnh (điểm camera):");
+					Text.tell(p, "&7 - &f/" + label + " event opening flyby list");
+					Text.tell(p, "&7 - &f/" + label + " event opening flyby add &7(Lấy vị trí hiện tại)");
+					Text.tell(p, "&7 - &f/" + label + " event opening flyby pop &7(Xóa điểm cuối)");
+					Text.tell(p, "&7 - &f/" + label + " event opening flyby clear");
+					Text.tell(p, "");
 					Text.tell(p, "&eBảng mở đầu (MapEngine):");
 					Text.tell(p, "&7 - &f/" + label + " event opening board set [north|south|east|west] &7(Dùng selection hiện tại; bỏ trống để tự chọn)");
 					Text.tell(p, "&7 - &f/" + label + " event opening board clear");
@@ -306,6 +312,123 @@ public final class EventCommands {
 
 				String act = args[2].toLowerCase();
 				switch (act) {
+					case "flyby" -> {
+						final String path = "event.opening-titles.lobby-camera.points";
+						if (args.length == 3 || args[3].equalsIgnoreCase("help")) {
+							Text.msg(p, "&eFly-by sảnh (điểm camera):");
+							Text.tell(p, "&7 - &f/" + label + " event opening flyby list");
+							Text.tell(p, "&7 - &f/" + label + " event opening flyby add &7(Lấy vị trí hiện tại)");
+							Text.tell(p, "&7 - &f/" + label + " event opening flyby pop &7(Xóa điểm cuối)");
+							Text.tell(p, "&7 - &f/" + label + " event opening flyby clear");
+							Text.tell(p, "");
+							Text.tell(p, "&7Ghi chú: nếu có &f≥ 2&7 điểm, plugin sẽ dùng các điểm này thay vì orbit mặc định.");
+							return true;
+						}
+
+						String a2 = args[3].toLowerCase();
+						switch (a2) {
+							case "list" -> {
+								java.util.List<?> raw = null;
+								try {
+									raw = plugin.getConfig().getList(path);
+								} catch (Throwable ignored) {
+									raw = null;
+								}
+								int count = (raw == null ? 0 : raw.size());
+								Text.msg(p, "&eFly-by sảnh: &f" + count + "&e điểm");
+								if (raw == null || raw.isEmpty()) {
+									Text.tell(p, "&7● (Trống) &8→ &7Sẽ dùng orbit mặc định theo &fevent.opening-titles.lobby-camera.radius/height&7.");
+									return true;
+								}
+								for (int i = 0; i < raw.size(); i++) {
+									Object o = raw.get(i);
+									Location loc = null;
+									if (o instanceof Location l) {
+										loc = l;
+									} else if (o instanceof java.util.Map<?, ?> m) {
+										try {
+											@SuppressWarnings("unchecked")
+											java.util.Map<String, Object> mm = (java.util.Map<String, Object>) m;
+											loc = Location.deserialize(mm);
+										} catch (Throwable ignored) {
+											loc = null;
+										}
+									}
+									String s = (loc == null ? "&c(không đọc được)" : "&a" + fmt(loc));
+									Text.tell(p, "&7● &f#" + (i + 1) + ": " + s);
+								}
+								return true;
+							}
+							case "add" -> {
+								Location here = null;
+								try {
+									here = p.getLocation().clone();
+									here.setYaw(0.0f);
+									here.setPitch(0.0f);
+								} catch (Throwable ignored) {
+									here = null;
+								}
+								if (here == null || here.getWorld() == null) {
+									Text.msg(p, "&cKhông thể lấy vị trí hiện tại.");
+									return true;
+								}
+
+								java.util.List<Object> list = new java.util.ArrayList<>();
+								try {
+									java.util.List<?> raw = plugin.getConfig().getList(path);
+									if (raw != null)
+										list.addAll(raw);
+								} catch (Throwable ignored) {
+								}
+
+								java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+								m.put("world", here.getWorld().getName());
+								m.put("x", here.getX());
+								m.put("y", here.getY());
+								m.put("z", here.getZ());
+								m.put("yaw", (double) here.getYaw());
+								m.put("pitch", (double) here.getPitch());
+								list.add(m);
+
+								plugin.getConfig().set(path, list);
+								plugin.saveConfig();
+								Text.msg(p, "&aĐã thêm điểm fly-by &f#" + list.size() + "&a: &f" + fmt(here));
+								Text.tell(p, "&7● Tip: chạy &f/" + label + " reload&7 nếu bạn muốn áp dụng cho lần chạy tiếp theo ngay lập tức.");
+								p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+								return true;
+							}
+							case "pop" -> {
+								java.util.List<?> raw = null;
+								try {
+									raw = plugin.getConfig().getList(path);
+								} catch (Throwable ignored) {
+									raw = null;
+								}
+								if (raw == null || raw.isEmpty()) {
+									Text.msg(p, "&cDanh sách đang trống.");
+									return true;
+								}
+								java.util.List<Object> list = new java.util.ArrayList<>(raw);
+								list.remove(list.size() - 1);
+								plugin.getConfig().set(path, list);
+								plugin.saveConfig();
+								Text.msg(p, "&aĐã xóa điểm fly-by cuối. &7(Còn lại: &f" + list.size() + "&7)");
+								p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+								return true;
+							}
+							case "clear" -> {
+								plugin.getConfig().set(path, java.util.Collections.emptyList());
+								plugin.saveConfig();
+								Text.msg(p, "&aĐã xóa toàn bộ điểm fly-by. &7(Sẽ dùng orbit mặc định)" );
+								p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
+								return true;
+							}
+							default -> {
+								Text.msg(p, "&cKhông rõ. Dùng: /" + label + " event opening flyby help");
+								return true;
+							}
+						}
+					}
 					case "status" -> {
 						Text.msg(p, "&eMở đầu sự kiện:");
 						Text.tell(p, "&7● Đang chạy: " + (svc.isOpeningTitlesRunning() ? "&a✔" : "&c❌"));
