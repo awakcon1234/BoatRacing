@@ -664,6 +664,8 @@ public final class OpeningTitlesBoardService {
 		final Color emblemC1 = c1;
 		final Color emblemC2 = c2;
 		final Color emblemC3 = c3;
+		final long emblemShowDtMs = showDtMs;
+		final boolean emblemAnimateIn = isTrans;
 
 		root.add(new GraphicsElement((ctx, rect) -> {
 			if (ctx == null || ctx.g == null)
@@ -725,14 +727,36 @@ public final class OpeningTitlesBoardService {
 					for (int i = 0; i < 3; i++) {
 						g.setTransform(old);
 						g.rotate(Math.toRadians(angles[i]), cx, cy);
+
+						double grow;
+						if (!emblemAnimateIn) {
+							grow = 1.0;
+						} else {
+							long delay = 60L + (long) i * 90L;
+							long d = Math.max(0L, delay);
+							long available = Math.max(1L, SHOW_MS - d);
+							double tt = (double) (Math.max(0L, emblemShowDtMs - d)) / (double) available;
+							tt = Math.max(0.0, Math.min(1.0, tt));
+							double e = easeOutCubic(tt);
+							grow = 0.25 + 0.75 * e;
+						}
+
 						Color c = colors[i];
-						int x0 = cx - armW / 2;
-						int y0 = cy - armH / 2;
+						int w2 = Math.max(1, (int) Math.round(armW * grow));
+						int h2 = Math.max(1, (int) Math.round(armH * grow));
+						int r2 = Math.max(2, (int) Math.round(r * grow));
+						int x0 = cx - w2 / 2;
+						int y0 = cy - h2 / 2;
+
+						int a1 = emblemAnimateIn ? clamp((int) Math.round(235.0 * (grow)), 0, 235) : 235;
+						int a2 = emblemAnimateIn ? clamp((int) Math.round(150.0 * (grow)), 0, 150) : 150;
+						if (a1 <= 2 && a2 <= 2)
+							continue;
 						g.setPaint(new GradientPaint(
-								x0, y0, new Color(c.getRed(), c.getGreen(), c.getBlue(), 235),
-								x0 + armW, y0, new Color(c.getRed(), c.getGreen(), c.getBlue(), 150)
+								x0, y0, new Color(c.getRed(), c.getGreen(), c.getBlue(), a1),
+								x0 + w2, y0, new Color(c.getRed(), c.getGreen(), c.getBlue(), a2)
 						));
-						g.fillRoundRect(x0, y0, armW, armH, r, r);
+						g.fillRoundRect(x0, y0, w2, h2, r2, r2);
 					}
 					g.setTransform(old);
 				}
@@ -740,7 +764,7 @@ public final class OpeningTitlesBoardService {
 			}
 
 			// Big year watermark (bottom-right)
-			// Decorative icons (bottom-left band)
+			// Decorative icons (right-side band)
 			try {
 				if (iconFont != null) {
 					int size = clamp((int) Math.round(Math.min(rect.w(), rect.h()) * 0.055), 10, 22);
@@ -761,10 +785,14 @@ public final class OpeningTitlesBoardService {
 						"\uf06e"  // eye
 					};
 
-					int y = rect.y() + rect.h() - Math.max(10, marginY / 2);
-					int x = rect.x() + Math.max(12, marginX / 3);
+					// Anchor into the right band (between safeRight..right edge).
 					int step = Math.max(12, size + 7);
-					int maxX = safeLeft - 12;
+					int x = rect.x() + rect.w() - Math.max(12, marginX / 3);
+					int maxY = safeBottom - Math.max(10, marginY / 3);
+					int y = maxY;
+
+					// Keep icons on/after safeRight so we don't intrude into the main safe area.
+					x = Math.max(x, safeRight + Math.max(10, marginX / 4));
 
 					for (String s : glyphs) {
 						if (s == null || s.isBlank())
@@ -772,10 +800,14 @@ public final class OpeningTitlesBoardService {
 						int cp = s.codePointAt(0);
 						if (!f.canDisplay(cp))
 							continue;
-						if (x > maxX)
+						if (y < safeTop + Math.max(10, marginY / 3))
 							break;
-						g.drawString(s, x, y);
-						x += step;
+
+						// Right-align glyphs by subtracting their width.
+						int sw = g.getFontMetrics().stringWidth(s);
+						int drawX = Math.max(x - sw, safeRight + 6);
+						g.drawString(s, drawX, y);
+						y -= step;
 					}
 				}
 			} catch (Throwable ignored) {
