@@ -294,6 +294,18 @@ public class PodiumService {
 					return;
 				}
 				dbg("spawnOne: FancyNpcs spawn returned empty npcId");
+
+				// FancyNpcs may not be fully ready yet during early startup (NpcManager not loaded).
+				// If no players are online, do NOT fall back to the ArmorStand head variant;
+				// let the caller retry later so we can still spawn real FancyNpcs player models.
+				try {
+					if (Bukkit.getOnlinePlayers().isEmpty()) {
+						dbg("spawnOne: deferring fallback (no players online)");
+						return;
+					}
+				} catch (Throwable ignored) {
+					return;
+				}
 			}
 		} catch (Throwable ignored) {
 			dbg("spawnOne: FancyNpcs exception: " + ignored.getMessage());
