@@ -524,39 +524,111 @@ public class RaceManager {
 				// this when the block is
 				// AIR/WATER to avoid griefing solid builds, and we restore on countdown end.
 
-				Block origin = lock.getBlock();
+				// Determine the "footprint" blocks under the boat.
+				// Old implementation assumed starts were centered (.5), which maps nicely to 1 block.
+				// Some tracks start at block corners (.0), meaning the boat sits across 4 blocks.
+				// We detect that and build the cage around a 2x2 footprint.
+				final double eps = 0.20;
+				double fx = lock.getX() - Math.floor(lock.getX());
+				double fz = lock.getZ() - Math.floor(lock.getZ());
+				int bx = lock.getBlockX();
+				int bz = lock.getBlockZ();
+				int minX;
+				int maxX;
+				int minZ;
+				int maxZ;
+
+				if (fx <= eps) {
+					minX = bx - 1;
+					maxX = bx;
+				} else if ((1.0 - fx) <= eps) {
+					minX = bx;
+					maxX = bx + 1;
+				} else {
+					minX = bx;
+					maxX = bx;
+				}
+
+				if (fz <= eps) {
+					minZ = bz - 1;
+					maxZ = bz;
+				} else if ((1.0 - fz) <= eps) {
+					minZ = bz;
+					maxZ = bz + 1;
+				} else {
+					minZ = bz;
+					maxZ = bz;
+				}
+
+				int midX = (minX + maxX) / 2;
+				int midZ = (minZ + maxZ) / 2;
+				int y = lock.getBlockY();
+				org.bukkit.World w = lock.getWorld();
 
 				// Visual stopper: place a stair directly in front of the boat during countdown.
 				// Restored via countdownBarrierRestore after countdown ends.
-				Block stopper = origin.getRelative(front, 1);
+				int stopperX = midX;
+				int stopperZ = midZ;
+				if (front == BlockFace.NORTH) {
+					stopperZ = minZ - 1;
+				} else if (front == BlockFace.SOUTH) {
+					stopperZ = maxZ + 1;
+				} else if (front == BlockFace.WEST) {
+					stopperX = minX - 1;
+				} else if (front == BlockFace.EAST) {
+					stopperX = maxX + 1;
+				}
+				Block stopper = w.getBlockAt(stopperX, y, stopperZ);
 
 				java.util.Set<Block> targets = new java.util.LinkedHashSet<>();
 
-				// 1-block ring around origin
-				Block f1 = origin.getRelative(front, 1);
-				Block b1 = origin.getRelative(back, 1);
-				Block l1 = origin.getRelative(left, 1);
-				Block r1 = origin.getRelative(right, 1);
-				targets.add(f1);
-				targets.add(b1);
-				targets.add(l1);
-				targets.add(r1);
-				targets.add(f1.getRelative(left));
-				targets.add(f1.getRelative(right));
-				targets.add(b1.getRelative(left));
-				targets.add(b1.getRelative(right));
+				// Build a ring around the footprint (1-block padding).
+				int ringMinX = minX - 1;
+				int ringMaxX = maxX + 1;
+				int ringMinZ = minZ - 1;
+				int ringMaxZ = maxZ + 1;
+				for (int x = ringMinX; x <= ringMaxX; x++) {
+					for (int z = ringMinZ; z <= ringMaxZ; z++) {
+						boolean isBorder = x == ringMinX || x == ringMaxX || z == ringMinZ || z == ringMaxZ;
+						if (!isBorder)
+							continue;
+						// Do not place barriers inside the footprint blocks.
+						boolean inFootprint = x >= minX && x <= maxX && z >= minZ && z <= maxZ;
+						if (inFootprint)
+							continue;
+						targets.add(w.getBlockAt(x, y, z));
+					}
+				}
 
-				// 2 blocks in front (wider wall)
-				Block f2 = origin.getRelative(front, 2);
-				targets.add(f2);
-				targets.add(f2.getRelative(left));
-				targets.add(f2.getRelative(right));
+				// Extra reinforcement: add a second wall 2 blocks in front.
+				if (front == BlockFace.NORTH) {
+					int z = ringMinZ - 1;
+					for (int x = ringMinX; x <= ringMaxX; x++)
+						targets.add(w.getBlockAt(x, y, z));
+				} else if (front == BlockFace.SOUTH) {
+					int z = ringMaxZ + 1;
+					for (int x = ringMinX; x <= ringMaxX; x++)
+						targets.add(w.getBlockAt(x, y, z));
+				} else if (front == BlockFace.WEST) {
+					int x = ringMinX - 1;
+					for (int z = ringMinZ; z <= ringMaxZ; z++)
+						targets.add(w.getBlockAt(x, y, z));
+				} else if (front == BlockFace.EAST) {
+					int x = ringMaxX + 1;
+					for (int z = ringMinZ; z <= ringMaxZ; z++)
+						targets.add(w.getBlockAt(x, y, z));
+				}
 
-				// Also add 2 blocks to sides (helps prevent sideways drift)
-				Block l2 = origin.getRelative(left, 2);
-				Block r2 = origin.getRelative(right, 2);
-				targets.add(l2);
-				targets.add(r2);
+				// Side reinforcement (helps prevent sideways drift)
+				try {
+					int l2x = midX + left.getModX() * 2;
+					int l2z = midZ + left.getModZ() * 2;
+					int r2x = midX + right.getModX() * 2;
+					int r2z = midZ + right.getModZ() * 2;
+					targets.add(w.getBlockAt(l2x, y, l2z));
+					targets.add(w.getBlockAt(r2x, y, r2z));
+				} catch (Throwable ignored) {
+				}
 
 				for (Block base : targets) {
 					if (base == null)
