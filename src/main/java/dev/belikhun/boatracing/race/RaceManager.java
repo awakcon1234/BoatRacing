@@ -3780,7 +3780,7 @@ public class RaceManager {
 			return;
 
 		String track = safeTrackName();
-		String cmd = "/boatracing race join " + track;
+		String cmd = "/join " + track + " &7(hoặc &f/j " + track + "&7)";
 
 		String tpl;
 		try {

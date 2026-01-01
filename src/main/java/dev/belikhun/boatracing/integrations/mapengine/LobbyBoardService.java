@@ -1652,7 +1652,7 @@ public final class LobbyBoardService {
 			}
 			this.trackSlots = slots;
 
-			TextElement hint1 = new TextElement("Dùng: /boatracing race join <tên>")
+			TextElement hint1 = new TextElement("Dùng: /join <tên> (hoặc /j <tên>)")
 					.font(smallFont)
 					.align(TextElement.Align.LEFT)
 					.ellipsis(true);
@@ -1854,7 +1854,7 @@ public final class LobbyBoardService {
 
 			// Hints (only if enough remaining height) - match legacy wording + paging math
 			if (contentH - usedH >= hintH) {
-				leftHint1.text("Dùng: /boatracing race join <tên>").color(textDim);
+				leftHint1.text("Dùng: /join <tên> (hoặc /j <tên>)").color(textDim);
 
 				// Legacy recomputes paging using a fixed 2-small-line block estimate.
 				int blockH2 = rowH + (fmSmall.getHeight() * 2) + blockPadV;

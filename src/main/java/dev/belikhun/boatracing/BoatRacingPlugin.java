@@ -349,6 +349,9 @@ public class BoatRacingPlugin extends JavaPlugin {
 			}
 		}, this);
 
+		// Reduce racer boat interference: disable boat-vs-boat collision while racing.
+		Bukkit.getPluginManager().registerEvents(new dev.belikhun.boatracing.race.BoatCollisionListener(this), this);
+
 		// Respawn racers at their last checkpoint, or at start if all checkpoints were
 		// reached.
 		Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
@@ -522,6 +525,12 @@ public class BoatRacingPlugin extends JavaPlugin {
 		if (getCommand("spawn") != null) {
 			SpawnCommand handler = new SpawnCommand(this);
 			getCommand("spawn").setExecutor(handler);
+		}
+
+		if (getCommand("join") != null) {
+			JoinCommand handler = new JoinCommand(this);
+			getCommand("join").setExecutor(handler);
+			getCommand("join").setTabCompleter(handler);
 		}
 
 		// Start event service (single-active-event orchestrator)

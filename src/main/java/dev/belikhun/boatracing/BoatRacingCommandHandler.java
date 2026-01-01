@@ -382,8 +382,8 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 		if (args[0].equalsIgnoreCase("race")) {
 			if (args.length == 1 || args[1].equalsIgnoreCase("help")) {
 				Text.msg(p, "&eLệnh đua:");
-				Text.tell(p, "&7 - &f/" + label
-						+ " race join <track> &7(Tham gia đăng ký cho đường đua; cần có đội)");
+				Text.tell(p, "&7 - &f/join <track> &7(hoặc &f/j <track>&7) &8| &7Viết đầy đủ: &f/" + label
+						+ " race join <track>");
 				Text.tell(p, "&7 - &f/" + label + " race leave <track> &7(Rời khỏi đăng ký cho đường đua)");
 				Text.tell(p, "&7 - &f/" + label
 						+ " race status <track> &7(Hiển thị trạng thái cuộc đua cho đường đua)");
@@ -423,7 +423,7 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				}
 				case "join" -> {
 					if (args.length < 3) {
-						Text.msg(p, "&cCách dùng: /" + label + " race join <track>");
+						Text.msg(p, "&cCách dùng: &f/join <track> &7(hoặc &f/j <track>&7)");
 						return true;
 					}
 					String tname = args[2];

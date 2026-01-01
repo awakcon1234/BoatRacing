@@ -12,6 +12,11 @@ commands:
     usage: /<command> profile|race|setup|admin|reload|version|scoreboard
     aliases: [br, race]
     permission: boatracing.use
+  join:
+    description: Tham gia đăng ký đua theo tên đường đua
+    usage: /<command> <track>
+    aliases: [j]
+    permission: boatracing.race.join
   event:
     description: Lệnh sự kiện (viết tắt của /boatracing event)
     usage: /<command> help|status|join|leave
