@@ -41,7 +41,7 @@ public final class EventCommands {
 					Text.tell(p, "&7 - &f/" + label + " event regnpc status");
 					Text.tell(p, "");
 					Text.tell(p, "&eSkin:");
-					Text.tell(p, "&7 - &f/" + label + " event regnpc skin set <uuid>");
+					Text.tell(p, "&7 - &f/" + label + " event regnpc skin set (@none|@mirror|name|url|file) [--slim]");
 					Text.tell(p, "&7 - &f/" + label + " event regnpc skin clear");
 					return true;
 				}
@@ -81,42 +81,62 @@ public final class EventCommands {
 							skin = "";
 						}
 						skin = (skin == null ? "" : skin.trim());
-						Text.tell(p, "&7● Skin UUID: " + (skin.isBlank() ? "&cChưa đặt" : "&a" + skin));
+						boolean slim = false;
+						try {
+							slim = plugin.getConfig().getBoolean("event.registration-npc.skin-slim", false);
+						} catch (Throwable ignored) {
+							slim = false;
+						}
+						Text.tell(p, "&7● Skin: " + (skin.isBlank() ? "&cChưa đặt" : "&a" + skin));
+						Text.tell(p, "&7● Slim: " + (slim ? "&a✔" : "&7❌"));
 						return true;
 					}
 					case "skin" -> {
 						if (args.length < 4) {
-							Text.msg(p, "&eDùng: /" + label + " event regnpc skin set <uuid> &7| clear");
+							Text.msg(p, "&eDùng: /" + label + " event regnpc skin set (@none|@mirror|name|url|file) [--slim] &7| clear");
 							return true;
 						}
 						String a2 = args[3].toLowerCase();
 						switch (a2) {
 							case "set" -> {
 								if (args.length < 5) {
-									Text.msg(p, "&cThiếu UUID. Ví dụ: &f/" + label + " event regnpc skin set 00000000-0000-0000-0000-000000000000");
+									Text.msg(p, "&cThiếu tham số skin.");
+									Text.tell(p, "&7Ví dụ: &f/" + label + " event regnpc skin set Notch");
+									Text.tell(p, "&7Ví dụ: &f/" + label + " event regnpc skin set https://.../skin.png --slim");
 									return true;
 								}
-								String raw = args[4];
-								java.util.UUID id;
-								try {
-									id = java.util.UUID.fromString(raw);
-								} catch (Throwable t) {
-									Text.msg(p, "&cUUID không hợp lệ: &f" + raw);
+								boolean slim = false;
+								java.util.List<String> parts = new java.util.ArrayList<>();
+								for (int i = 4; i < args.length; i++) {
+									String t = args[i];
+									if (t == null)
+										continue;
+									if (t.equalsIgnoreCase("--slim")) {
+										slim = true;
+										continue;
+									}
+									parts.add(t);
+								}
+								String skin = String.join(" ", parts).trim();
+								if (skin.isBlank()) {
+									Text.msg(p, "&cSkin không hợp lệ.");
 									return true;
 								}
-								plugin.getConfig().set("event.registration-npc.skin", id.toString());
+								plugin.getConfig().set("event.registration-npc.skin", skin);
+								plugin.getConfig().set("event.registration-npc.skin-slim", slim);
 								plugin.saveConfig();
 								try {
 									if (svc.getRegistrationNpcService() != null)
 										svc.getRegistrationNpcService().clear();
 								} catch (Throwable ignored) {
 								}
-								Text.msg(p, "&aĐã đặt skin cho NPC đăng ký sự kiện: &f" + id);
+								Text.msg(p, "&aĐã đặt skin cho NPC đăng ký sự kiện: &f" + skin + (slim ? " &7(--slim)" : ""));
 								p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.2f);
 								return true;
 							}
 							case "clear" -> {
 								plugin.getConfig().set("event.registration-npc.skin", "");
+								plugin.getConfig().set("event.registration-npc.skin-slim", false);
 								plugin.saveConfig();
 								try {
 									if (svc.getRegistrationNpcService() != null)
@@ -128,7 +148,7 @@ public final class EventCommands {
 								return true;
 							}
 							default -> {
-								Text.msg(p, "&cKhông rõ. Dùng: /" + label + " event regnpc skin set <uuid> &7| clear");
+								Text.msg(p, "&cKhông rõ. Dùng: /" + label + " event regnpc skin set (@none|@mirror|name|url|file) [--slim] &7| clear");
 								return true;
 							}
 						}

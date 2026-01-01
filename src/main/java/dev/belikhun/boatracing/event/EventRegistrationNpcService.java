@@ -25,6 +25,7 @@ public class EventRegistrationNpcService {
 	private final BoatRacingPlugin plugin;
 	private final EventService eventService;
 	private final NamespacedKey registerNpcKey;
+	private String spawnedFancyNpcId;
 
 	private final List<UUID> spawned = new ArrayList<>();
 	private UUID textDisplayId;
@@ -60,6 +61,13 @@ public class EventRegistrationNpcService {
 	}
 
 	public void clear() {
+		try {
+			if (spawnedFancyNpcId != null && !spawnedFancyNpcId.isBlank())
+				dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.removeNpcById(spawnedFancyNpcId);
+		} catch (Throwable ignored) {
+		}
+		spawnedFancyNpcId = null;
+
 		for (UUID id : new ArrayList<>(spawned)) {
 			try {
 				Entity e = Bukkit.getEntity(id);
@@ -119,49 +127,90 @@ public class EventRegistrationNpcService {
 			return;
 		ensureChunkLoaded(loc);
 
-		UUID skinUuid = readSkinUuid();
-
-		ArmorStand as;
+		// Prefer a proper PLAYER NPC (full skin) when FancyNpcs is available.
+		boolean fancyOk = false;
 		try {
-			Location spawn = loc.clone();
-			as = loc.getWorld().spawn(spawn, ArmorStand.class, ent -> {
-				ent.setInvisible(true);
-				ent.setMarker(false);
-				ent.setGravity(false);
-				ent.setSilent(true);
-				try {
-					ent.setInvulnerable(true);
-				} catch (Throwable ignored) {
+			if (Bukkit.getPluginManager().isPluginEnabled("FancyNpcs")) {
+				String display = "<empty>";
+				String skin = readSkinString();
+				boolean slim = readSkinSlim();
+				String npcName = "br-event-register-" + System.currentTimeMillis();
+				String npcId = dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.spawnPlayerNpc(
+					npcName,
+					skin,
+					slim,
+					loc,
+					display,
+					false,
+					false
+				);
+				if (npcId != null && !npcId.isBlank()) {
+					boolean tagged = false;
+					try {
+						tagged = dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.tagNpcEntityById(npcId, registerNpcKey);
+					} catch (Throwable ignored) {
+						tagged = false;
+					}
+					if (tagged) {
+						spawnedFancyNpcId = npcId;
+						fancyOk = true;
+					} else {
+						try {
+							dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.removeNpcById(npcId);
+						} catch (Throwable ignored) {
+						}
+					}
 				}
-				try {
-					ent.setRemoveWhenFarAway(false);
-				} catch (Throwable ignored) {
-				}
-				try {
-					ent.getPersistentDataContainer().set(registerNpcKey, PersistentDataType.BYTE, (byte) 1);
-				} catch (Throwable ignored) {
-				}
-			});
-		} catch (Throwable ignored) {
-			as = null;
-		}
-		if (as == null)
-			return;
-		npcEntityId = as.getUniqueId();
-		spawned.add(npcEntityId);
-
-		try {
-			ItemStack head = new ItemStack(Material.PLAYER_HEAD);
-			if (head.getItemMeta() instanceof SkullMeta sm) {
-				try {
-					if (skinUuid != null)
-						sm.setOwningPlayer(Bukkit.getOfflinePlayer(skinUuid));
-				} catch (Throwable ignored) {
-				}
-				head.setItemMeta(sm);
 			}
-			as.getEquipment().setHelmet(head);
 		} catch (Throwable ignored) {
+			fancyOk = false;
+		}
+
+		if (!fancyOk) {
+			UUID skinUuid = readSkinUuid();
+
+			ArmorStand as;
+			try {
+				Location spawn = loc.clone();
+				as = loc.getWorld().spawn(spawn, ArmorStand.class, ent -> {
+					ent.setInvisible(true);
+					ent.setMarker(false);
+					ent.setGravity(false);
+					ent.setSilent(true);
+					try {
+						ent.setInvulnerable(true);
+					} catch (Throwable ignored) {
+					}
+					try {
+						ent.setRemoveWhenFarAway(false);
+					} catch (Throwable ignored) {
+					}
+					try {
+						ent.getPersistentDataContainer().set(registerNpcKey, PersistentDataType.BYTE, (byte) 1);
+					} catch (Throwable ignored) {
+					}
+				});
+			} catch (Throwable ignored) {
+				as = null;
+			}
+			if (as == null)
+				return;
+			npcEntityId = as.getUniqueId();
+			spawned.add(npcEntityId);
+
+			try {
+				ItemStack head = new ItemStack(Material.PLAYER_HEAD);
+				if (head.getItemMeta() instanceof SkullMeta sm) {
+					try {
+						if (skinUuid != null)
+							sm.setOwningPlayer(Bukkit.getOfflinePlayer(skinUuid));
+					} catch (Throwable ignored) {
+					}
+					head.setItemMeta(sm);
+				}
+				as.getEquipment().setHelmet(head);
+			} catch (Throwable ignored) {
+			}
 		}
 
 		// Same approach as podium NPC: use a fixed TextDisplay block in front of the NPC.
@@ -290,6 +339,27 @@ public class EventRegistrationNpcService {
 			}
 		} catch (Throwable ignored) {
 			return null;
+		}
+	}
+
+	private String readSkinString() {
+		if (plugin == null)
+			return "";
+		try {
+			String raw = plugin.getConfig().getString("event.registration-npc.skin", "");
+			return raw == null ? "" : raw.trim();
+		} catch (Throwable ignored) {
+			return "";
+		}
+	}
+
+	private boolean readSkinSlim() {
+		if (plugin == null)
+			return false;
+		try {
+			return plugin.getConfig().getBoolean("event.registration-npc.skin-slim", false);
+		} catch (Throwable ignored) {
+			return false;
 		}
 	}
 

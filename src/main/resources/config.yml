@@ -16,8 +16,11 @@ event:
       z: 0.0
       yaw: 0.0
       pitch: 0.0
-    # UUID của skin (dạng 00000000-0000-0000-0000-000000000000). Để trống nếu không dùng.
+    # Skin cho NPC (tương tự FancyNpcs): @none | @mirror | <tên> | <url> | <tên file>
+    # Để trống nếu không dùng.
     skin: ""
+    # Bật nếu skin dùng model tay gầy (Alex / slim)
+    skin-slim: false
   podium:
     # Debug toggles (logs to console). Keep these off unless troubleshooting.
     debug: false
