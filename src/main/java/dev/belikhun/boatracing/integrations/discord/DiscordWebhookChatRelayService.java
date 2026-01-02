@@ -8,6 +8,8 @@ import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
+import org.bukkit.event.server.PluginDisableEvent;
+import org.bukkit.event.server.PluginEnableEvent;
 import org.bukkit.plugin.EventExecutor;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
@@ -36,6 +38,7 @@ public final class DiscordWebhookChatRelayService {
 	private final AtomicReference<Config> config = new AtomicReference<>(Config.disabled());
 	private Listener listener;
 	private Listener ventureChatListener;
+	private Listener hookListener;
 	private final ConcurrentHashMap<UUID, LastMessage> lastMessageByPlayer = new ConcurrentHashMap<>();
 
 	public DiscordWebhookChatRelayService(BoatRacingPlugin plugin) {
@@ -48,13 +51,41 @@ public final class DiscordWebhookChatRelayService {
 	public void start() {
 		reloadFromConfig();
 		Config cfg = config.get();
-		if (!cfg.enabled)
+		if (!cfg.enabled) {
+			try {
+				plugin.getLogger().info("[Discord] Chat-webhook đang tắt (discord.chat-webhook.enabled=false)");
+			} catch (Throwable ignored) {
+			}
 			return;
+		}
 		if (cfg.webhookUrl.isBlank()) {
 			plugin.getLogger().warning("[Discord] chat-webhook.enabled=true nhưng url đang trống.");
 			return;
 		}
 
+		try {
+			boolean papi = false;
+			boolean vc = false;
+			try {
+				papi = Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI");
+			} catch (Throwable ignored) {
+				papi = false;
+			}
+			try {
+				vc = Bukkit.getPluginManager().isPluginEnabled("VentureChat");
+			} catch (Throwable ignored) {
+				vc = false;
+			}
+
+			plugin.getLogger().info("[Discord] Đang bật relay chat -> Discord webhook.");
+			plugin.getLogger().info("[Discord] Tích hợp: PlaceholderAPI=" + papi + " | VentureChat=" + vc);
+			if (!vc) {
+				plugin.getLogger().info("[Discord] VentureChat chưa bật; sẽ tự hook khi VentureChat enable.");
+			}
+		} catch (Throwable ignored) {
+		}
+
+		ensureHookListener();
 		ensureListener();
 		ensureVentureChatListener();
 	}
@@ -67,10 +98,70 @@ public final class DiscordWebhookChatRelayService {
 			if (ventureChatListener != null) {
 				HandlerList.unregisterAll(ventureChatListener);
 			}
+			if (hookListener != null) {
+				HandlerList.unregisterAll(hookListener);
+			}
 		} catch (Throwable ignored) {
 		} finally {
 			listener = null;
 			ventureChatListener = null;
+			hookListener = null;
+		}
+	}
+
+	private void ensureHookListener() {
+		if (hookListener != null)
+			return;
+
+		hookListener = new Listener() {
+			@EventHandler
+			public void onPluginEnable(PluginEnableEvent e) {
+				try {
+					if (e == null || e.getPlugin() == null)
+						return;
+					String name = e.getPlugin().getName();
+					if (name == null)
+						return;
+					if (!"VentureChat".equalsIgnoreCase(name))
+						return;
+					Config cfg = config.get();
+					if (!cfg.enabled)
+						return;
+					ensureVentureChatListener();
+				} catch (Throwable ignored) {
+				}
+			}
+
+			@EventHandler
+			public void onPluginDisable(PluginDisableEvent e) {
+				try {
+					if (e == null || e.getPlugin() == null)
+						return;
+					String name = e.getPlugin().getName();
+					if (name == null)
+						return;
+					if (!"VentureChat".equalsIgnoreCase(name))
+						return;
+
+					try {
+						if (ventureChatListener != null) {
+							HandlerList.unregisterAll(ventureChatListener);
+							ventureChatListener = null;
+							plugin.getLogger().info("[Discord] Đã gỡ hook VentureChat (plugin disabled).");
+						}
+					} catch (Throwable ignored2) {
+						ventureChatListener = null;
+					}
+				} catch (Throwable ignored) {
+				}
+			}
+		};
+
+		try {
+			Bukkit.getPluginManager().registerEvents(hookListener, plugin);
+		} catch (Throwable t) {
+			hookListener = null;
+			plugin.getLogger().warning("[Discord] Không thể đăng ký hook listener (PluginEnableEvent): " + t.getMessage());
 		}
 	}
 
@@ -87,6 +178,7 @@ public final class DiscordWebhookChatRelayService {
 		String message = "[%world%] %player_name%: %message%";
 		int timeoutMs = 5000;
 		boolean trim = true;
+		boolean debug = false;
 		try {
 			enabled = plugin.getConfig().getBoolean("discord.chat-webhook.enabled", false);
 			url = plugin.getConfig().getString("discord.chat-webhook.url", "");
@@ -95,6 +187,7 @@ public final class DiscordWebhookChatRelayService {
 			message = plugin.getConfig().getString("discord.chat-webhook.message", message);
 			timeoutMs = plugin.getConfig().getInt("discord.chat-webhook.timeout-ms", timeoutMs);
 			trim = plugin.getConfig().getBoolean("discord.chat-webhook.trim-to-2000", trim);
+			debug = plugin.getConfig().getBoolean("discord.chat-webhook.debug", debug);
 		} catch (Throwable ignored) {
 		}
 
@@ -111,7 +204,7 @@ public final class DiscordWebhookChatRelayService {
 		if (timeoutMs > 60000)
 			timeoutMs = 60000;
 
-		config.set(new Config(enabled, url.trim(), username, avatarUrl, message, timeoutMs, trim));
+		config.set(new Config(enabled, url.trim(), username, avatarUrl, message, timeoutMs, trim, debug));
 	}
 
 	private void ensureListener() {
@@ -138,6 +231,10 @@ public final class DiscordWebhookChatRelayService {
 
 		try {
 			Bukkit.getPluginManager().registerEvents(listener, plugin);
+			try {
+				plugin.getLogger().info("[Discord] Đã đăng ký hook chat (Paper AsyncChatEvent).");
+			} catch (Throwable ignored) {
+			}
 		} catch (Throwable t) {
 			listener = null;
 			plugin.getLogger().warning("[Discord] Không thể đăng ký chat listener: " + t.getMessage());
@@ -163,6 +260,10 @@ public final class DiscordWebhookChatRelayService {
 			Class<? extends Event> cc = (Class<? extends Event>) c;
 			eventClass = cc;
 		} catch (Throwable ignored) {
+			try {
+				plugin.getLogger().warning("[Discord] VentureChat đang bật nhưng không tìm thấy class VentureChatEvent.");
+			} catch (Throwable ignored2) {
+			}
 			return;
 		}
 
@@ -215,9 +316,19 @@ public final class DiscordWebhookChatRelayService {
 		long now = System.currentTimeMillis();
 		LastMessage prev = lastMessageByPlayer.get(playerId);
 		if (prev != null && prev.message != null && prev.message.equals(plain) && (now - prev.atMs) <= 750L) {
+			try {
+				if (config.get().debug)
+					plugin.getLogger().info("[Discord][DBG] Bỏ qua do trùng lặp (dedupe) player=" + playerId);
+			} catch (Throwable ignored) {
+			}
 			return;
 		}
 		lastMessageByPlayer.put(playerId, new LastMessage(plain, now));
+		try {
+			if (config.get().debug)
+				plugin.getLogger().info("[Discord][DBG] Enqueue chat player=" + playerId + " msg=\"" + plain + "\"");
+		} catch (Throwable ignored) {
+		}
 
 		String msgFinal = plain;
 		Bukkit.getScheduler().runTask(plugin, () -> {
@@ -245,6 +356,12 @@ public final class DiscordWebhookChatRelayService {
 				if (renderedContent.isBlank())
 					return;
 
+				if (cfg.debug) {
+					try {
+						plugin.getLogger().info("[Discord][DBG] Send webhook content=\"" + renderedContent + "\"");
+					} catch (Throwable ignored) {
+					}
+				}
 				sendWebhook(cfg, renderedContent, renderedUsername, renderedAvatarUrl);
 			} catch (Throwable ignored) {
 			}
@@ -367,6 +484,12 @@ public final class DiscordWebhookChatRelayService {
 					} catch (Throwable ignored) {
 						code = 0;
 					}
+					if (cfg.debug) {
+						try {
+							plugin.getLogger().info("[Discord][DBG] Webhook HTTP " + code);
+						} catch (Throwable ignored) {
+						}
+					}
 					if (code >= 400) {
 						try {
 							plugin.getLogger().warning("[Discord] Webhook trả về HTTP " + code);
@@ -389,10 +512,11 @@ public final class DiscordWebhookChatRelayService {
 			String avatarUrlTemplate,
 			String messageTemplate,
 			int timeoutMs,
-			boolean trimTo2000
+			boolean trimTo2000,
+			boolean debug
 	) {
 		static Config disabled() {
-			return new Config(false, "", "%player_name%", "", "[%world%] %player_name%: %message%", 5000, true);
+			return new Config(false, "", "%player_name%", "", "[%world%] %player_name%: %message%", 5000, true, false);
 		}
 	}
 }

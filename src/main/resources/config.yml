@@ -479,3 +479,6 @@ discord:
 
     # Discord giới hạn content tối đa 2000 ký tự; bật để tự cắt.
     trim-to-2000: true
+
+    # Bật log debug (sẽ in thêm thông tin khi gửi / lỗi)
+    debug: false
