@@ -394,13 +394,55 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				Text.tell(p, "&7 - &f/" + label + " race leave <track> &7(Rời khỏi đăng ký cho đường đua)");
 				Text.tell(p, "&7 - &f/" + label
 						+ " race status <track> &7(Hiển thị trạng thái cuộc đua cho đường đua)");
+				Text.tell(p, "&7 - &f/" + label + " race spectate <track> &7(Theo dõi cuộc đua đang diễn ra)");
+				Text.tell(p, "&7 - &f/" + label + " race spectate leave &7(Thoát chế độ theo dõi)");
 				if (p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup")) {
-					Text.tell(p, "&8Quản trị:&7 /" + label + " race open|start|force|stop <track>");
+					Text.tell(p, "&8Quản trị:&7 /" + label + " race open|start|force|stop|force-stop|revert|restart <track>");
 				}
 				return true;
 			}
 
 			switch (args[1].toLowerCase()) {
+				case "spectate" -> {
+					if (args.length < 3) {
+						Text.msg(p, "&cCách dùng: /" + label + " race spectate <track>");
+						Text.tell(p, "&7Hoặc: /" + label + " race spectate leave");
+						return true;
+					}
+					String tname = args[2];
+					if (tname.equalsIgnoreCase("leave") || tname.equalsIgnoreCase("stop") || tname.equalsIgnoreCase("off")) {
+						boolean ok = plugin.getRaceService().spectateStop(p, true);
+						if (!ok) {
+							Text.msg(p, "&7Bạn không đang theo dõi đường đua nào.");
+						}
+						return true;
+					}
+					// Must not be involved in any race.
+					try {
+						if (plugin.getRaceService().findRaceFor(p.getUniqueId()) != null) {
+							Text.msg(p, "&cBạn đang tham gia/đăng ký một cuộc đua. Hãy rời cuộc đua trước khi theo dõi.");
+							p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+							return true;
+						}
+					} catch (Throwable ignored) {
+					}
+
+					RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+					if (rm == null) {
+						Text.msg(p, "&cTrack không tồn tại hoặc không thể tải: &f" + tname);
+						return true;
+					}
+					if (!rm.isRunning()) {
+						Text.msg(p, "&7Đường đua này hiện không có cuộc đua đang diễn ra.");
+						return true;
+					}
+					boolean ok = plugin.getRaceService().spectateStart(tname, p);
+					if (!ok) {
+						Text.msg(p, "&cKhông thể vào chế độ theo dõi lúc này.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+					}
+					return true;
+				}
 				case "open" -> {
 					if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
 						Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
@@ -557,9 +599,87 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 						return true;
 					}
 					String tname = args[2];
-					boolean any = plugin.getRaceService().stopRace(tname, true);
+					boolean any = plugin.getRaceService().stopRace(tname, false);
 					if (!any) {
 						Text.msg(p, "&7Không có gì để dừng.");
+					} else {
+						Text.msg(p, "&a⏹ Đã dừng cuộc đua. &7(Không teleport về sảnh)");
+					}
+					return true;
+				}
+				case "force-stop", "forcestop" -> {
+					if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+						Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+						return true;
+					}
+					if (args.length < 3) {
+						Text.msg(p, "&cCách dùng: /" + label + " race force-stop <track>");
+						return true;
+					}
+					String tname = args[2];
+					boolean any = plugin.getRaceService().forceStopRace(tname);
+					if (!any) {
+						Text.msg(p, "&7Không có gì để dừng.");
+					} else {
+						Text.msg(p, "&c⏹ Đã force-stop cuộc đua và trả về sảnh.");
+					}
+					return true;
+				}
+				case "revert" -> {
+					if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+						Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+						return true;
+					}
+					if (args.length < 3) {
+						Text.msg(p, "&cCách dùng: /" + label + " race revert <track>");
+						return true;
+					}
+					String tname = args[2];
+					RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+					if (rm == null) {
+						Text.msg(p, "&cTrack không tồn tại hoặc không thể tải: &f" + tname);
+						return true;
+					}
+					boolean any = plugin.getRaceService().revertRace(tname);
+					if (!rm.getTrackConfig().isReady()) {
+						Text.msg(p, "&eĐã dừng trạng thái hiện tại, nhưng track chưa sẵn sàng để mở lại đăng ký: &7"
+								+ String.join(", ", rm.getTrackConfig().missingRequirements()));
+						return true;
+					}
+					if (!any) {
+						Text.msg(p, "&7Không có gì để đặt lại.");
+					} else {
+						Text.msg(p, "&a🔁 Đã đặt lại cuộc đua về trạng thái đăng ký.");
+					}
+					return true;
+				}
+				case "restart" -> {
+					if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+						Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+						return true;
+					}
+					if (args.length < 3) {
+						Text.msg(p, "&cCách dùng: /" + label + " race restart <track>");
+						return true;
+					}
+					String tname = args[2];
+					RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+					if (rm == null) {
+						Text.msg(p, "&cTrack không tồn tại hoặc không thể tải: &f" + tname);
+						return true;
+					}
+					boolean ok = plugin.getRaceService().restartRace(tname);
+					if (!rm.getTrackConfig().isReady()) {
+						Text.msg(p, "&cTrack chưa sẵn sàng: &7" + String.join(", ", rm.getTrackConfig().missingRequirements()));
+						return true;
+					}
+					if (!ok) {
+						Text.msg(p, "&cKhông thể khởi động lại cuộc đua. &7(Thiếu người đăng ký hoặc thiếu slot start)");
+					} else {
+						Text.msg(p, "&a🔁▶ Đã khởi động lại cuộc đua.");
 					}
 					return true;
 				}
@@ -1199,12 +1319,16 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				subs.add("help");
 				subs.add("join");
 				subs.add("leave");
+				subs.add("spectate");
 				subs.add("status");
 				if (sender.hasPermission("boatracing.race.admin") || sender.hasPermission("boatracing.setup")) {
 					subs.add("open");
 					subs.add("start");
 					subs.add("force");
 					subs.add("stop");
+					subs.add("force-stop");
+					subs.add("revert");
+					subs.add("restart");
 				}
 				String pref = args[1] == null ? "" : args[1].toLowerCase();
 				return subs.stream().filter(s -> s.startsWith(pref)).toList();
@@ -1212,10 +1336,14 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 
 			// For subcommands that take <track>, suggest track names from library
 			if (args.length == 3
-					&& java.util.Arrays.asList("open", "join", "leave", "force", "start", "stop", "status")
+					&& java.util.Arrays.asList("open", "join", "leave", "spectate", "force", "start", "stop", "force-stop", "forcestop", "revert", "restart", "status")
 							.contains(args[1].toLowerCase())) {
 				String prefix = args[2] == null ? "" : args[2].toLowerCase();
 				java.util.List<String> names = new java.util.ArrayList<>();
+				if (args[1].equalsIgnoreCase("spectate")) {
+					if ("leave".startsWith(prefix))
+						names.add("leave");
+				}
 				if (plugin.getTrackLibrary() != null) {
 					for (String n : plugin.getTrackLibrary().list())
 						if (n.toLowerCase().startsWith(prefix))

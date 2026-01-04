@@ -248,7 +248,8 @@ public class TrackSelectGUI implements Listener {
 			appendAuthorLine(tc, lore);
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
-			lore.add("&7● &fChuột phải&7: &eXem thông tin");
+			lore.add("&7● &fChuột phải&7: &aTheo dõi");
+			lore.add("&7● &fShift + chuột phải&7: &eXem thông tin");
 			lore.add("&7● &fChuột trái&7: &cKhông thể tham gia");
 		} else {
 			mat = Material.GREEN_CONCRETE;
@@ -353,8 +354,50 @@ public class TrackSelectGUI implements Listener {
 			return;
 
 		boolean right = e.getClick() == ClickType.RIGHT;
-		if (right) {
-			// Use existing status command output.
+		boolean shiftRight = e.getClick() == ClickType.SHIFT_RIGHT;
+		if (right || shiftRight) {
+			RaceManager rm = null;
+			try {
+				rm = plugin.getRaceService().getOrCreate(track);
+			} catch (Throwable ignored) {
+				rm = null;
+			}
+			boolean running = rm != null && (rm.isRunning() || rm.isAnyCountdownActive());
+
+			// During an active race: right click = spectate, shift-right = info.
+			if (running && right) {
+				try {
+					p.closeInventory();
+				} catch (Throwable ignored) {
+				}
+
+				// Can't spectate while involved in any race.
+				try {
+					if (plugin.getRaceService().findRaceFor(p.getUniqueId()) != null) {
+						Text.msg(p, "&cBạn đang tham gia/đăng ký một cuộc đua. Hãy rời cuộc đua trước khi theo dõi.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+						return;
+					}
+				} catch (Throwable ignored) {
+				}
+
+				boolean ok = false;
+				try {
+					ok = plugin.getRaceService().spectateStart(track, p);
+				} catch (Throwable ignored) {
+					ok = false;
+				}
+				if (!ok) {
+					Text.msg(p, "&cKhông thể vào chế độ theo dõi lúc này.");
+					try {
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+					} catch (Throwable ignored) {
+					}
+				}
+				return;
+			}
+
+			// Info fallback: use existing status command output.
 			try {
 				p.closeInventory();
 			} catch (Throwable ignored) {

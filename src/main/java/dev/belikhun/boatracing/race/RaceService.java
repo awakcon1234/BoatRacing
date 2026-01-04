@@ -20,6 +20,23 @@ public class RaceService {
 	private final Map<UUID, String> trackByPlayer = new HashMap<>();
 	private final Set<UUID> pendingLobbyTeleport = new HashSet<>();
 
+	// --- Spectate (watch a running race without joining) ---
+	private static final class SpectateState {
+		final String trackName;
+		final org.bukkit.Location returnLocation;
+		final org.bukkit.GameMode returnGameMode;
+		org.bukkit.scheduler.BukkitTask monitorTask;
+
+		SpectateState(String trackName, org.bukkit.Location returnLocation, org.bukkit.GameMode returnGameMode) {
+			this.trackName = trackName;
+			this.returnLocation = returnLocation;
+			this.returnGameMode = returnGameMode;
+		}
+	}
+
+	private final Map<UUID, SpectateState> spectateByPlayer = new HashMap<>();
+	private final Map<UUID, org.bukkit.GameMode> pendingRestoreSpectateModes = new HashMap<>();
+
 	private void teleportToLobby(org.bukkit.entity.Player p) {
 		if (p == null)
 			return;
@@ -114,6 +131,272 @@ public class RaceService {
 	public synchronized RaceManager get(String trackName) {
 		if (trackName == null) return null;
 		return raceByTrack.get(trackName);
+	}
+
+	public synchronized boolean isSpectating(UUID playerId) {
+		if (playerId == null)
+			return false;
+		return spectateByPlayer.containsKey(playerId);
+	}
+
+	private org.bukkit.Location resolveSpectateLocation(RaceManager rm) {
+		if (rm == null)
+			return null;
+		TrackConfig cfg = null;
+		try {
+			cfg = rm.getTrackConfig();
+		} catch (Throwable ignored) {
+			cfg = null;
+		}
+		if (cfg == null)
+			return null;
+
+		org.bukkit.Location base = null;
+		try {
+			base = cfg.getWaitingSpawn();
+		} catch (Throwable ignored) {
+			base = null;
+		}
+		if (base == null) {
+			try {
+				base = cfg.getStartCenter();
+			} catch (Throwable ignored) {
+				base = null;
+			}
+		}
+		if (base == null || base.getWorld() == null)
+			return null;
+
+		org.bukkit.Location out;
+		try {
+			out = base.clone();
+		} catch (Throwable ignored) {
+			out = base;
+		}
+		// Give a bit of height so the first view isn't inside the course.
+		try {
+			out.add(0.0, 6.0, 0.0);
+			out.setPitch(25.0f);
+		} catch (Throwable ignored) {
+		}
+		return out;
+	}
+
+	private void trySetSpectatorTarget(org.bukkit.entity.Player viewer, RaceManager rm) {
+		if (viewer == null || rm == null)
+			return;
+		if (!viewer.isOnline())
+			return;
+		try {
+			if (viewer.getGameMode() != org.bukkit.GameMode.SPECTATOR)
+				return;
+		} catch (Throwable ignored) {
+			return;
+		}
+
+		org.bukkit.entity.Player target = null;
+		try {
+			for (java.util.UUID id : rm.getRegistered()) {
+				org.bukkit.entity.Player rp = org.bukkit.Bukkit.getPlayer(id);
+				if (rp == null || !rp.isOnline())
+					continue;
+				target = rp;
+				break;
+			}
+		} catch (Throwable ignored) {
+			target = null;
+		}
+		if (target == null)
+			return;
+		try {
+			viewer.setSpectatorTarget(target);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	public synchronized boolean spectateStart(String trackName, org.bukkit.entity.Player p) {
+		if (plugin == null)
+			return false;
+		if (p == null || !p.isOnline())
+			return false;
+		if (trackName == null || trackName.isBlank())
+			return false;
+
+		String key = trackName.trim();
+		RaceManager rm = getOrCreate(key);
+		if (rm == null)
+			return false;
+		if (!rm.isRunning())
+			return false;
+
+		java.util.UUID id = p.getUniqueId();
+		// Don't allow spectate while the player is involved in any race state.
+		try {
+			RaceManager own = findRaceFor(id);
+			if (own != null)
+				return false;
+		} catch (Throwable ignored) {
+			return false;
+		}
+
+		// Stop any cinematic so we don't fight over spectator mode.
+		try {
+			if (plugin.getCinematicCameraService() != null)
+				plugin.getCinematicCameraService().stopForPlayer(id, true);
+		} catch (Throwable ignored) {
+		}
+
+		// If already spectating something else, stop it first.
+		stopSpectateInternal(id, false);
+
+		org.bukkit.Location returnLoc;
+		try {
+			returnLoc = p.getLocation();
+		} catch (Throwable ignored) {
+			returnLoc = null;
+		}
+		org.bukkit.GameMode prevMode;
+		try {
+			prevMode = p.getGameMode();
+		} catch (Throwable ignored) {
+			prevMode = null;
+		}
+
+		SpectateState st = new SpectateState(key, returnLoc, prevMode);
+		spectateByPlayer.put(id, st);
+
+		org.bukkit.Location viewLoc = resolveSpectateLocation(rm);
+		if (viewLoc == null) {
+			stopSpectateInternal(id, false);
+			return false;
+		}
+
+		try {
+			if (p.isInsideVehicle())
+				p.leaveVehicle();
+		} catch (Throwable ignored) {
+		}
+		try {
+			p.setGameMode(org.bukkit.GameMode.SPECTATOR);
+		} catch (Throwable ignored) {
+		}
+		try {
+			p.teleport(viewLoc);
+		} catch (Throwable ignored) {
+		}
+		try {
+			p.setRotation(viewLoc.getYaw(), viewLoc.getPitch());
+		} catch (Throwable ignored) {
+		}
+
+		trySetSpectatorTarget(p, rm);
+
+		// Auto-exit spectate when the race ends.
+		try {
+			st.monitorTask = org.bukkit.Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+				try {
+					if (!p.isOnline())
+						return;
+					RaceManager cur = get(key);
+					if (cur == null || !cur.isRunning()) {
+						spectateStop(p, true);
+					}
+				} catch (Throwable ignored) {
+				}
+			}, 20L, 20L);
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			Text.msg(p, "&a👁 Bạn đang theo dõi đường đua: &f" + key);
+			Text.tell(p, "&7Dùng: &f/boatracing race spectate leave &7để thoát.");
+		} catch (Throwable ignored) {
+		}
+
+		return true;
+	}
+
+	private void stopSpectateInternal(UUID playerId, boolean teleportLobbyIfMissing) {
+		if (playerId == null)
+			return;
+		SpectateState st = spectateByPlayer.remove(playerId);
+		if (st == null)
+			return;
+		try {
+			if (st.monitorTask != null)
+				st.monitorTask.cancel();
+		} catch (Throwable ignored) {
+		}
+		st.monitorTask = null;
+
+		org.bukkit.entity.Player p = org.bukkit.Bukkit.getPlayer(playerId);
+		if (p == null || !p.isOnline()) {
+			// If the player disconnected while in spectator, gamemode persists. Restore it on next join.
+			if (st.returnGameMode != null)
+				pendingRestoreSpectateModes.put(playerId, st.returnGameMode);
+			return;
+		}
+
+		try {
+			if (st.returnGameMode != null)
+				p.setGameMode(st.returnGameMode);
+			else
+				p.setGameMode(org.bukkit.GameMode.ADVENTURE);
+		} catch (Throwable ignored) {
+		}
+
+		org.bukkit.Location back = st.returnLocation;
+		if (back != null && back.getWorld() != null) {
+			try {
+				p.teleport(back);
+			} catch (Throwable ignored) {
+				back = null;
+			}
+		}
+		if (back == null && teleportLobbyIfMissing) {
+			try {
+				teleportToLobby(p);
+			} catch (Throwable ignored) {
+			}
+		}
+	}
+
+	public synchronized boolean spectateStop(org.bukkit.entity.Player p, boolean teleportToLobbyIfNeeded) {
+		if (p == null)
+			return false;
+		java.util.UUID id = p.getUniqueId();
+		if (id == null)
+			return false;
+		if (!spectateByPlayer.containsKey(id))
+			return false;
+		stopSpectateInternal(id, teleportToLobbyIfNeeded);
+		try {
+			Text.msg(p, "&a👁 Đã thoát chế độ theo dõi.");
+		} catch (Throwable ignored) {
+		}
+		return true;
+	}
+
+	public synchronized void restorePendingSpectateMode(org.bukkit.entity.Player p) {
+		if (p == null)
+			return;
+		java.util.UUID id = p.getUniqueId();
+		if (id == null)
+			return;
+		org.bukkit.GameMode gm = pendingRestoreSpectateModes.remove(id);
+		if (gm == null)
+			return;
+		try {
+			p.setGameMode(gm);
+		} catch (Throwable ignored) {
+			pendingRestoreSpectateModes.put(id, gm);
+			return;
+		}
+		// Prefer returning them to lobby to avoid leaving them stuck at the track.
+		try {
+			teleportToLobby(p);
+		} catch (Throwable ignored) {
+		}
 	}
 
 	/**
@@ -242,6 +525,22 @@ public class RaceService {
 	}
 
 	public synchronized boolean handleDisconnect(UUID playerId) {
+		// If this player was spectating, remember to restore their mode on next join.
+		try {
+			SpectateState st = spectateByPlayer.remove(playerId);
+			if (st != null) {
+				try {
+					if (st.monitorTask != null)
+						st.monitorTask.cancel();
+				} catch (Throwable ignored) {
+				}
+				if (st.returnGameMode != null)
+					pendingRestoreSpectateModes.put(playerId, st.returnGameMode);
+				return true;
+			}
+		} catch (Throwable ignored) {
+		}
+
 		RaceManager rm = findRaceFor(playerId);
 		if (rm == null) return false;
 		boolean changed = rm.handleRacerDisconnect(playerId);
@@ -296,6 +595,11 @@ public class RaceService {
 	public void restorePendingLobbyTeleport(org.bukkit.entity.Player p) {
 		if (p == null)
 			return;
+		// If this player disconnected mid-spectate and got stuck in spectator mode, restore it.
+		try {
+			restorePendingSpectateMode(p);
+		} catch (Throwable ignored) {
+		}
 		UUID id = p.getUniqueId();
 		if (id == null)
 			return;
@@ -395,6 +699,139 @@ public class RaceService {
 		boolean any = rm.stop(teleportToSpawn);
 		for (UUID id : involved) trackByPlayer.remove(id);
 		return any;
+	}
+
+	/**
+	 * Force-stop a race and teleport involved players back to lobby.
+	 */
+	public synchronized boolean forceStopRace(String trackName) {
+		return stopRace(trackName, true);
+	}
+
+	/**
+	 * Revert any active phase (running/countdown/registration) back to "registration open".
+	 * Keeps the current roster by re-joining previously involved online players.
+	 *
+	 * Notes:
+	 * - Uses RaceManager APIs directly to bypass event-lock checks.
+	 * - Does NOT teleport players to lobby; it resets race state, then RaceManager.join() will
+	 *   handle moving players to the track's waiting spawn.
+	 */
+	public synchronized boolean revertRace(String trackName) {
+		if (trackName == null || trackName.isBlank())
+			return false;
+		String key = trackName.trim();
+		RaceManager rm = getOrCreate(key);
+		if (rm == null)
+			return false;
+
+		java.util.List<org.bukkit.entity.Player> roster = new java.util.ArrayList<>();
+		try {
+			for (java.util.UUID id : rm.getInvolved()) {
+				org.bukkit.entity.Player p = org.bukkit.Bukkit.getPlayer(id);
+				if (p != null && p.isOnline())
+					roster.add(p);
+			}
+		} catch (Throwable ignored) {
+		}
+
+		int laps = 3;
+		try {
+			laps = rm.getTotalLaps();
+		} catch (Throwable ignored) {
+			laps = getDefaultLaps();
+		}
+
+		boolean hadAny = false;
+		try {
+			hadAny = rm.stop(false);
+		} catch (Throwable ignored) {
+			hadAny = false;
+		}
+
+		// If track isn't ready, we can still stop, but can't reopen registration.
+		try {
+			if (rm.getTrackConfig() == null || !rm.getTrackConfig().isReady())
+				return hadAny;
+		} catch (Throwable ignored) {
+			return hadAny;
+		}
+
+		boolean opened = false;
+		try {
+			opened = rm.openRegistration(Math.max(1, laps), null);
+		} catch (Throwable ignored) {
+			opened = false;
+		}
+		if (!opened)
+			return hadAny;
+
+		boolean anyJoined = false;
+		for (org.bukkit.entity.Player p : roster) {
+			if (p == null || !p.isOnline())
+				continue;
+			try {
+				if (rm.join(p)) {
+					anyJoined = true;
+					trackByPlayer.put(p.getUniqueId(), key);
+				}
+			} catch (Throwable ignored) {
+			}
+		}
+
+		return hadAny || anyJoined;
+	}
+
+	/**
+	 * Restart a race: revert to open registration (keeping roster), then start the countdown.
+	 */
+	public synchronized boolean restartRace(String trackName) {
+		if (trackName == null || trackName.isBlank())
+			return false;
+		String key = trackName.trim();
+		RaceManager rm = getOrCreate(key);
+		if (rm == null)
+			return false;
+
+		boolean reverted = revertRace(key);
+		// If revert couldn't reopen registration (track not ready), don't start.
+		try {
+			if (rm.getTrackConfig() == null || !rm.getTrackConfig().isReady())
+				return reverted;
+		} catch (Throwable ignored) {
+			return reverted;
+		}
+
+		java.util.List<org.bukkit.entity.Player> participants = new java.util.ArrayList<>();
+		try {
+			java.util.Set<java.util.UUID> regs = new java.util.LinkedHashSet<>(rm.getRegistered());
+			for (java.util.UUID id : regs) {
+				org.bukkit.entity.Player rp = org.bukkit.Bukkit.getPlayer(id);
+				if (rp != null && rp.isOnline())
+					participants.add(rp);
+			}
+		} catch (Throwable ignored) {
+		}
+
+		if (participants.isEmpty())
+			return reverted;
+
+		java.util.List<org.bukkit.entity.Player> placed;
+		try {
+			placed = rm.placeAtStartsWithBoats(participants);
+		} catch (Throwable ignored) {
+			placed = java.util.Collections.emptyList();
+		}
+		if (placed.isEmpty())
+			return reverted;
+
+		try {
+			rm.startLightsCountdown(placed);
+		} catch (Throwable ignored) {
+			return reverted;
+		}
+
+		return true;
 	}
 
 	/**

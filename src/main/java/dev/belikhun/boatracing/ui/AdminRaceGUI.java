@@ -43,6 +43,9 @@ public class AdminRaceGUI implements Listener {
 		START,
 		FORCE,
 		STOP,
+		FORCE_STOP,
+		REVERT,
+		RESTART,
 		REFRESH,
 		PICK_TRACK,
 		BACK,
@@ -76,13 +79,36 @@ public class AdminRaceGUI implements Listener {
 		inv.setItem(14, buttonWithLore(Material.REDSTONE_TORCH, Text.item("&6&lForce start"), Action.FORCE,
 				List.of("&7Bắt đầu ngay lập tức bằng danh sách đăng ký hiện tại."), true));
 		inv.setItem(15, buttonWithLore(Material.RED_CONCRETE, Text.item("&c&lDừng"), Action.STOP,
-				List.of("&7Dừng đăng ký/cuộc đua đang diễn ra."), true));
+				List.of(
+						"&7Dừng đăng ký/cuộc đua đang diễn ra.",
+						" ",
+						"&7(Không teleport về sảnh)"
+				), true));
 
 		inv.setItem(16, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), Action.REFRESH,
 				List.of("&7Cập nhật thông tin trạng thái."), true));
 
 		inv.setItem(22, buttonWithLore(Material.MAP, Text.item("&b&lChọn đường đua"), Action.PICK_TRACK,
 				List.of("&7Chọn đường đua làm đường đua hiện tại."), true));
+
+		inv.setItem(20, buttonWithLore(Material.REPEATER, Text.item("&e&lĐặt lại (về đăng ký)"), Action.REVERT,
+				List.of(
+						"&7Đưa cuộc đua về trạng thái đăng ký.",
+						" ",
+						"&7Giữ lại danh sách tham gia (nếu còn online)."
+				), true));
+		inv.setItem(24, buttonWithLore(Material.LIME_DYE, Text.item("&a&lKhởi động lại"), Action.RESTART,
+				List.of(
+						"&7Đặt lại và bắt đầu lại ngay.",
+						" ",
+						"&7Chỉ áp dụng cho người đã đăng ký (online)."
+				), true));
+		inv.setItem(25, buttonWithLore(Material.TNT, Text.item("&4&lForce-stop"), Action.FORCE_STOP,
+				List.of(
+						"&7Dừng khẩn cấp và teleport tất cả về sảnh.",
+						" ",
+						"&cCẩn thận: hành động này không hoàn tác."
+				), true));
 		inv.setItem(26, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
 				List.of("&7Đóng bảng quản lý đua."), true));
 
@@ -230,6 +256,9 @@ public class AdminRaceGUI implements Listener {
 			case START -> doStart(p);
 			case FORCE -> doForceStart(p);
 			case STOP -> doStop(p);
+			case FORCE_STOP -> doForceStop(p);
+			case REVERT -> doRevert(p);
+			case RESTART -> doRestart(p);
 			case REFRESH -> open(p);
 			case PICK_TRACK -> {
 				if (inMain) {
@@ -345,13 +374,89 @@ public class AdminRaceGUI implements Listener {
 		TrackLibrary lib = plugin.getTrackLibrary();
 		String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
 		boolean any = false;
-		if (tname != null) any = plugin.getRaceService().stopRace(tname, true);
+		if (tname != null) any = plugin.getRaceService().stopRace(tname, false);
 		if (!any) {
 			Text.msg(p, "&7Không có gì để dừng.");
 		} else {
-			Text.msg(p, "&a⏹ Đã dừng cuộc đua.");
+			Text.msg(p, "&a⏹ Đã dừng cuộc đua. &7(Không teleport về sảnh)");
 		}
 		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.1f);
+		open(p);
+	}
+
+	private void doForceStop(Player p) {
+		TrackLibrary lib = plugin.getTrackLibrary();
+		String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
+		boolean any = false;
+		if (tname != null) any = plugin.getRaceService().forceStopRace(tname);
+		if (!any) {
+			Text.msg(p, "&7Không có gì để dừng.");
+		} else {
+			Text.msg(p, "&c⏹ Đã force-stop cuộc đua và trả về sảnh.");
+		}
+		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.0f);
+		open(p);
+	}
+
+	private void doRevert(Player p) {
+		TrackLibrary lib = plugin.getTrackLibrary();
+		String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
+		if (tname == null) {
+			Text.msg(p, "&cChưa có đường đua được chọn.");
+			return;
+		}
+
+		RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+		if (rm == null) {
+			Text.msg(p, "&cKhông thể tải đường đua: &f" + tname);
+			return;
+		}
+
+		boolean any = plugin.getRaceService().revertRace(tname);
+		TrackConfig cfg = rm.getTrackConfig();
+		if (!cfg.isReady()) {
+			Text.msg(p, "&eĐã dừng trạng thái hiện tại, nhưng track chưa sẵn sàng để mở lại đăng ký: &7"
+					+ String.join(", ", cfg.missingRequirements()));
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			open(p);
+			return;
+		}
+		if (!any) {
+			Text.msg(p, "&7Không có gì để đặt lại.");
+		} else {
+			Text.msg(p, "&a🔁 Đã đặt lại cuộc đua về trạng thái đăng ký.");
+		}
+		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.9f, 1.15f);
+		open(p);
+	}
+
+	private void doRestart(Player p) {
+		TrackLibrary lib = plugin.getTrackLibrary();
+		String tname = lib != null && lib.getCurrent() != null ? lib.getCurrent() : null;
+		if (tname == null) {
+			Text.msg(p, "&cChưa có đường đua được chọn.");
+			return;
+		}
+
+		RaceManager rm = plugin.getRaceService().getOrCreate(tname);
+		if (rm == null) {
+			Text.msg(p, "&cKhông thể tải đường đua: &f" + tname);
+			return;
+		}
+		TrackConfig cfg = rm.getTrackConfig();
+		if (!cfg.isReady()) {
+			Text.msg(p, "&cĐường đua chưa sẵn sàng: &7" + String.join(", ", cfg.missingRequirements()));
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+			return;
+		}
+		boolean ok = plugin.getRaceService().restartRace(tname);
+		if (!ok) {
+			Text.msg(p, "&cKhông thể khởi động lại cuộc đua. &7(Thiếu người đăng ký hoặc thiếu slot start)");
+			p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+		} else {
+			Text.msg(p, "&a🔁▶ Đã khởi động lại cuộc đua.");
+			p.playSound(p.getLocation(), org.bukkit.Sound.UI_TOAST_CHALLENGE_COMPLETE, 0.8f, 1.2f);
+		}
 		open(p);
 	}
 
