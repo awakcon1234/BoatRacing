@@ -601,11 +601,8 @@ public final class OpeningTitlesBoardService {
 		}
 
 		if (eligibleViewers.isEmpty()) {
-			if (tickTask != null && (desiredViewers == null || desiredViewers.isEmpty())
-					&& (previewViewers == null || previewViewers.isEmpty())) {
-				// No viewers at all; stop to free resources.
-				stop();
-			}
+			// No viewers right now (common during server startup before anyone joins).
+			// Do not self-stop; keep the task alive so idle fallback can pick up new players.
 			return;
 		}
 
