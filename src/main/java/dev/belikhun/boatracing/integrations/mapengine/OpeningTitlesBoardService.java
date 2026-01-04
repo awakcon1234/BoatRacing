@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -72,6 +73,7 @@ public final class OpeningTitlesBoardService {
 	private BufferedImage cachedFaviconImage;
 	private int cachedFaviconW;
 	private int cachedFaviconH;
+	private String cachedFaviconEventTitle;
 	private BufferedImage bundledLogo;
 
 	private static final long RACER_UI_CACHE_TTL_MS = 2000L;
@@ -87,6 +89,7 @@ public final class OpeningTitlesBoardService {
 	private long lastRacerUiRefreshAtMs = 0L;
 	private static final long RENDER_IDLE_THROTTLE_MS = 1000L;
 	private long lastRenderAtMs = 0L;
+	private long lastViewerKey = Long.MIN_VALUE;
 
 	private BukkitTask tickTask;
 	private int visibleRadiusChunks = 12;
@@ -213,11 +216,13 @@ public final class OpeningTitlesBoardService {
 		cachedFaviconImage = null;
 		cachedFaviconW = 0;
 		cachedFaviconH = 0;
+		cachedFaviconEventTitle = null;
 		bundledLogo = null;
 		racerUiCache.clear();
 		lastRenderedKey = Long.MIN_VALUE;
 		lastRacerUiRefreshAtMs = 0L;
 		lastRenderAtMs = 0L;
+		lastViewerKey = Long.MIN_VALUE;
 	}
 
 	private String resolveActiveEventTitle() {
@@ -638,7 +643,18 @@ public final class OpeningTitlesBoardService {
 			return;
 
 		long now = System.currentTimeMillis();
-		if (!shouldRenderNow(now))
+		boolean viewersChanged = false;
+		try {
+			long vk = computeViewerKey(spawnedTo);
+			if (vk != lastViewerKey) {
+				lastViewerKey = vk;
+				viewersChanged = true;
+			}
+		} catch (Throwable ignored) {
+			viewersChanged = false;
+		}
+
+		if (!shouldRenderNow(now, viewersChanged))
 			return;
 		BufferedImage img = renderUi(placement.pixelWidth(), placement.pixelHeight(), now);
 		boardDisplay.renderAndFlush(img);
@@ -941,12 +957,15 @@ public final class OpeningTitlesBoardService {
 		BufferedImage icon = loadFaviconIfNeeded();
 		if (icon == null)
 			icon = loadBundledLogoCached();
-		if (cachedFaviconUi != null && cachedFaviconW == w && cachedFaviconH == h && cachedFaviconImage == icon)
+		String evTitle = resolveActiveEventTitle();
+		if (cachedFaviconUi != null && cachedFaviconW == w && cachedFaviconH == h && cachedFaviconImage == icon
+				&& Objects.equals(cachedFaviconEventTitle, evTitle))
 			return cachedFaviconUi;
-		cachedFaviconUi = buildFaviconUi(w, h, pal, icon, resolveActiveEventTitle());
+		cachedFaviconUi = buildFaviconUi(w, h, pal, icon, evTitle);
 		cachedFaviconW = w;
 		cachedFaviconH = h;
 		cachedFaviconImage = icon;
+		cachedFaviconEventTitle = evTitle;
 		return cachedFaviconUi;
 	}
 
@@ -967,7 +986,11 @@ public final class OpeningTitlesBoardService {
 		return ui;
 	}
 
-	private boolean shouldRenderNow(long now) {
+	private boolean shouldRenderNow(long now, boolean viewersChanged) {
+		// New viewers should see the current frame immediately.
+		if (viewersChanged)
+			return true;
+
 		// During transitions/flash, we need per-frame updates.
 		if (transitioning)
 			return true;
@@ -989,6 +1012,9 @@ public final class OpeningTitlesBoardService {
 				icon = loadBundledLogoCached();
 			if (cachedFaviconImage != icon)
 				return true;
+			String evTitle = resolveActiveEventTitle();
+			if (!Objects.equals(cachedFaviconEventTitle, evTitle))
+				return true;
 		}
 
 		// Finally, avoid spamming render/flush if nothing changed.
@@ -997,6 +1023,12 @@ public final class OpeningTitlesBoardService {
 			lastRenderedKey = key;
 			return true;
 		}
+
+		// Avoid periodic re-renders for fully static screens.
+		// Racer cards are covered by RACER_UI_CACHE_TTL_MS above.
+		// Favicon screen only needs to render when something changes (icon/title/viewers/screen).
+		if (screen == Screen.FAVICON)
+			return false;
 
 		return (now - lastRenderAtMs) >= RENDER_IDLE_THROTTLE_MS;
 	}
@@ -1008,6 +1040,11 @@ public final class OpeningTitlesBoardService {
 		k = (k ^ w) * 1099511628211L;
 		k = (k ^ h) * 1099511628211L;
 		k = (k ^ (screen != null ? screen.ordinal() : 0)) * 1099511628211L;
+		if (screen == Screen.FAVICON) {
+			String evTitle = cachedFaviconEventTitle;
+			if (evTitle != null)
+				k = (k ^ evTitle.hashCode()) * 1099511628211L;
+		}
 		UUID id = racerId;
 		if (id != null) {
 			k = (k ^ id.getMostSignificantBits()) * 1099511628211L;
@@ -1016,6 +1053,20 @@ public final class OpeningTitlesBoardService {
 		String n = racerName;
 		if (n != null)
 			k = (k ^ n.hashCode()) * 1099511628211L;
+		return k;
+	}
+
+	private static long computeViewerKey(Set<UUID> viewers) {
+		if (viewers == null || viewers.isEmpty())
+			return 0L;
+		long k = 1469598103934665603L;
+		k = (k ^ viewers.size()) * 1099511628211L;
+		for (UUID id : viewers) {
+			if (id == null)
+				continue;
+			k ^= id.getMostSignificantBits();
+			k ^= id.getLeastSignificantBits();
+		}
 		return k;
 	}
 
