@@ -773,6 +773,44 @@ public class RaceService {
 	}
 
 	/**
+	 * Stop and forget a track entirely: ends any running race, clears player mappings, and
+	 * removes spectate state. Use before deleting the track file.
+	 */
+	public synchronized boolean deleteTrack(String trackName) {
+		if (trackName == null || trackName.isBlank()) return false;
+		String key = trackName.trim();
+		boolean touched = false;
+
+		RaceManager rm = raceByTrack.remove(key);
+		if (rm != null) {
+			java.util.Set<UUID> involved;
+			try { involved = new java.util.HashSet<>(rm.getInvolved()); } catch (Throwable ignored) { involved = java.util.Collections.emptySet(); }
+			try { rm.stop(true); } catch (Throwable ignored) {}
+			for (UUID id : involved) trackByPlayer.remove(id);
+			touched = true;
+		}
+
+		java.util.List<UUID> restoreSpectators = new java.util.ArrayList<>();
+		for (var en : spectateByPlayer.entrySet()) {
+			SpectateState st = en.getValue();
+			if (st == null) continue;
+			if (!key.equalsIgnoreCase(st.trackName)) continue;
+			try { if (st.monitorTask != null) st.monitorTask.cancel(); } catch (Throwable ignored) {}
+			restoreSpectators.add(en.getKey());
+		}
+		for (UUID id : restoreSpectators) {
+			spectateByPlayer.remove(id);
+			pendingRestoreSpectateModes.remove(id);
+			try {
+				org.bukkit.entity.Player pl = org.bukkit.Bukkit.getPlayer(id);
+				if (pl != null) teleportToLobby(pl);
+			} catch (Throwable ignored) {}
+		}
+
+		return touched || !restoreSpectators.isEmpty();
+	}
+
+	/**
 	 * Revert any active phase (running/countdown/registration) back to "registration open".
 	 * Keeps the current roster by re-joining previously involved online players.
 	 *

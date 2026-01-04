@@ -14,6 +14,7 @@ import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.setup.SetupWizard;
 import dev.belikhun.boatracing.track.Region;
 import dev.belikhun.boatracing.track.SelectionUtils;
+import dev.belikhun.boatracing.track.TrackLibrary;
 import dev.belikhun.boatracing.util.Text;
 
 public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
@@ -762,6 +763,7 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				Text.tell(p, "&7 - &f/" + label + " setup selinfo &7(Debug selection: selection hiện tại)");
 				Text.tell(p, "&7 - &f/" + label + " setup wand &7(Phát công cụ chọn BoatRacing)");
 				Text.tell(p, "&7 - &f/" + label + " setup wizard &7(Khởi chạy trợ lý thiết lập)");
+				Text.tell(p, "&7 - &f/" + label + " setup deletetrack <tên> &7(Xóa đường đua và dữ liệu liên quan)");
 				return true;
 			}
 
@@ -846,6 +848,27 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 						sw.status(p);
 					} else {
 						sw.start(p);
+					}
+					return true;
+				}
+				case "deletetrack" -> {
+					if (args.length < 3) {
+						Text.msg(p, "&cCách dùng: /" + label + " setup deletetrack <tên>");
+						return true;
+					}
+					String name = args[2];
+					TrackLibrary lib = plugin.getTrackLibrary();
+					if (lib == null || !lib.exists(name)) {
+						Text.msg(p, "&cKhông tìm thấy đường đua &f" + name + "&c.");
+						return true;
+					}
+					boolean ok = plugin.deleteTrack(name);
+					if (ok) {
+						Text.msg(p, "&aĐã xóa đường đua &f" + name + "&a, bao gồm cuộc đua đang chạy và kỷ lục.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ZOMBIE_BREAK_WOODEN_DOOR, 0.8f, 1.2f);
+					} else {
+						Text.msg(p, "&cKhông thể xóa đường đua &f" + name + "&c. Kiểm tra log để biết thêm thông tin.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
 					}
 					return true;
 				}
@@ -1362,7 +1385,16 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				return List.of("help", "addstart", "clearstarts", "pos1", "pos2", "setbounds", "setwaitspawn",
 						"setlobbyspawn", "setfinish", "addcheckpoint", "clearcheckpoints", "addlight", "clearlights",
 						"setpos", "clearpos",
-						"show", "selinfo", "wand", "wizard");
+					"show", "selinfo", "wand", "wizard", "deletetrack");
+			if (args.length == 3 && args[1].equalsIgnoreCase("deletetrack")) {
+				java.util.List<String> names = new java.util.ArrayList<>();
+				if (plugin.getTrackLibrary() != null) {
+					for (String n : plugin.getTrackLibrary().list())
+						names.add(n);
+				}
+				String pref = args[2] == null ? "" : args[2].toLowerCase();
+				return names.stream().filter(s -> s.toLowerCase().startsWith(pref)).toList();
+			}
 			if (args.length >= 3 && (args[1].equalsIgnoreCase("setpos") || args[1].equalsIgnoreCase("clearpos"))) {
 				// Suggest player names (online + known offline)
 				String prefName = args[2] == null ? "" : args[2].toLowerCase();

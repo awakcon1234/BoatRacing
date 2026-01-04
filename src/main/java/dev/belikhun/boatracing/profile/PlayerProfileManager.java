@@ -158,6 +158,19 @@ public class PlayerProfileManager {
 		return true;
 	}
 
+	public boolean removeTrack(String trackName) {
+		if (isBlank(trackName)) return false;
+		String key = trackName.trim();
+		boolean changed = false;
+		for (Profile p : profiles.values()) {
+			if (p == null) continue;
+			if (p.personalBests == null) continue;
+			if (p.personalBests.remove(key) != null) changed = true;
+		}
+		if (changed) save();
+		return changed;
+	}
+
 	public long getTimeRacedMillis(UUID id) { return Math.max(0L, get(id).timeRacedMillis); }
 
 	/** Adds to the racer total time raced. Accepts milliseconds; negative values are ignored. */

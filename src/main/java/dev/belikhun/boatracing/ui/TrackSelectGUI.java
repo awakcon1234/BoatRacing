@@ -75,6 +75,12 @@ public class TrackSelectGUI implements Listener {
 		this.scratchConfig = new TrackConfig(plugin, plugin.getDataFolder());
 	}
 
+	public void invalidateCache(String trackName) {
+		if (trackName == null || trackName.isBlank()) return;
+		String key = trackName.trim();
+		summaryCache.remove(key);
+	}
+
 	public void open(Player p) {
 		if (p == null)
 			return;

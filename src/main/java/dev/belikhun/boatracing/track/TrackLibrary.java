@@ -30,6 +30,22 @@ public class TrackLibrary {
 		return ok;
 	}
 
+	public boolean delete(String name) {
+		if (name == null) return false;
+		String key = name.trim();
+		if (key.isEmpty()) return false;
+		File f = new File(tracksDir, key + ".yml");
+		boolean existed = f.exists();
+		boolean deleted = false;
+		try {
+			if (existed) deleted = f.delete();
+		} catch (Throwable ignored) {
+			deleted = false;
+		}
+		if (current != null && current.equalsIgnoreCase(key)) current = null;
+		return existed && deleted;
+	}
+
 	public String getCurrent() { return current; }
 
 	public List<String> list() {

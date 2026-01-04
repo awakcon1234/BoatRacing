@@ -40,6 +40,14 @@ public class TrackRecordManager {
 		return recordsByTrack.get(key);
 	}
 
+	public synchronized boolean remove(String trackName) {
+		String key = normalizeKey(trackName);
+		if (key == null) return false;
+		TrackRecord removed = recordsByTrack.remove(key);
+		if (removed != null) save();
+		return removed != null;
+	}
+
 	public synchronized boolean updateIfBetter(String trackName, UUID holderId, String holderName, long timeMillis) {
 		String key = normalizeKey(trackName);
 		if (key == null) return false;

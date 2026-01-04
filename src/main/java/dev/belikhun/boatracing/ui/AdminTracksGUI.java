@@ -47,6 +47,7 @@ public class AdminTracksGUI implements Listener {
 		NEW_TRACK,
 		SAVE,
 		SAVE_AS,
+		DELETE_TRACK,
 		TELEPORT_TRACK,
 		SET_ICON,
 		CLEAR_ICON,
@@ -98,6 +99,8 @@ public class AdminTracksGUI implements Listener {
 				List.of("&7Xóa icon đã đặt"), true));
 
 		// Row of core actions
+		String cur = lib.getCurrent();
+		boolean canDelete = cur != null && lib.exists(cur);
 		inv.setItem(12, buttonWithLore(Material.MAP, Text.item("&b&lChọn đường"), Action.PICK_TRACK,
 				List.of("&7Chọn đường đua hiện tại"), true));
 		inv.setItem(13, buttonWithLore(Material.PAPER, Text.item("&a&lLưu"), Action.SAVE,
@@ -106,6 +109,14 @@ public class AdminTracksGUI implements Listener {
 				List.of("&7Nhập tên mới để lưu"), true));
 		inv.setItem(16, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), Action.REFRESH,
 				List.of("&7Cập nhật thông tin"), true));
+		inv.setItem(27, buttonWithLore(Material.TNT, Text.item("&c&lXóa đường"), Action.DELETE_TRACK,
+				List.of(
+					"&7Xóa file đường đua hiện tại và dữ liệu liên quan",
+					"&7(kỷ lục và PB cá nhân).",
+					"",
+					"&cYêu cầu nhập lại tên để xác nhận.",
+					"&7Dừng cuộc đua trước khi xóa."
+				), canDelete));
 		inv.setItem(31, buttonWithLore(Material.ENDER_PEARL, Text.item("&b&lDịch chuyển tới đường"), Action.TELEPORT_TRACK,
 				List.of(
 					"&7Dịch chuyển đến vị trí của đường đua hiện tại",
@@ -326,6 +337,45 @@ public class AdminTracksGUI implements Listener {
 			.open(p);
 	}
 
+	private void promptDeleteTrack(Player p) {
+		String cur = lib.getCurrent();
+		if (cur == null || cur.isBlank()) {
+			Text.msg(p, "&cChưa chọn đường để xóa.");
+			return;
+		}
+		if (!lib.exists(cur)) {
+			Text.msg(p, "&cFile đường đua không tồn tại: &f" + cur);
+			return;
+		}
+
+		new AnvilGUI.Builder()
+			.plugin(plugin)
+			.title(Text.plain(Text.title("Xóa đường")))
+			.text(cur)
+			.itemLeft(new ItemStack(Material.TNT))
+			.onClick((slot, state) -> {
+				if (slot != AnvilGUI.Slot.OUTPUT)
+					return List.of();
+				String input = state.getText() == null ? "" : state.getText().trim();
+				if (!input.equalsIgnoreCase(cur)) {
+					Text.msg(p, "&cNhập lại tên đường để xác nhận: &f" + cur);
+					return List.of(AnvilGUI.ResponseAction.close());
+				}
+
+				boolean ok = plugin.deleteTrack(cur);
+				if (ok) {
+					Text.msg(p, "&aĐã xóa đường đua &f" + cur + "&a, bao gồm cuộc đua đang chạy và dữ liệu liên quan.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.ENTITY_ZOMBIE_BREAK_WOODEN_DOOR, 0.8f, 1.2f);
+				} else {
+					Text.msg(p, "&cKhông thể xóa đường đua &f" + cur + "&c. Kiểm tra log để biết thêm thông tin.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+				}
+				Bukkit.getScheduler().runTask(plugin, () -> open(p));
+				return List.of(AnvilGUI.ResponseAction.close());
+			})
+			.open(p);
+	}
+
 	@EventHandler(priority = EventPriority.HIGHEST)
 	public void onClick(InventoryClickEvent e) {
 		Inventory top = e.getView().getTopInventory();
@@ -351,6 +401,7 @@ public class AdminTracksGUI implements Listener {
 			case NEW_TRACK -> promptNewTrack(p);
 			case SAVE -> doSave(p);
 			case SAVE_AS -> promptSaveAs(p);
+			case DELETE_TRACK -> promptDeleteTrack(p);
 			case TELEPORT_TRACK -> doTeleportToTrack(p);
 			case SET_ICON -> doSetIcon(p);
 			case CLEAR_ICON -> { plugin.getTrackConfig().setIcon(null); Text.msg(p, "&aĐã xóa icon đường."); Text.tell(p, "&7Nhớ bấm &fLưu&7 để ghi vào file."); open(p);}

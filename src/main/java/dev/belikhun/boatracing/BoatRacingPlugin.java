@@ -667,6 +667,55 @@ public class BoatRacingPlugin extends JavaPlugin {
 		this.prefix = Text.colorize(getConfig().getString("prefix", "&6[BoatRacing] "));
 	}
 
+	public boolean deleteTrack(String trackName) {
+		if (trackName == null || trackName.isBlank())
+			return false;
+		String key = trackName.trim();
+		boolean touched = false;
+
+		try {
+			if (raceService != null)
+				touched = raceService.deleteTrack(key) || touched;
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (trackRecordManager != null)
+				touched = trackRecordManager.remove(key) || touched;
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (profileManager != null)
+				touched = profileManager.removeTrack(key) || touched;
+		} catch (Throwable ignored) {
+		}
+
+		boolean fileDeleted = false;
+		try {
+			if (trackLibrary != null)
+				fileDeleted = trackLibrary.delete(key);
+		} catch (Throwable ignored) {
+			fileDeleted = false;
+		}
+		if (fileDeleted) {
+			touched = true;
+			try {
+				if (trackConfig != null && key.equalsIgnoreCase(trackConfig.getCurrentName()))
+					trackConfig.resetForNewTrack();
+			} catch (Throwable ignored) {
+			}
+		}
+
+		try {
+			if (trackSelectGUI != null)
+				trackSelectGUI.invalidateCache(key);
+		} catch (Throwable ignored) {
+		}
+
+		return touched || fileDeleted;
+	}
+
 	// --- Lobby spawn (plugin-managed) ---
 	/**
 	 * Resolve the lobby spawn location.
