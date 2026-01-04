@@ -1700,10 +1700,13 @@ public class EventService {
 			}
 			scheduledTaskIds.clear();
 
+			// Do NOT stop/destroy the board here.
+			// After the intro ends, the board should fall back to idle splash rather than going blank.
 			try {
 				if (board != null) {
 					board.setViewers(java.util.Collections.emptySet());
-					board.stop();
+					board.showFavicon();
+					board.start();
 				}
 			} catch (Throwable ignored) {
 			}
@@ -1961,10 +1964,13 @@ public class EventService {
 			}
 			scheduledTaskIds.clear();
 
+			// Do NOT stop/destroy the board here.
+			// Keep it alive so the idle fallback splash remains visible between event phases.
 			try {
 				if (board != null) {
 					board.setViewers(java.util.Collections.emptySet());
-					board.stop();
+					board.showFavicon();
+					board.start();
 				}
 			} catch (Throwable ignored) {
 			}
