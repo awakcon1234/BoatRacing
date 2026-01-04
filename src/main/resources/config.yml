@@ -480,5 +480,13 @@ discord:
     # Discord giới hạn content tối đa 2000 ký tự; bật để tự cắt.
     trim-to-2000: true
 
+    # Hàng đợi gửi webhook (giúp ổn định và giữ thứ tự khi chat nhiều)
+    # Nếu đầy, plugin sẽ bỏ bớt tin nhắn để tránh lag.
+    max-queue-size: 200
+
+    # Thử gửi lại khi lỗi mạng / rate-limit (Discord 429)
+    max-retries: 3
+    retry-backoff-ms: 750
+
     # Bật log debug (sẽ in thêm thông tin khi gửi / lỗi)
     debug: false

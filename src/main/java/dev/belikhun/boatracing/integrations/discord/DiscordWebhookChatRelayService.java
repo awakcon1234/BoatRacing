@@ -24,7 +24,9 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.Objects;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -39,6 +41,9 @@ public final class DiscordWebhookChatRelayService {
 	private Listener listener;
 	private Listener ventureChatListener;
 	private Listener hookListener;
+	private final BlockingQueue<WebhookJob> sendQueue = new LinkedBlockingQueue<>();
+	private volatile boolean workerRunning = false;
+	private Thread workerThread;
 	private final ConcurrentHashMap<UUID, LastMessage> lastMessageByPlayer = new ConcurrentHashMap<>();
 
 	public DiscordWebhookChatRelayService(BoatRacingPlugin plugin) {
@@ -85,6 +90,7 @@ public final class DiscordWebhookChatRelayService {
 		} catch (Throwable ignored) {
 		}
 
+		ensureWorker();
 		ensureHookListener();
 		ensureListener();
 		ensureVentureChatListener();
@@ -107,6 +113,162 @@ public final class DiscordWebhookChatRelayService {
 			ventureChatListener = null;
 			hookListener = null;
 		}
+
+		stopWorker();
+	}
+
+	private synchronized void ensureWorker() {
+		if (workerRunning && workerThread != null && workerThread.isAlive())
+			return;
+		workerRunning = true;
+		workerThread = new Thread(this::workerLoop, "BoatRacing-DiscordWebhook");
+		workerThread.setDaemon(true);
+		workerThread.start();
+		try {
+			plugin.getLogger().info("[Discord] Worker gửi webhook đã khởi động.");
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private synchronized void stopWorker() {
+		workerRunning = false;
+		try {
+			if (workerThread != null)
+				workerThread.interrupt();
+		} catch (Throwable ignored) {
+		}
+		workerThread = null;
+		try {
+			sendQueue.clear();
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private void workerLoop() {
+		while (workerRunning) {
+			try {
+				WebhookJob job = sendQueue.take();
+				processJob(job);
+			} catch (InterruptedException ie) {
+				// stop or continue
+			} catch (Throwable t) {
+				try {
+					plugin.getLogger().warning("[Discord] Worker lỗi: " + t.getMessage());
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
+	private void processJob(WebhookJob job) {
+		if (job == null)
+			return;
+		Config cfg = config.get();
+		if (!cfg.enabled)
+			return;
+		if (cfg.webhookUrl.isBlank())
+			return;
+
+		int attempts = 0;
+		int maxAttempts = Math.max(1, cfg.maxRetries + 1);
+		long backoffMs = Math.max(0L, cfg.retryBackoffMs);
+
+		while (workerRunning && attempts < maxAttempts) {
+			attempts++;
+			HttpResponse<String> resp;
+			try {
+				HttpRequest req = HttpRequest.newBuilder(URI.create(cfg.webhookUrl))
+						.timeout(Duration.ofMillis(cfg.timeoutMs))
+						.header("Content-Type", "application/json")
+						.POST(HttpRequest.BodyPublishers.ofString(job.body))
+						.build();
+				resp = http.send(req, HttpResponse.BodyHandlers.ofString());
+			} catch (Throwable t) {
+				if (attempts >= maxAttempts) {
+					try {
+						plugin.getLogger().warning("[Discord] Gửi webhook thất bại sau " + attempts + " lần: " + t.getMessage());
+					} catch (Throwable ignored) {
+					}
+					return;
+				}
+				sleepQuiet(backoffMs);
+				continue;
+			}
+
+			int code = resp != null ? resp.statusCode() : 0;
+			if (cfg.debug) {
+				try {
+					plugin.getLogger().info("[Discord][DBG] Webhook HTTP " + code);
+				} catch (Throwable ignored) {
+				}
+			}
+
+			// Success
+			if (code >= 200 && code < 300) {
+				return;
+			}
+
+			// Rate limit
+			if (code == 429) {
+				long waitMs = parseRetryAfterMs(resp);
+				if (waitMs <= 0L)
+					waitMs = Math.max(250L, backoffMs);
+				if (cfg.debug) {
+					try {
+						plugin.getLogger().warning("[Discord][DBG] Bị rate-limit (429), chờ " + waitMs + "ms");
+					} catch (Throwable ignored) {
+					}
+				}
+				sleepQuiet(waitMs);
+				continue;
+			}
+
+			// Other errors: retry a bit, then give up
+			if (attempts >= maxAttempts) {
+				try {
+					plugin.getLogger().warning("[Discord] Webhook trả về HTTP " + code);
+				} catch (Throwable ignored) {
+				}
+				return;
+			}
+			sleepQuiet(backoffMs);
+		}
+	}
+
+	private static void sleepQuiet(long ms) {
+		if (ms <= 0L)
+			return;
+		try {
+			Thread.sleep(ms);
+		} catch (InterruptedException ignored) {
+		}
+	}
+
+	private static long parseRetryAfterMs(HttpResponse<?> resp) {
+		if (resp == null)
+			return 0L;
+		try {
+			java.util.Optional<String> ra = resp.headers().firstValue("Retry-After");
+			if (ra.isPresent()) {
+				String v = ra.get().trim();
+				// Can be seconds (int) for some endpoints
+				try {
+					double sec = Double.parseDouble(v);
+					return (long) Math.ceil(sec * 1000.0);
+				} catch (Throwable ignored) {
+				}
+			}
+			java.util.Optional<String> resetAfter = resp.headers().firstValue("X-RateLimit-Reset-After");
+			if (resetAfter.isPresent()) {
+				try {
+					double sec = Double.parseDouble(resetAfter.get().trim());
+					return (long) Math.ceil(sec * 1000.0);
+				} catch (Throwable ignored) {
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+		return 0L;
 	}
 
 	private void ensureHookListener() {
@@ -179,6 +341,9 @@ public final class DiscordWebhookChatRelayService {
 		int timeoutMs = 5000;
 		boolean trim = true;
 		boolean debug = false;
+		int maxQueueSize = 200;
+		int maxRetries = 3;
+		int retryBackoffMs = 750;
 		try {
 			enabled = plugin.getConfig().getBoolean("discord.chat-webhook.enabled", false);
 			url = plugin.getConfig().getString("discord.chat-webhook.url", "");
@@ -188,6 +353,9 @@ public final class DiscordWebhookChatRelayService {
 			timeoutMs = plugin.getConfig().getInt("discord.chat-webhook.timeout-ms", timeoutMs);
 			trim = plugin.getConfig().getBoolean("discord.chat-webhook.trim-to-2000", trim);
 			debug = plugin.getConfig().getBoolean("discord.chat-webhook.debug", debug);
+			maxQueueSize = plugin.getConfig().getInt("discord.chat-webhook.max-queue-size", maxQueueSize);
+			maxRetries = plugin.getConfig().getInt("discord.chat-webhook.max-retries", maxRetries);
+			retryBackoffMs = plugin.getConfig().getInt("discord.chat-webhook.retry-backoff-ms", retryBackoffMs);
 		} catch (Throwable ignored) {
 		}
 
@@ -203,8 +371,15 @@ public final class DiscordWebhookChatRelayService {
 			timeoutMs = 500;
 		if (timeoutMs > 60000)
 			timeoutMs = 60000;
+		if (maxQueueSize < 1)
+			maxQueueSize = 1;
+		if (maxRetries < 0)
+			maxRetries = 0;
+		if (retryBackoffMs < 0)
+			retryBackoffMs = 0;
 
-		config.set(new Config(enabled, url.trim(), username, avatarUrl, message, timeoutMs, trim, debug));
+		config.set(new Config(enabled, url.trim(), username, avatarUrl, message, timeoutMs, trim, debug,
+				maxQueueSize, maxRetries, retryBackoffMs));
 	}
 
 	private void ensureListener() {
@@ -362,7 +537,7 @@ public final class DiscordWebhookChatRelayService {
 					} catch (Throwable ignored) {
 					}
 				}
-				sendWebhook(cfg, renderedContent, renderedUsername, renderedAvatarUrl);
+				enqueueWebhook(cfg, renderedContent, renderedUsername, renderedAvatarUrl);
 			} catch (Throwable ignored) {
 			}
 		});
@@ -453,50 +628,36 @@ public final class DiscordWebhookChatRelayService {
 		return s;
 	}
 
-	private void sendWebhook(Config cfg, String content, String username, String avatarUrl) {
+	private void enqueueWebhook(Config cfg, String content, String username, String avatarUrl) {
 		String body = DiscordWebhookPayload.json(content, username, avatarUrl);
-
-		HttpRequest req;
-		try {
-			req = HttpRequest.newBuilder(URI.create(cfg.webhookUrl))
-					.timeout(Duration.ofMillis(cfg.timeoutMs))
-					.header("Content-Type", "application/json")
-					.POST(HttpRequest.BodyPublishers.ofString(body))
-					.build();
-		} catch (Throwable t) {
-			plugin.getLogger().warning("[Discord] URL webhook không hợp lệ: " + t.getMessage());
+		if (body == null || body.isBlank())
 			return;
+
+		int max = Math.max(1, cfg.maxQueueSize);
+		// Bounded queue behavior: drop oldest if full.
+		while (sendQueue.size() >= max) {
+			WebhookJob dropped = sendQueue.poll();
+			if (dropped == null)
+				break;
+			try {
+				if (cfg.debug)
+					plugin.getLogger().warning("[Discord][DBG] Hàng đợi đầy, đã bỏ 1 tin nhắn cũ.");
+			} catch (Throwable ignored) {
+			}
 		}
 
-		http.sendAsync(req, HttpResponse.BodyHandlers.discarding())
-				.whenComplete((resp, err) -> {
-					if (err != null) {
-						try {
-							plugin.getLogger().warning("[Discord] Gửi webhook thất bại: " + err.getMessage());
-						} catch (Throwable ignored) {
-						}
-						return;
-					}
-
-					int code;
-					try {
-						code = resp.statusCode();
-					} catch (Throwable ignored) {
-						code = 0;
-					}
-					if (cfg.debug) {
-						try {
-							plugin.getLogger().info("[Discord][DBG] Webhook HTTP " + code);
-						} catch (Throwable ignored) {
-						}
-					}
-					if (code >= 400) {
-						try {
-							plugin.getLogger().warning("[Discord] Webhook trả về HTTP " + code);
-						} catch (Throwable ignored) {
-						}
-					}
-				});
+		boolean ok;
+		try {
+			ok = sendQueue.offer(new WebhookJob(body));
+		} catch (Throwable t) {
+			ok = false;
+		}
+		if (!ok) {
+			try {
+				plugin.getLogger().warning("[Discord] Không thể thêm tin nhắn vào hàng đợi gửi webhook.");
+			} catch (Throwable ignored) {
+			}
+		}
 	}
 
 	private static String safe(String s) {
@@ -504,6 +665,8 @@ public final class DiscordWebhookChatRelayService {
 	}
 
 	private record LastMessage(String message, long atMs) {}
+
+	private record WebhookJob(String body) {}
 
 	private record Config(
 			boolean enabled,
@@ -513,10 +676,14 @@ public final class DiscordWebhookChatRelayService {
 			String messageTemplate,
 			int timeoutMs,
 			boolean trimTo2000,
-			boolean debug
+			boolean debug,
+			int maxQueueSize,
+			int maxRetries,
+			int retryBackoffMs
 	) {
 		static Config disabled() {
-			return new Config(false, "", "%player_name%", "", "[%world%] %player_name%: %message%", 5000, true, false);
+			return new Config(false, "", "%player_name%", "", "[%world%] %player_name%: %message%", 5000, true, false,
+					200, 3, 750);
 		}
 	}
 }

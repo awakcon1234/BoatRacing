@@ -2137,17 +2137,27 @@ public class EventService {
 			int i = Math.max(0, Math.min(segs - 1, (int) Math.floor(x)));
 			double u = x - i;
 
-			Location a = flybyPoints.get(i);
-			Location b = flybyPoints.get(i + 1);
-			if (a == null || b == null)
+			// Smooth fly-by: treat points as a curve "track" and move from first -> last.
+			// Timing is uniform by segment index (does not account for point distances).
+			Location p0 = flybyPoints.get(Math.max(0, i - 1));
+			Location p1 = flybyPoints.get(i);
+			Location p2 = flybyPoints.get(i + 1);
+			Location p3 = flybyPoints.get(Math.min(flybyPoints.size() - 1, i + 2));
+			if (p0 == null || p1 == null || p2 == null || p3 == null)
 				return fixedCamera;
-			if (a.getWorld() == null || b.getWorld() == null || !a.getWorld().equals(b.getWorld()))
-				return a.clone();
+			if (p1.getWorld() == null)
+				return fixedCamera;
+			if (p0.getWorld() == null || p2.getWorld() == null || p3.getWorld() == null)
+				return p1.clone();
+			if (!p0.getWorld().equals(p1.getWorld()) || !p1.getWorld().equals(p2.getWorld())
+					|| !p1.getWorld().equals(p3.getWorld()))
+				return p1.clone();
 
-			double px = a.getX() + (b.getX() - a.getX()) * u;
-			double py = a.getY() + (b.getY() - a.getY()) * u;
-			double pz = a.getZ() + (b.getZ() - a.getZ()) * u;
-			Location out = new Location(a.getWorld(), px, py, pz, a.getYaw(), a.getPitch());
+			double uu = Math.max(0.0, Math.min(1.0, u));
+			double px = catmullRom(p0.getX(), p1.getX(), p2.getX(), p3.getX(), uu);
+			double py = catmullRom(p0.getY(), p1.getY(), p2.getY(), p3.getY(), uu);
+			double pz = catmullRom(p0.getZ(), p1.getZ(), p2.getZ(), p3.getZ(), uu);
+			Location out = new Location(p1.getWorld(), px, py, pz, p1.getYaw(), p1.getPitch());
 
 			try {
 				if (flybyCenter != null) {
@@ -2159,6 +2169,16 @@ public class EventService {
 			}
 
 			return out;
+		}
+
+		private static double catmullRom(double p0, double p1, double p2, double p3, double t) {
+			// Uniform Catmull-Rom spline (t in [0,1]).
+			double t2 = t * t;
+			double t3 = t2 * t;
+			return 0.5 * ((2.0 * p1)
+					+ (-p0 + p2) * t
+					+ (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+					+ (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3);
 		}
 
 		private Location guessLobbyCenter() {
@@ -2228,19 +2248,8 @@ public class EventService {
 					}
 
 					if (explicit.size() >= 2) {
-						// Close the loop if needed (for smooth interpolation across the full duration).
-						try {
-							Location first = explicit.get(0);
-							Location last = explicit.get(explicit.size() - 1);
-							double dx = first.getX() - last.getX();
-							double dy = first.getY() - last.getY();
-							double dz = first.getZ() - last.getZ();
-							double d2 = dx * dx + dy * dy + dz * dz;
-							if (d2 > 0.01) {
-								explicit.add(first.clone());
-							}
-						} catch (Throwable ignored) {
-						}
+						// Do NOT auto-close the loop (no forced last->first connector).
+						// If you want a loop, explicitly set the last point equal to the first in config.
 						return explicit;
 					}
 				}
