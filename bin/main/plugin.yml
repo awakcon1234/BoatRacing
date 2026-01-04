@@ -1,0 +1,111 @@
+name: BoatRacing
+main: dev.belikhun.boatracing.BoatRacingPlugin
+version: ${version}
+api-version: '1.21'
+authors: [Belikhun]
+description: Plugin đua thuyền băng phong cách F1 cho Bukkit/Spigot với giao diện đơn giản, giống vanilla. Tương thích Paper/Purpur. Cấu hình đường đua bằng công cụ chọn BoatRacing tích hợp, chạy các cuộc đua tính thời gian với điểm kiểm tra và trình hướng dẫn thiết lập.
+website: https://modrinth.com/plugin/boatracing
+softdepend: [MapEngine, FancyNpcs, PlaceholderAPI, VentureChat]
+commands:
+  boatracing:
+    description: Lệnh gốc của BoatRacing
+    usage: /<command> profile|race|setup|admin|reload|version|scoreboard
+    aliases: [br, race]
+    permission: boatracing.use
+  join:
+    description: Tham gia đăng ký đua theo tên đường đua
+    usage: /<command> <track>
+    aliases: [j]
+    permission: boatracing.race.join
+  event:
+    description: Lệnh sự kiện (viết tắt của /boatracing event)
+    usage: /<command> help|status|join|leave
+    permission: boatracing.use
+  spawn:
+    description: Dịch chuyển về sảnh (spawn)
+    usage: /<command>
+    permission: boatracing.spawn
+permissions:
+  boatracing.*:
+    description: Cấp TẤT CẢ quyền của BoatRacing
+    default: false
+    children:
+      boatracing.use: true
+      boatracing.spawn: true
+      boatracing.version: true
+      boatracing.reload: true
+      boatracing.setup: true
+      boatracing.admin: true
+      boatracing.event.join: true
+      boatracing.event.leave: true
+      boatracing.event.status: true
+      boatracing.event.admin: true
+      boatracing.race.join: true
+      boatracing.race.leave: true
+      boatracing.race.status: true
+      boatracing.race.admin: true
+  boatracing.use:
+    description: Quyền meta cho việc dùng cơ bản BoatRacing
+    default: true
+    children:
+      boatracing.spawn: true
+      boatracing.version: true
+      boatracing.event.join: true
+      boatracing.event.leave: true
+      boatracing.event.status: true
+      boatracing.race.join: true
+      boatracing.race.leave: true
+      boatracing.race.status: true
+  boatracing.spawn:
+    description: Dùng /spawn để về sảnh
+    default: true
+  boatracing.version:
+    description: Dùng /boatracing version
+    default: true
+  boatracing.reload:
+    description: Tải lại cấu hình và dữ liệu plugin BoatRacing
+    default: op
+  boatracing.setup:
+    description: Cấu hình đường đua và vùng (quản trị)
+    default: op
+  boatracing.admin:
+    description: Quản trị đường đua và cuộc đua
+    default: op
+    children:
+      boatracing.use: true
+      boatracing.version: true
+      boatracing.reload: true
+      boatracing.setup: true
+      boatracing.event.join: true
+      boatracing.event.leave: true
+      boatracing.event.status: true
+      boatracing.event.admin: true
+      boatracing.race.join: true
+      boatracing.race.leave: true
+      boatracing.race.status: true
+      boatracing.race.admin: true
+  boatracing.race.join:
+    description: Tham gia đăng ký đua
+    default: true
+  boatracing.race.leave:
+    description: Rời đăng ký đua
+    default: true
+  boatracing.race.status:
+    description: Xem trạng thái đua của một đường đua
+    default: true
+  boatracing.race.admin:
+    description: Quản lý cuộc đua (mở/bắt đầu/cưỡng chế/dừng)
+    default: op
+
+  boatracing.event.join:
+    description: Đăng ký tham gia sự kiện
+    default: true
+  boatracing.event.leave:
+    description: Rời khỏi sự kiện
+    default: true
+  boatracing.event.status:
+    description: Xem trạng thái sự kiện
+    default: true
+  boatracing.event.admin:
+    description: Quản trị sự kiện (tạo/mở/lịch/bắt đầu/hủy)
+    default: op

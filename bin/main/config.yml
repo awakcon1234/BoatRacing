@@ -1,0 +1,492 @@
+prefix: "&6[BoatRacing] "
+player-actions:
+  # Allow non-admin players to perform these actions
+  allow-set-boat: true
+  allow-set-number: true
+
+# Event opening titles (F1-style)
+event:
+  registration-npc:
+    # NPC dùng để người chơi click để đăng ký sự kiện
+    # Nếu không đặt world (để trống), plugin sẽ dùng world spawn
+    location:
+      world: ""
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+      pitch: 0.0
+    # Skin cho NPC (tương tự FancyNpcs): @none | @mirror | <tên> | <url> | <tên file>
+    # Để trống nếu không dùng.
+    skin: ""
+    # Bật nếu skin dùng model tay gầy (Alex / slim)
+    skin-slim: false
+  podium:
+    # Debug toggles (logs to console). Keep these off unless troubleshooting.
+    debug: false
+
+  opening-titles:
+    # Enable the event opening titles sequence.
+    enabled: false
+
+    # Welcome fly-by length (seconds)
+    welcome-seconds: 10
+
+    # Delay before the first racer after the intro subtitle (seconds)
+    intro-gap-seconds: 4
+
+    # How long each racer is featured (seconds)
+    per-racer-seconds: 10
+
+    # Outro title duration (seconds)
+    outro-seconds: 6
+
+    # Lobby fly-by camera defaults (used if no explicit points are provided)
+    lobby-camera:
+      radius: 16.0
+      height: 12.0
+      points: []
+
+    # Titles/subtitles (MiniMessage-like strings are NOT parsed here; use legacy &-colors in code if needed).
+    # Placeholders used by the implementation:
+    #   %event_title% %racer_display%
+    text:
+      welcome_title: "Chào mừng!"
+      welcome_subtitle: "%event_title%"
+      racers_intro_title: ""
+      racers_intro_subtitle: "Đây là những gương mặt sẽ tranh tài hôm nay"
+      racer_card_title: ""
+      racer_card_subtitle: "%racer_display%"
+      outro_title: "Bắt đầu thôi!"
+      outro_subtitle: "Đang chuẩn bị chặng đua đầu tiên…"
+racing:
+  laps: 3
+  registration-seconds: 30
+
+  # Lobby spawn managed by BoatRacing (used for teleporting racers back to the lobby).
+  # If disabled, the plugin will fall back to the world's spawn location.
+  lobby:
+    spawn:
+      enabled: false
+      world: ""
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
+      pitch: 0.0
+
+  # Intro cinematic before the start countdown (Mario Kart style fly-by).
+  intro:
+    enabled: true
+
+    # Number of camera points (keyframes groups) to show.
+    points: 4
+
+    # Camera orbit parameters
+    radius: 16.0
+    height: 12.0
+
+    sound:
+      enabled: true
+
+  dashboard:
+    # How often to update the in-boat dashboard TextDisplay (in server ticks).
+    # Lower = tighter rotation lock, higher = less CPU.
+    # Recommended: 1
+    update-ticks: 1
+
+    # Number of segments in the dashboard speed bar.
+    # Higher = finer resolution, but slightly wider HUD.
+    # Recommended: 30
+    bar-cells: 30
+
+  # Debug toggles (logs to console). Keep these off unless troubleshooting.
+  debug:
+    teleport: false
+    checkpoints: false
+    # Logs dashboard follow/rotation diagnostics (rate-limited, once per second per racer).
+    dashboard: false
+    # Logs per-second drift/rotation deltas during the 10s start countdown freeze.
+    countdown-freeze: false
+    # Logs chosen boat type and spawned entity type.
+    boat-selection: false
+
+  countdown:
+    barrier:
+      # Place temporary barrier blocks in front of boats during the start countdown.
+      enabled: true
+
+  # After everyone finishes, keep the results visible for this many seconds, then cleanup.
+  post-finish-cleanup-seconds: 15
+  # Time penalty applied if a racer moves forward before the countdown ends (in seconds)
+  false-start-penalty-seconds: 3.0
+  # Enable/disable false start penalty during the light countdown
+  enable-false-start-penalty: true
+  # Delay between all 5 lights lit and 'lights out' (seconds); allows a brief suspense before GO
+  lights-out-delay-seconds: 1.0
+  # Optional random jitter added on top of the delay (random between 0 and this value)
+  lights-out-jitter-seconds: 0.0
+
+  # Scoreboard & ActionBar customization
+  ui:
+    # How often to update scoreboard + actionbar (in server ticks). Lower = faster but more CPU.
+    # Recommended: 5 (0.25s) or 10 (0.5s)
+    update-ticks: 5
+    # Customizable scoreboard templates (MiniMessage + PlaceholderAPI + internal %placeholders%).
+    # IMPORTANT: internal placeholders use the %name% format.
+    #
+    # Common player placeholders (most contexts):
+    #   %racer_name% %racer_display% %racer_color% %icon% %number%
+    # Lobby-only: %completed% %wins% %time_raced%
+    #
+    # Waiting: %track% %laps% %joined% %max% %countdown%
+    # Waiting (thông tin đường bổ sung):
+    #   %track_world% %track_length_display%
+    #   %track_ready% %track_ready_display% %track_missing%
+    #   %track_starts% %track_lights% %track_checkpoints% %track_centerline_nodes%
+    #   %track_has_finish% %track_has_finish_display%
+    #   %track_has_bounds% %track_has_bounds_display%
+    #   %track_has_waiting_spawn% %track_has_waiting_spawn_display%
+    #   %track_author_name% %track_author_display%
+    #   %track_icon_material%
+    # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %lap_progress% %track_progress% %checkpoint_passed% %checkpoint_total%
+    # Racing neighbor (ahead/behind) placeholders:
+    #   %ahead_position% %ahead_position_tag% %ahead_racer_name% %ahead_racer_display%
+    #   %ahead_speed_display% %ahead_speed% %ahead_speed_unit% %ahead_speed_color% %ahead_speed_color_close%
+    #   %ahead_distance% %ahead_distance_unit%
+    #
+    #   %behind_position% %behind_position_tag% %behind_racer_name% %behind_racer_display%
+    #   %behind_speed_display% %behind_speed% %behind_speed_unit% %behind_speed_color% %behind_speed_color_close%
+    #   %behind_distance% %behind_distance_unit%
+    #
+    # Lưu ý: %*_speed_color% trả về tag MiniMessage đầy đủ (ví dụ: "<red>").
+    # Completed / Ended (header + title) placeholders (the VIEWER'S own result):
+    #   %finish_pos% %finish_pos_tag% %finish_time%
+    #   %avg_speed_display% %avg_speed% %avg_speed_bps% %avg_speed_kmh% %avg_speed_bph%
+    #   %speed_unit% %speed_color% %speed_color_close% %speed_color_name%
+    #
+    # Completed (finished racers list items): %finish_pos% %finish_pos_tag% %finish_time% (plus %racer_display%)
+    # Ended (everyone finished list items): also provides %delta_time%
+    # Special control marker:
+    #   - If a rendered line contains "[skip]" it will not be sent to the scoreboard.
+    templates:
+      lobby:
+        title: "<gold>BoatRacing"
+        lines:
+          - "<yellow>Hồ sơ của bạn"
+          - "<gray>Tên: %racer_display%"
+          - "<gray>Màu: <white>%racer_color%"
+          - "<gray>Biểu tượng: <white>%icon%"
+          - "<gray>Số đua: <white>%number%"
+          - "<yellow>Thành tích"
+          - "<gray>Hoàn thành: <white>%completed%"
+          - "<gray>Chiến thắng: <white>%wins%"
+          - "<gray>Thời gian đã đua: <white>%time_raced%"
+
+      # Event lobby (người chơi đã tham gia sự kiện nhưng hiện không ở trong cuộc đua)
+      # Templates: header/footer/ranking_item (multi-line) + title
+      # Event placeholders:
+      #   %event_id% %event_title% %event_state% %event_state_display%
+      #   %event_countdown_label% %event_countdown% %event_countdown_display%
+      #   %event_points% %event_position% %event_position_tag%
+      #   %event_participants% %event_track_total% %event_track_index% %event_track_name%
+      # Ranking item placeholders:
+      #   %rank_position% %rank_position_tag% %rank_points% %rank_racer_name% %rank_racer_display%
+      event_lobby:
+        title: "<gold>Sự kiện"
+        header:
+          - "<yellow>%event_title%"
+          - "<gray>Trạng thái: <white>%event_state_display%"
+          - "<gray>⌛ %event_countdown_label%: <white>%event_countdown%"
+          - "<gray>Bạn: %racer_display% <gray>●</gray> %event_position_tag% <gray>●</gray> <white>%event_points%</white> <gray>điểm</gray>"
+          - "<gray>Tổng tay đua: <white>%event_participants%"
+          - ""
+          - "<yellow>Bảng điểm"
+        ranking_item:
+          - "%rank_position_tag% %rank_racer_display%"
+          - "<gray>  điểm: <white>%rank_points%"
+        footer:
+          - ""
+          - "<gray>ℹ Track pool: <white>%event_track_total%"
+      waiting:
+        title: "<gold>Đang chờ"
+        lines:
+          - "<yellow>Thông tin đường"
+          - "<gray>Đường: <white>%track%"
+          - "<gray>Vòng: <white>%laps%"
+          - "<gray>Người chơi: <white>%joined%/%max%"
+          - "<gray>Điểm kiểm tra: <white>%checkpoint_total%"
+          - "<gray>⌚ Kỷ lục: <white>%track_record_time%</white> <gray>bởi</gray> %track_record_holder%"
+          - "<gray>⌚ Kỷ lục cá nhân: <white>%personal_record_time%"
+          - "<yellow>Tay đua"
+          - "<gray>Tên: %racer_display%"
+          - "<gray>Màu: <white>%racer_color%"
+          - "<gray>Biểu tượng: <white>%icon%"
+          - "<gray>Số đua: <white>%number%"
+          - "<gray>Bắt đầu: <white>%countdown%"
+
+      # Countdown (đã vào vị trí xuất phát, đang đếm ngược đèn)
+      countdown:
+        title: "<gold>Chuẩn bị"
+        lines:
+          - "<yellow>Vào vị trí xuất phát"
+          - "<gray>Đường: <white>%track%"
+          - "<gray>Vòng: <white>%laps%"
+          - "<gray>Người chơi: <white>%joined%/%max%"
+          - "<gray>Điểm kiểm tra: <white>%checkpoint_total%"
+          - ""
+          - "<yellow>Đếm ngược"
+          - "<gray>Bắt đầu trong: <white>%countdown%"
+      racing:
+        title: "<gold>Đang đua"
+        lines:
+          - "<gray>Đường: <white>%track%"
+          - "<gray>Thời gian: <white>%timer%"
+          - "<gray>Vòng: <white>%lap_current%/%lap_total%"
+          - "<gray>Checkpoint: <white>%checkpoint_passed%/%checkpoint_total%"
+          - "<gray>Vị trí: <white>%position%/%joined%"
+          - "<gray>Tiến độ vòng: <white>%lap_progress%%"
+          - "<gray>Tiến độ tổng: <white>%track_progress%%"
+      completed:
+        title: "<gold>Kết quả"
+        # Header/footer apply to everyone when showing the completed board.
+        header:
+          - "<gray>Đường: <white>%track%</white> <gray>●</gray> <white>%track_length_display%"
+          - "<gray>Bạn:</gray> %racer_display% <gray>●</gray> %finish_pos_tag% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
+        footer: []
+
+        # Multi-line blocks for racers that have finished.
+        finished-header:
+          - "<yellow>Về đích"
+        finished-item:
+          - "%finish_pos_tag% %racer_display%"
+          - "<gray>  thời gian: <white>%finish_time%"
+        finished-max-lines: 8
+
+        # Multi-line blocks for racers that are still racing.
+        unfinished-header:
+          - "<yellow>Đang đua"
+        unfinished-item:
+          - "%position_tag% %racer_display%"
+          - "<gray>  tiến độ vòng: <white>%lap_progress%%"
+          - "<gray>  tiến độ tổng: <white>%track_progress%%"
+        unfinished-max-lines: 6
+      # Race ended (everyone finished): show full ordered results.
+      # Placeholders:
+      #   %finish_pos% %racer_name% %finish_time% %delta_time%
+      ended:
+        title: "<gold>Kết quả"
+        header:
+          - "<gray>Đường: <white>%track%</white> <gray>●</gray> <white>%track_length_display%"
+          - "<yellow>Kết quả"
+          - "<gray>Bạn:</gray> %racer_display% <gray>●</gray> %finish_pos_tag% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
+        # #1 line (shows absolute time)
+        winner_line: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%"
+        # Everyone else (shows +delta from #1)
+        delta_line: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>+%delta_time%"
+        # Optional footer lines appended to the ended board.
+        footer: []
+      # ActionBar templates shown only while waiting and racing; supports MiniMessage and PlaceholderAPI
+      actionbar:
+        enabled: true
+        # Waiting placeholders: %countdown% %joined% %max%
+        waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>"
+        # Racing placeholders: %position% %racer_display% %lap_current% %lap_total% %lap_progress% %track_progress% %speed_display% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
+        # - %speed_display% is a pre-colored and unit-aware string (recommended).
+        # - %speed_color% returns the full MiniMessage tag (e.g. "<red>"), not just a tag name.
+        racing: "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%lap_progress%%</yellow> %speed_display%"
+        # Completed placeholders: %finish_pos% %racer_display% %finish_time% %avg_speed_display% %avg_speed% %speed_unit% %speed_color%
+        completed: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
+
+# Speed unit and color thresholds
+scoreboard:
+  speed:
+    unit: kmh        # kmh | bps | bph
+    # Preferred thresholds for chosen unit (integers).
+    yellow_kmh: 5    # below this is red; between yellow and green is yellow
+    green_kmh: 20    # at or above this is green
+    # Thresholds for bps unit (blocks per second)
+    yellow_bps: 2
+    green_bps: 6
+    # Thresholds for bph unit (blocks per hour)
+    yellow_bph: 5000
+    green_bph: 20000
+    # Colors for tiers (MiniMessage color names). Global defaults + per-unit overrides.
+    colors:
+      low: red
+      mid: yellow
+      high: green
+      bps:
+        low: red
+        mid: yellow
+        high: green
+      kmh:
+        low: red
+        mid: yellow
+        high: green
+      bph:
+        low: red
+        mid: yellow
+        high: green
+
+  # Registration announce message template
+  # Placeholders: {track} = track name, {laps} = total laps, {cmd} = suggested join command
+  registration-announce: "&eCuộc đua mới tại &f{track}&e (&f{laps}&e vòng). &7Tham gia bằng &f{cmd}"
+
+# MapEngine integration (optional). Requires the MapEngine plugin installed.
+mapengine:
+  lobby-board:
+    # Enable the lobby information board.
+    enabled: false
+
+    # If there are too many tracks to fit, auto-cycle pages like an airport board.
+    # Unit: seconds per page.
+    page-seconds: 6
+
+    # Font file for the lobby board renderer (TTF/OTF).
+    # - Mặc định: dùng font hệ thống (monospace).
+    # - Bạn có thể cung cấp font Minecraft dạng .ttf/.otf tại:
+    #   ● plugins/BoatRacing/fonts/minecraft.ttf (hoặc .otf)
+    #   ● hoặc đặt đường dẫn tại đây (tuyệt đối hoặc tương đối theo thư mục plugin).
+    # Lưu ý: Hãy đảm bảo bạn có quyền sử dụng font.
+    font-file: ""
+
+    # Enable debug logs for the lobby board (prints to console, rate-limited).
+    debug: false
+
+    # Show the board only to lobby players within this radius (in chunks).
+    # Default: 12 chunks.
+    visible-radius-chunks: 12
+
+    # How often to redraw the board (in server ticks). Default: 20 (1s)
+    update-ticks: 20
+
+    # MapEngine pipeline options
+    # - buffering: enable internal buffering for smoother updates
+    # - bundling: batch multiple updates into one send; disable to reduce "blank"/partial frames on some setups
+    pipeline:
+      buffering: true
+      bundling: false
+
+    # Placement is written by the /boatracing board set command.
+    placement: {}
+
+  # Event board (MapEngine) (optional)
+  # Shows event scoreboard only to participants near the board.
+  event-board:
+    enabled: false
+
+    # Show the board only to nearby participants within this radius (in chunks).
+    visible-radius-chunks: 12
+
+    # How often to redraw the board (in server ticks). Default: 20 (1s)
+    update-ticks: 20
+
+    # Optional custom font file for MapEngine rendering.
+    # Same rules as lobby-board.font-file.
+    font-file: ""
+
+    # Font sizes (fallback is Monospaced).
+    font:
+      # Global scale applied to all font sizes on the event board.
+      scale: 1.25
+      title-size: 18
+      body-size: 14
+
+    debug: false
+
+    pipeline:
+      buffering: true
+      bundling: false
+
+    # Placement is written manually by config for now.
+    # You can copy the structure from mapengine.lobby-board.placement.
+    placement: {}
+
+  # Opening titles board (MapEngine) (optional)
+  # Used during event opening titles to display server favicon and per-racer cards.
+  opening-titles:
+    enabled: false
+
+    # Stage spawn for featured racer (used by Event opening titles)
+    stage:
+      world: world
+      x: 0
+      y: 100
+      z: 0
+      yaw: 180
+      pitch: 0
+
+    # Camera viewing position for the audience (fixed)
+    camera:
+      world: world
+      x: 0
+      y: 102
+      z: -8
+      yaw: 0
+      pitch: 10
+
+    # How often to redraw the board (in server ticks). For ~20fps, set 1.
+    update-ticks: 1
+
+    # Optional custom font file for MapEngine rendering.
+    # Same rules as lobby-board.font-file.
+    font-file: ""
+
+    # Font sizes (fallback is Monospaced).
+    font:
+      title-size: 18
+      body-size: 14
+
+    debug: false
+
+    pipeline:
+      buffering: true
+      bundling: false
+
+    # Placement is written manually by config for now.
+    # You can copy the structure from mapengine.lobby-board.placement.
+    board:
+      placement: {}
+
+# Discord webhook (tùy chọn): gửi toàn bộ tin nhắn chat trong game sang Discord.
+# Lưu ý:
+# - Tính năng này chỉ gửi ra Discord, KHÔNG ảnh hưởng chat trong game.
+# - Tất cả MiniMessage tags (ví dụ: <red>) và mã màu (&a, §a, hex) sẽ bị loại bỏ trước khi gửi.
+# - Hỗ trợ PlaceholderAPI (nếu server có cài), cùng với các placeholder nội bộ bên dưới.
+discord:
+  chat-webhook:
+    # Bật/tắt module
+    enabled: false
+
+    # URL webhook Discord (tạo trong kênh Discord -> Integrations -> Webhooks)
+    # Ví dụ: "https://discord.com/api/webhooks/..."
+    url: ""
+
+    # Template tên hiển thị của bot/webhook (hỗ trợ placeholder)
+    # Placeholder nội bộ: %player_name% %player_uuid% %world% %message%
+    username: "%player_name%"
+
+    # URL avatar (hỗ trợ placeholder). Để trống để dùng avatar mặc định của webhook.
+    avatar-url: ""
+
+    # Nội dung gửi lên Discord (hỗ trợ placeholder)
+    # Placeholder nội bộ: %player_name% %player_uuid% %world% %message%
+    message: "[%world%] %player_name%: %message%"
+
+    # Timeout HTTP khi gửi (ms)
+    timeout-ms: 5000
+
+    # Discord giới hạn content tối đa 2000 ký tự; bật để tự cắt.
+    trim-to-2000: true
+
+    # Hàng đợi gửi webhook (giúp ổn định và giữ thứ tự khi chat nhiều)
+    # Nếu đầy, plugin sẽ bỏ bớt tin nhắn để tránh lag.
+    max-queue-size: 200
+
+    # Thử gửi lại khi lỗi mạng / rate-limit (Discord 429)
+    max-retries: 3
+    retry-backoff-ms: 750
+
+    # Bật log debug (sẽ in thêm thông tin khi gửi / lỗi)
+    debug: false

@@ -937,6 +937,16 @@ public class EventService {
 		} catch (Throwable ignored) {
 		}
 
+		// If the race was ended by the "top 3 finished -> half of #1 time" rule,
+		// finish the track now (DNF racers keep 0 points via finished=false).
+		try {
+			if (rm.isPodiumEndExpired()) {
+				finishTrack(e, rm, false);
+				return;
+			}
+		} catch (Throwable ignored) {
+		}
+
 		// Per-track time limit.
 		if (trackWasRunning && trackDeadlineMillis > 0L && System.currentTimeMillis() >= trackDeadlineMillis) {
 			try {

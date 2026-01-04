@@ -119,6 +119,12 @@ public class RaceManager {
 	private BukkitTask allFinishedFireworksTask;
 	private BukkitTask resultsTopBoardTask;
 	private BukkitTask resultsRestBoardTask;
+	// End-of-race timer: once top 3 have finished, end the race after half of #1 time.
+	private BukkitTask podiumEndTask;
+	private volatile long podiumEndDeadlineMillis = 0L;
+	private volatile long podiumWinnerTimeMillis = 0L;
+	private volatile boolean podiumEndExpired = false;
+	private volatile boolean podiumEndStarted = false;
 	private BukkitTask dashboardTask;
 	private final java.util.Map<UUID, org.bukkit.entity.TextDisplay> dashboardByPlayer = new java.util.HashMap<>();
 	private final java.util.Map<UUID, org.bukkit.Location> dashboardLastBoatLoc = new java.util.HashMap<>();
@@ -143,6 +149,276 @@ public class RaceManager {
 			} catch (Throwable ignored) {
 			}
 			resultsRestBoardTask = null;
+		}
+	}
+
+	private void cancelPodiumEndTimer() {
+		if (podiumEndTask != null) {
+			try {
+				podiumEndTask.cancel();
+			} catch (Throwable ignored) {
+			}
+			podiumEndTask = null;
+		}
+		podiumEndDeadlineMillis = 0L;
+		podiumEndStarted = false;
+		podiumEndExpired = false;
+		podiumWinnerTimeMillis = 0L;
+	}
+
+	/**
+	 * Returns true if the race was ended by the "top3 -> timer" rule.
+	 * Used by EventService to finish/score a track without waiting for everyone.
+	 */
+	public boolean isPodiumEndExpired() {
+		return podiumEndExpired;
+	}
+
+	private int countFinishedParticipants() {
+		int c = 0;
+		for (ParticipantState st : participants.values()) {
+			if (st != null && st.finished)
+				c++;
+		}
+		return c;
+	}
+
+	private boolean hasAnyUnfinishedParticipant() {
+		for (ParticipantState st : participants.values()) {
+			if (st != null && !st.finished)
+				return true;
+		}
+		return false;
+	}
+
+	private long computeWinnerTotalMillisFallback() {
+		ParticipantState winner = null;
+		for (ParticipantState st : participants.values()) {
+			if (st == null || !st.finished)
+				continue;
+			if (st.finishPosition == 1) {
+				winner = st;
+				break;
+			}
+		}
+		if (winner == null)
+			return 0L;
+		long rawMs = Math.max(0L, winner.finishTimeMillis - getRaceStartMillis());
+		long penaltyMs = Math.max(0L, winner.penaltySeconds) * 1000L;
+		return rawMs + penaltyMs;
+	}
+
+	private void maybeStartPodiumEndTimer() {
+		if (plugin == null)
+			return;
+		if (!running)
+			return;
+		if (podiumEndStarted || podiumEndDeadlineMillis > 0L)
+			return;
+		if (!hasAnyUnfinishedParticipant())
+			return;
+		int finishedCount = countFinishedParticipants();
+		if (finishedCount < 3)
+			return;
+
+		long winnerMs = podiumWinnerTimeMillis;
+		if (winnerMs <= 0L)
+			winnerMs = computeWinnerTotalMillisFallback();
+		if (winnerMs <= 0L)
+			return;
+
+		long durationMs = Math.max(1000L, winnerMs / 2L);
+		long now = System.currentTimeMillis();
+		podiumEndDeadlineMillis = now + durationMs;
+		podiumEndStarted = true;
+		podiumEndExpired = false;
+
+		int sec = (int) Math.max(1L, (durationMs + 999L) / 1000L);
+		String left = Time.formatCountdownSeconds(sec);
+		broadcastToInvolved("&e⌛ Top 3 đã về đích! &7Còn &f" + left + "&7 để hoàn thành (&f1/2 thời gian #1&7). Hết giờ sẽ kết thúc chặng.");
+
+		podiumEndTask = plugin.getServer().getScheduler().runTaskTimer(plugin, new Runnable() {
+			int lastAnnounced = Integer.MIN_VALUE;
+
+			@Override
+			public void run() {
+				if (plugin == null) {
+					try {
+						cancelPodiumEndTimer();
+					} catch (Throwable ignored) {
+					}
+					return;
+				}
+				if (!running) {
+					// Race ended normally (everyone finished) or was stopped.
+					try {
+						if (podiumEndTask != null)
+							podiumEndTask.cancel();
+					} catch (Throwable ignored) {
+					}
+					podiumEndTask = null;
+					return;
+				}
+				if (!hasAnyUnfinishedParticipant()) {
+					// Everyone finished before timer expired.
+					try {
+						cancelPodiumEndTimer();
+					} catch (Throwable ignored) {
+					}
+					return;
+				}
+
+				long now = System.currentTimeMillis();
+				long remain = podiumEndDeadlineMillis - now;
+				if (remain <= 0L) {
+					try {
+						if (podiumEndTask != null)
+							podiumEndTask.cancel();
+					} catch (Throwable ignored) {
+					}
+					podiumEndTask = null;
+					podiumEndExpired = true;
+					try {
+						endRaceDueToPodiumTimer();
+					} catch (Throwable ignored) {
+					}
+					return;
+				}
+
+				int secLeft = (int) Math.max(1L, (remain + 999L) / 1000L);
+				if (secLeft != lastAnnounced && (secLeft == 60 || secLeft == 30 || secLeft == 10 || secLeft <= 5)) {
+					lastAnnounced = secLeft;
+					broadcastToInvolved("&e⌛ Còn &f" + Time.formatCountdownSeconds(secLeft) + "&e để về đích.");
+				}
+			}
+		}, 20L, 20L);
+	}
+
+	private void broadcastToInvolved(String legacyAmpersand) {
+		for (UUID id : getInvolved()) {
+			try {
+				Player p = Bukkit.getPlayer(id);
+				if (p == null || !p.isOnline())
+					continue;
+				Text.msg(p, legacyAmpersand);
+			} catch (Throwable ignored) {
+			}
+		}
+	}
+
+	private void endRaceDueToPodiumTimer() {
+		if (!running)
+			return;
+
+		running = false;
+		try {
+			stopRaceTicker();
+		} catch (Throwable ignored) {
+		}
+		try {
+			setStartLightsProgress(0.0);
+		} catch (Throwable ignored) {
+		}
+		try {
+			clearCheckpointHolos();
+		} catch (Throwable ignored) {
+		}
+		try {
+			spawnAllFinishedFireworks();
+		} catch (Throwable ignored) {
+		}
+		try {
+			setAllInvolvedSpectator();
+		} catch (Throwable ignored) {
+		}
+
+		broadcastToInvolved("&c⌛ Hết giờ! &7Chặng đã kết thúc.");
+
+		// Results boards (same format as normal completion).
+		try {
+			cancelResultsBoards();
+			java.util.List<ParticipantState> standings = getStandings();
+			java.util.List<String> top = buildResultsTop3BoardLines(standings);
+			java.util.List<String> rest = buildResultsRestBoardLines(standings);
+			if (plugin != null) {
+				resultsTopBoardTask = plugin.getServer().getScheduler().runTask(plugin, () -> {
+					try {
+						broadcastChatBoard(top);
+					} catch (Throwable ignored) {
+					}
+					resultsTopBoardTask = null;
+				});
+				resultsRestBoardTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+					try {
+						broadcastChatBoard(rest);
+					} catch (Throwable ignored) {
+					}
+					resultsRestBoardTask = null;
+				}, 5L * 20L);
+			}
+		} catch (Throwable ignored) {
+		}
+
+		// Cleanup scheduling (mirrors the all-finished path, including event-managed track behavior).
+		if (plugin != null) {
+			boolean eventManagedTrack = false;
+			try {
+				if (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin br) {
+					dev.belikhun.boatracing.event.EventService es = br.getEventService();
+					String active = (es != null ? es.getActiveTrackNameRuntime() : null);
+					dev.belikhun.boatracing.event.RaceEvent ev = (es != null ? es.getActiveEvent() : null);
+					String cur = null;
+					try {
+						cur = trackConfig != null ? trackConfig.getCurrentName() : null;
+					} catch (Throwable ignored) {
+						cur = null;
+					}
+					if (ev != null && active != null && cur != null && !active.isBlank() && !cur.isBlank()) {
+						eventManagedTrack = active.equalsIgnoreCase(cur);
+					}
+				}
+			} catch (Throwable ignored) {
+				eventManagedTrack = false;
+			}
+			final boolean teleportAfterFinish = !eventManagedTrack;
+
+			int sec = 15;
+			try {
+				sec = Math.max(0, plugin.getConfig().getInt("racing.post-finish-cleanup-seconds", 15));
+			} catch (Throwable ignored) {
+				sec = 15;
+			}
+
+			if (postFinishCleanupTask != null) {
+				try {
+					postFinishCleanupTask.cancel();
+				} catch (Throwable ignored) {
+				}
+				postFinishCleanupTask = null;
+			}
+			postFinishCleanupEndMillis = (sec > 0) ? (System.currentTimeMillis() + (sec * 1000L)) : 0L;
+
+			if (sec <= 0) {
+				final long delayTicks = 40L;
+				postFinishCleanupEndMillis = System.currentTimeMillis() + (delayTicks * 50L);
+				postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+					try {
+						stop(teleportAfterFinish);
+					} catch (Throwable ignored) {
+					}
+					postFinishCleanupEndMillis = 0L;
+					postFinishCleanupTask = null;
+				}, delayTicks);
+			} else {
+				postFinishCleanupTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+					try {
+						stop(teleportAfterFinish);
+					} catch (Throwable ignored) {
+					}
+					postFinishCleanupEndMillis = 0L;
+					postFinishCleanupTask = null;
+				}, sec * 20L);
+			}
 		}
 	}
 
@@ -2859,7 +3135,16 @@ public class RaceManager {
 			long rawMs = Math.max(0L, s.finishTimeMillis - getRaceStartMillis());
 			long penaltyMs = Math.max(0L, s.penaltySeconds) * 1000L;
 			long totalMs = rawMs + penaltyMs;
+			if (s.finishPosition == 1 && totalMs > 0L) {
+				podiumWinnerTimeMillis = totalMs;
+			}
 			broadcastRacerFinished(uuid, finisherName, s.finishPosition, totalMs);
+		} catch (Throwable ignored) {
+		}
+
+		// If top 3 have finished and there are still racers on track, start an end timer.
+		try {
+			maybeStartPodiumEndTimer();
 		} catch (Throwable ignored) {
 		}
 
@@ -2882,6 +3167,11 @@ public class RaceManager {
 			boolean allFinished = !participants.isEmpty()
 					&& participants.values().stream().allMatch(x -> x != null && x.finished);
 			if (allFinished) {
+				// If we had a podium-end timer, stop it; the race is completing normally.
+				try {
+					cancelPodiumEndTimer();
+				} catch (Throwable ignored) {
+				}
 				// Mark race as ended so end-of-race effects (fireworks/scoreboard) can run.
 				running = false;
 				try {
@@ -4808,6 +5098,11 @@ public class RaceManager {
 		boolean wasCountdown = countdownTask != null && !countdownPlayers.isEmpty();
 		boolean hadAny = wasRunning || wasRegistering || wasCountdown || !registered.isEmpty()
 				|| !participants.isEmpty() || !countdownPlayers.isEmpty();
+
+		try {
+			cancelPodiumEndTimer();
+		} catch (Throwable ignored) {
+		}
 
 		// Stop intro cinematic if active.
 		try {
