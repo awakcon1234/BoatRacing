@@ -121,51 +121,9 @@ public final class CenterlineBuilder {
 			if (verbose) info(logger, "Segment " + i + " ok: nodes=" + segment.size() + " (after decimation total=" + centerline.size() + ")");
 		}
 
-		// Legacy fallback: if the finish is very close to the first point, close the loop for a continuous centerline.
-		// NOTE: With finish->...->finish waypoints above, the polyline is already a loop.
-		try {
-			if (!centerline.isEmpty()) {
-				Location a = centerline.get(centerline.size() - 1); // last
-				Location b = centerline.get(0); // first
-				if (a == null || b == null) throw new IllegalStateException("null endpoints");
-				if (a.getWorld() == null || b.getWorld() == null || !a.getWorld().equals(b.getWorld())) throw new IllegalStateException("world mismatch");
-
-				double dx = a.getX() - b.getX();
-				double dz = a.getZ() - b.getZ();
-				double distSqXZ = dx * dx + dz * dz;
-				// Already closed (or effectively closed) -> do nothing.
-				double eps = 0.25; // 0.5 block
-				if (distSqXZ <= eps * eps) throw new IllegalStateException("already closed");
-				double closeDist = 32.0; // blocks
-				if (distSqXZ <= closeDist * closeDist) {
-					// Prefer a deterministic stitch along the surface. This avoids A* sometimes choosing a nearby parallel lane.
-					boolean stitched = tryStitchLoopOnSurface(centerline, a, b, logger, verbose);
-					if (!stitched) {
-						if (verbose) info(logger, "A* segment close: " + fmt(a) + " -> " + fmt(b));
-						List<Location> segment = aStar2DWithRetries(a, b, corridorMargin, 64, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, "segment#close", verbose);
-						if (segment == null || segment.isEmpty()) {
-							warn(logger, "Centerline loop close failed: A* returned no path for close segment (" + fmt(a) + " -> " + fmt(b) + ")");
-						} else {
-							// Avoid duplicating the final node if already present.
-							if (!segment.isEmpty()) {
-								Location last = centerline.get(centerline.size() - 1);
-								Location first = segment.get(0);
-								if (last != null && first != null && last.getWorld() != null && last.getWorld().equals(first.getWorld())) {
-									double ddx = last.getX() - first.getX();
-									double ddy = last.getY() - first.getY();
-									double ddz = last.getZ() - first.getZ();
-									if ((ddx * ddx + ddy * ddy + ddz * ddz) < 0.01) {
-										segment = new ArrayList<>(segment.subList(1, segment.size()));
-									}
-								}
-							}
-							appendDecimated(centerline, segment, 0.5);
-							if (verbose) info(logger, "Segment close ok: nodes=" + segment.size() + " (after decimation total=" + centerline.size() + ")");
-						}
-					}
-				}
-			}
-		} catch (Throwable ignored) {}
+		// NOTE: We already generate an explicit loop by using finish->...->finish waypoints.
+		// Avoid the older generic "close" logic here because it can occasionally pick the long way around
+		// and effectively add a second lap before returning to the finish.
 
 
 		// Rotate the loop to start at the finish line and ensure explicit closure at the same node.
@@ -263,35 +221,24 @@ public final class CenterlineBuilder {
 
 		if (!closed) {
 			// Run A* to close the loop on allowed surface instead of creating a fake straight segment.
-			// Compute a conservative global bounds from the current centerline nodes.
-			int minX = Integer.MAX_VALUE;
-			int maxX = Integer.MIN_VALUE;
-			int minZ = Integer.MAX_VALUE;
-			int maxZ = Integer.MIN_VALUE;
-			for (Location p : centerline) {
-				if (p == null || p.getWorld() == null || !p.getWorld().equals(first.getWorld())) continue;
-				int px = p.getBlockX();
-				int pz = p.getBlockZ();
-				if (px < minX) minX = px;
-				if (px > maxX) maxX = px;
-				if (pz < minZ) minZ = pz;
-				if (pz > maxZ) maxZ = pz;
-			}
-			if (minX != Integer.MAX_VALUE && maxX != Integer.MIN_VALUE && minZ != Integer.MAX_VALUE && maxZ != Integer.MIN_VALUE) {
-				int pad = 32;
-				minX -= pad;
-				maxX += pad;
-				minZ -= pad;
-				maxZ += pad;
+			// IMPORTANT: constrain the search to a local area around the finish.
+			// Using global bounds can cause A* to take the entire course again (a "second lap") if the
+			// immediate seam near finish isn't walkable for whatever reason.
+			try {
+				int fx = finishCenter.getBlockX();
+				int fz = finishCenter.getBlockZ();
+				int pad = 24;
+				int minX = fx - pad;
+				int maxX = fx + pad;
+				int minZ = fz - pad;
+				int maxZ = fz + pad;
 
-				try {
-					List<Location> segment = aStar2DWithRetries(last, first, 12, 64, minX, maxX, minZ, maxZ, logger, "segment#close(finish)", verbose);
-					if (segment != null && !segment.isEmpty()) {
-						appendDecimated(centerline, segment, 0.5);
-						closed = true;
-					}
-				} catch (Throwable ignored) { closed = false; }
-			}
+				List<Location> segment = aStar2DWithRetries(last, first, 12, 32, minX, maxX, minZ, maxZ, logger, "segment#close(finish)", verbose);
+				if (segment != null && !segment.isEmpty()) {
+					appendDecimated(centerline, segment, 0.5);
+					closed = true;
+				}
+			} catch (Throwable ignored) { closed = false; }
 		}
 
 		// If closure succeeded, ensure the end is exactly the start (no epsilon drift).
@@ -844,11 +791,39 @@ public final class CenterlineBuilder {
 	}
 
 	private static void appendDecimated(List<Location> dst, List<Location> src, double minStep) {
-		Location last = dst.isEmpty() ? null : dst.get(dst.size()-1);
-		for (Location l : src) {
-			if (last == null || l.distanceSquared(last) >= (minStep*minStep)) {
+		if (dst == null || src == null || src.isEmpty())
+			return;
+
+		final double minStepSq = minStep * minStep;
+		Location last = dst.isEmpty() ? null : dst.get(dst.size() - 1);
+
+		// Always keep the first node of the segment unless it's effectively a duplicate of the previous.
+		Location first = src.get(0);
+		if (first != null) {
+			if (last == null || first.distanceSquared(last) > 1.0e-6) {
+				dst.add(first);
+				last = first;
+			}
+		}
+
+		// Decimate interior nodes.
+		for (int i = 1; i < src.size() - 1; i++) {
+			Location l = src.get(i);
+			if (l == null)
+				continue;
+			if (last == null || l.distanceSquared(last) >= minStepSq) {
 				dst.add(l);
 				last = l;
+			}
+		}
+
+		// Always keep the last node of the segment (critical for finish/loop closure).
+		if (src.size() >= 2) {
+			Location end = src.get(src.size() - 1);
+			if (end != null) {
+				if (last == null || end.distanceSquared(last) > 1.0e-6) {
+					dst.add(end);
+				}
 			}
 		}
 	}
