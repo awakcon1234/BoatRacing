@@ -185,6 +185,57 @@ public final class CenterlineBuilder {
 			centerline.addAll(rotated);
 		}
 
+		// Prune accidental self-loops and stop at the first real finish re-entry.
+		// This prevents the builder from producing an extra lap or a parallel "second line"
+		// when A* chooses a different lane on a return segment.
+		try {
+			java.util.ArrayList<Location> pruned = new java.util.ArrayList<>(centerline.size());
+			java.util.HashMap<Long, Integer> seen = new java.util.HashMap<>();
+			boolean leftFinish = false;
+			for (Location p : centerline) {
+				if (p == null || p.getWorld() == null || !p.getWorld().equals(w))
+					continue;
+
+				boolean inFinish = false;
+				try { inFinish = finish.containsXZ(p); } catch (Throwable ignored) { inFinish = false; }
+				if (!leftFinish && !inFinish)
+					leftFinish = true;
+
+				// Once we've left the finish, the next time we re-enter it is the end of lap.
+				if (leftFinish && inFinish && pruned.size() >= 8) {
+					pruned.add(p);
+					break;
+				}
+
+				int bx = p.getBlockX();
+				int bz = p.getBlockZ();
+				long key = (((long) bx) << 32) ^ (bz & 0xffffffffL);
+				Integer prevIdx = seen.get(key);
+				if (prevIdx != null) {
+					int loopLen = pruned.size() - prevIdx;
+					// Ignore tiny duplicates; prune meaningful loops (self-intersections).
+					if (loopLen > 10 && !inFinish) {
+						for (int k = pruned.size() - 1; k > prevIdx; k--) {
+							Location rm = pruned.remove(k);
+							if (rm != null) {
+								long rk = (((long) rm.getBlockX()) << 32) ^ (rm.getBlockZ() & 0xffffffffL);
+								seen.remove(rk);
+							}
+						}
+						continue;
+					}
+					continue;
+				}
+
+				seen.put(key, pruned.size());
+				pruned.add(p);
+			}
+			if (!pruned.isEmpty()) {
+				centerline.clear();
+				centerline.addAll(pruned);
+			}
+		} catch (Throwable ignored) {}
+
 		// Ensure explicit closure at the exact same coordinate as the first node.
 		// IMPORTANT: Do NOT blindly append/replace the last node with the first node, because that can
 		// create a huge closing segment (rendered as a diagonal "jump" on the minimap).
