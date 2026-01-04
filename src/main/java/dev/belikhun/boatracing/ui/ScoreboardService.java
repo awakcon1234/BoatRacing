@@ -9,6 +9,7 @@ import dev.belikhun.boatracing.event.RaceEvent;
 import dev.belikhun.boatracing.profile.PlayerProfileManager;
 import dev.belikhun.boatracing.race.RaceManager;
 import dev.belikhun.boatracing.race.RaceService;
+import dev.belikhun.boatracing.race.MatchmakingService;
 import dev.belikhun.boatracing.util.ColorTranslator;
 import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.util.Time;
@@ -174,18 +175,18 @@ public class ScoreboardService {
 							if (active.state == EventState.DISABLED) {
 								setState(p, "LOBBY");
 								applyLobbyBoard(p);
-								clearActionBar(p);
+								if (!applyActionBarForMatchmaking(p)) clearActionBar(p);
 								continue;
 							}
 							setState(p, "EVENT");
 							applyEventLobbyBoard(p, active);
-							clearActionBar(p);
+							if (!applyActionBarForMatchmaking(p)) clearActionBar(p);
 							continue;
 						}
 					}
 					setState(p, "LOBBY");
 					applyLobbyBoard(p);
-					clearActionBar(p);
+					if (!applyActionBarForMatchmaking(p)) clearActionBar(p);
 					continue;
 				}
 				TickContext ctx = ctxByRaceTmp.get(rm);
@@ -1266,6 +1267,39 @@ public class ScoreboardService {
 	}
 
 	// --- ActionBar support ---
+	private boolean applyActionBarForMatchmaking(Player p) {
+		if (usage == null || !usage.actionbarEnabled)
+			return false;
+		if (raceService == null)
+			return false;
+		MatchmakingService mm = raceService.getMatchmaking();
+		if (mm == null)
+			return false;
+		java.util.UUID id = p.getUniqueId();
+		if (!mm.isQueued(id))
+			return false;
+
+		int size = mm.queuedCount();
+		int need = mm.getMinPlayers();
+		long waited = mm.getWaitMillis(id);
+		long remain = Math.max(0L, mm.getMaxWaitMs() - Math.max(0L, waited));
+		boolean ready = size >= need;
+		String phase = ready ? "<green>🔎 Sắp bắt đầu</green>" : "<yellow>🔎 Đang tìm người chơi</yellow>";
+		String tpl = cfgString("racing.ui.templates.actionbar.matchmaking",
+			"%phase% <white>%queued%</white>/<white>%min%</white> <gray>tối thiểu</gray> <gold>⌛</gold> <white>%remain%</white>");
+		java.util.Map<String, String> ph = new java.util.HashMap<>();
+		ph.put("phase", phase);
+		ph.put("queued", String.valueOf(size));
+		ph.put("min", String.valueOf(need));
+		ph.put("remain", Time.formatDurationShort(remain));
+		ph.put("waited", Time.formatDurationShort(Math.max(0L, waited)));
+		ph.put("status", ready ? "ready" : "searching");
+		Component c = parse(p, tpl, ph);
+		if (c != null)
+			sendActionBar(p, c);
+		return true;
+	}
+
 	private void applyActionBarForWaiting(Player p, RaceManager rm) {
 		if (usage == null || !usage.actionbarEnabled) return;
 		String tpl = cfgString("racing.ui.templates.actionbar.waiting", "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>");

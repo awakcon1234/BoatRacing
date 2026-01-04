@@ -289,6 +289,10 @@ racing:
       # ActionBar templates shown only while waiting and racing; supports MiniMessage and PlaceholderAPI
       actionbar:
         enabled: true
+        # Matchmaking placeholders: %phase% %queued% %min% %remain% %waited% %status%
+        #  - %phase% is a pre-colored label (ví dụ: "<yellow>🔎 Đang tìm người chơi</yellow>")
+        #  - %status% is "ready" hoặc "searching" (dùng cho PlaceholderAPI nếu cần)
+        matchmaking: "%phase% <white>%queued%</white>/<white>%min%</white> <gray>tối thiểu</gray> <gold>⌛</gold> <white>%remain%</white>"
         # Waiting placeholders: %countdown% %joined% %max%
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>"
         # Racing placeholders: %position% %racer_display% %lap_current% %lap_total% %lap_progress% %track_progress% %speed_display% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%

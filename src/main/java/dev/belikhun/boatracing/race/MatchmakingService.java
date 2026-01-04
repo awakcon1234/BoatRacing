@@ -4,6 +4,7 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.track.TrackConfig;
 import dev.belikhun.boatracing.track.TrackLibrary;
 import dev.belikhun.boatracing.util.Text;
+import dev.belikhun.boatracing.util.Time;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
@@ -59,6 +60,23 @@ public class MatchmakingService {
 
 	public synchronized boolean isQueued(UUID id) {
 		return id != null && queue.containsKey(id);
+	}
+
+	public int getMinPlayers() {
+		return minPlayers;
+	}
+
+	public long getMaxWaitMs() {
+		return maxWaitMs;
+	}
+
+	public synchronized long getWaitMillis(UUID id) {
+		if (id == null)
+			return -1L;
+		Long joined = queue.get(id);
+		if (joined == null)
+			return -1L;
+		return Math.max(0L, System.currentTimeMillis() - joined);
 	}
 
 	public synchronized int queuedCount() {
