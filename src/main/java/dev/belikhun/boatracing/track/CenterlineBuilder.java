@@ -45,47 +45,112 @@ public final class CenterlineBuilder {
 					" margin=" + corridorMargin +
 					" allowed=" + ALLOWED);
 		}
-		List<Location> waypoints = new ArrayList<>();
 		// Build a loop that starts/ends at the finish line (start line):
 		// finish -> checkpoints -> finish
 		// If there are no checkpoints, fall back to: finish -> startCenter -> finish
-		// This avoids anchoring the polyline at startCenter (which is typically behind the finish line).
-		waypoints.add(finishCenter);
+		// IMPORTANT: finish/checkpoints are areas. We select an on-surface anchor point inside each
+		// region based on prev/next hints to avoid A* choosing a different parallel lane on return.
+		java.util.List<Object> specs = new java.util.ArrayList<>();
+		specs.add(finish);
 		if (cfg.getCheckpoints() != null && !cfg.getCheckpoints().isEmpty()) {
 			for (Region cp : cfg.getCheckpoints()) {
-				waypoints.add(centerOf(cp));
+				specs.add(cp);
 			}
 		} else {
 			if (start == null) {
 				warn(logger, "Centerline build aborted: missing startCenter and checkpoints (track=" + safe(cfg.getCurrentName()) + ")");
 				return null;
 			}
-			waypoints.add(start);
+			specs.add(start);
 		}
-		waypoints.add(finishCenter);
+		specs.add(finish);
 
-		// Normalize Y for waypoints by snapping to nearest allowed surface
-		for (int i = 0; i < waypoints.size(); i++) {
-			Location l = waypoints.get(i);
+		java.util.List<Location> waypoints = new java.util.ArrayList<>();
+		java.util.ArrayList<Boolean> isFinishGoal = new java.util.ArrayList<>();
+		java.util.ArrayList<Object> waypointSpecs = new java.util.ArrayList<>();
+		java.util.ArrayList<String> waypointLabels = new java.util.ArrayList<>();
+		Location firstFinishAnchor = null;
+		for (int i = 0; i < specs.size(); i++) {
+			Object spec = specs.get(i);
 			String label;
-			if (i == 0) {
-				label = "finish(start)";
-			} else if (i == waypoints.size() - 1) {
-				label = "finish(close)";
+			if (i == 0) label = "finish(start)";
+			else if (i == specs.size() - 1) label = "finish(close)";
+			else label = (cfg.getCheckpoints() != null && !cfg.getCheckpoints().isEmpty()) ? ("checkpoint#" + i) : "startCenter";
+
+			Location prev = waypoints.isEmpty() ? null : waypoints.get(waypoints.size() - 1);
+			Location nextHint = null;
+			if (i + 1 < specs.size()) {
+				Object nx = specs.get(i + 1);
+				try {
+					if (nx instanceof Region nr) nextHint = centerOf(nr);
+					else if (nx instanceof Location nl) nextHint = nl;
+				} catch (Throwable ignored) { nextHint = null; }
+			}
+
+			Location resolved;
+			if (spec instanceof Region r) {
+				// Special-case finish: always prefer the finish center (snapped to ice) as the anchor.
+				// We still treat the closing finish as a region-goal for A* so it can stop as soon as it crosses.
+				boolean isFinishSpec = (r == finish);
+				if (isFinishSpec) {
+					Location c = null;
+					try { c = centerOf(r); } catch (Throwable ignored) { c = null; }
+					if (c == null) {
+						warn(logger, "Centerline build aborted: invalid region for " + label + " (track=" + safe(cfg.getCurrentName()) + ")");
+						return null;
+					}
+					int y = findSurfaceY(c.getWorld(), c.getBlockX(), c.getBlockZ(), c.getBlockY(), logger, label, verbose);
+					if (y == Integer.MIN_VALUE) {
+						// Fallback: pick any valid on-surface anchor inside the finish region.
+						resolved = pickAnchorInRegion(r, null, null, logger, label, verbose);
+					} else {
+						resolved = new Location(c.getWorld(), c.getBlockX() + 0.5, y + 1.0, c.getBlockZ() + 0.5);
+					}
+				} else {
+					resolved = pickAnchorInRegion(r, prev, nextHint, logger, label, verbose);
+				}
+				if (resolved == null) {
+					// Fallback to center snap (legacy behavior).
+					Location c;
+					try { c = centerOf(r); } catch (Throwable ignored) { c = null; }
+					if (c == null) {
+						warn(logger, "Centerline build aborted: invalid region for " + label + " (track=" + safe(cfg.getCurrentName()) + ")");
+						return null;
+					}
+					int y = findSurfaceY(c.getWorld(), c.getBlockX(), c.getBlockZ(), c.getBlockY(), logger, label, verbose);
+					if (y == Integer.MIN_VALUE) {
+						warn(logger, "Centerline build failed: no allowed surface near waypoint " + label +
+								" at x=" + c.getBlockX() + " z=" + c.getBlockZ() + " yHint=" + c.getBlockY() +
+								" (allowed=" + ALLOWED + ")");
+						return null;
+					}
+					resolved = new Location(c.getWorld(), c.getBlockX() + 0.5, y + 1.0, c.getBlockZ() + 0.5);
+				}
+
+				if (i == 0) firstFinishAnchor = resolved;
+				if (i == specs.size() - 1 && firstFinishAnchor != null) {
+					// Keep the explicit loop closure at the same finish coordinate.
+					resolved = firstFinishAnchor.clone();
+				}
 			} else {
-				label = (cfg.getCheckpoints() != null && !cfg.getCheckpoints().isEmpty()) ? ("checkpoint#" + i) : "startCenter";
+				Location l = (Location) spec;
+				int y = findSurfaceY(l.getWorld(), l.getBlockX(), l.getBlockZ(), l.getBlockY(), logger, label, verbose);
+				if (y == Integer.MIN_VALUE) {
+					warn(logger, "Centerline build failed: no allowed surface near waypoint " + label +
+							" at x=" + l.getBlockX() + " z=" + l.getBlockZ() + " yHint=" + l.getBlockY() +
+							" (allowed=" + ALLOWED + ")");
+					return null;
+				}
+				resolved = new Location(l.getWorld(), l.getBlockX() + 0.5, y + 1.0, l.getBlockZ() + 0.5);
 			}
-			int y = findSurfaceY(l.getWorld(), l.getBlockX(), l.getBlockZ(), l.getBlockY(), logger, label, verbose);
-			if (y == Integer.MIN_VALUE) {
-				warn(logger, "Centerline build failed: no allowed surface near waypoint " + label +
-						" at x=" + l.getBlockX() + " z=" + l.getBlockZ() + " yHint=" + l.getBlockY() +
-						" (allowed=" + ALLOWED + ")");
-				return null;
-			}
-			waypoints.set(i, new Location(l.getWorld(), l.getBlockX() + 0.5, y + 1.0, l.getBlockZ() + 0.5));
-			if (verbose) {
-				info(logger, "Waypoint " + label + " snapped to y=" + y + " -> " + fmt(waypoints.get(i)));
-			}
+
+			waypoints.add(resolved);
+			waypointSpecs.add(spec);
+			waypointLabels.add(label);
+			// Only the *closing* finish should be treated as a region-goal for A*.
+			boolean finishGoal = (spec instanceof Region) && (spec == finish) && (i == specs.size() - 1);
+			isFinishGoal.add(finishGoal);
+			if (verbose) info(logger, "Waypoint " + label + " -> " + fmt(resolved));
 		}
 
 		// Compute global bounds across all waypoints (used as a fallback if a segment detours far outside its local rectangle).
@@ -110,7 +175,66 @@ public final class CenterlineBuilder {
 			Location a = waypoints.get(i);
 			Location b = waypoints.get(i + 1);
 			if (verbose) info(logger, "A* segment " + i + ": " + fmt(a) + " -> " + fmt(b));
-			List<Location> segment = aStar2DWithRetries(a, b, corridorMargin, 64, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, "segment#" + i, verbose);
+			List<Location> segment;
+			boolean usedGlobal = false;
+			final int localMaxMargin = 128;
+			if (i + 1 < isFinishGoal.size() && Boolean.TRUE.equals(isFinishGoal.get(i + 1))) {
+				// Stop searching as soon as we cross into the finish area, then snap to finish center at ice level.
+				Location finishSnap = null;
+				try {
+					Location fc = centerOf(finish);
+					if (fc != null) {
+						int fy = findSurfaceY(fc.getWorld(), fc.getBlockX(), fc.getBlockZ(), fc.getBlockY(), logger, "finish(snap)", verbose);
+						if (fy != Integer.MIN_VALUE) finishSnap = new Location(fc.getWorld(), fc.getBlockX() + 0.5, fy + 1.0, fc.getBlockZ() + 0.5);
+					}
+				} catch (Throwable ignored) { finishSnap = null; }
+				segment = aStar2DToRegionWithRetries(a, finish, finishSnap, corridorMargin, localMaxMargin, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, "segment#" + i + "(finish)", verbose);
+			} else {
+				// Prefer local corridor search. Global fallback can create a huge detour that looks like "two loops".
+				segment = aStar2DWithRetriesLocalOnly(a, b, corridorMargin, localMaxMargin, logger, "segment#" + i, verbose);
+				if (segment == null || segment.isEmpty()) {
+					// If the target waypoint is a checkpoint REGION, try re-picking a better anchor inside it.
+					Object endSpec = (i + 1 < waypointSpecs.size()) ? waypointSpecs.get(i + 1) : null;
+					boolean canReAnchorEnd = (endSpec instanceof Region) && (endSpec != finish);
+					if (canReAnchorEnd) {
+						Region endRegion = (Region) endSpec;
+						Location nextHint = (i + 2 < waypoints.size()) ? waypoints.get(i + 2) : null;
+						String endLabel = (i + 1 < waypointLabels.size()) ? waypointLabels.get(i + 1) : ("checkpoint#" + (i + 1));
+						java.util.List<Location> candidates = listAnchorCandidatesInRegion(endRegion, a, nextHint, 18, logger, endLabel, verbose);
+						for (Location cand : candidates) {
+							List<Location> segTry = aStar2DWithRetriesLocalOnly(a, cand, corridorMargin, localMaxMargin, logger, "segment#" + i + "(reanchor)", verbose);
+							if (segTry == null || segTry.isEmpty())
+								continue;
+							// Look-ahead: ensure the next segment is also feasible locally (prevents shifting the problem).
+							if (nextHint != null) {
+								boolean nextIsFinishGoal = (i + 2 < isFinishGoal.size()) && Boolean.TRUE.equals(isFinishGoal.get(i + 2));
+								if (!nextIsFinishGoal) {
+									List<Location> nextTry = aStar2DWithRetriesLocalOnly(cand, nextHint, corridorMargin, localMaxMargin, logger, "segment#" + (i + 1) + "(lookahead)", false);
+									if (nextTry == null || nextTry.isEmpty())
+										continue;
+								}
+							}
+							// Accept this anchor.
+							if (verbose) info(logger, "Re-anchor " + endLabel + " -> " + fmt(cand) + " (to avoid global detour)");
+							waypoints.set(i + 1, cand);
+							b = cand;
+							segment = segTry;
+							break;
+						}
+					}
+				}
+
+				// As a last resort, allow global search, but reject suspiciously long paths.
+				if (segment == null || segment.isEmpty()) {
+					if (verbose) info(logger, "A* segment#" + i + " fallback: trying global bounds search (last resort)");
+					segment = aStar2DInBounds(a, b, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, "segment#" + i + "(global)", verbose);
+					usedGlobal = true;
+					if (segment != null && !segment.isEmpty() && isSuspiciousSegmentDetour(a, b, segment)) {
+						warn(logger, "Centerline build failed: segment#" + i + " global detour too long (nodes=" + segment.size() + ") from=" + fmt(a) + " to=" + fmt(b));
+						segment = null;
+					}
+				}
+			}
 			if (segment == null || segment.isEmpty()) {
 				warn(logger, "Centerline build failed: A* returned no path for segment#" + i +
 						" (" + fmt(a) + " -> " + fmt(b) + ")");
@@ -118,7 +242,7 @@ public final class CenterlineBuilder {
 			}
 			// decimate slightly to reduce node count
 			appendDecimated(centerline, segment, 0.5);
-			if (verbose) info(logger, "Segment " + i + " ok: nodes=" + segment.size() + " (after decimation total=" + centerline.size() + ")");
+			if (verbose) info(logger, "Segment " + i + " ok: nodes=" + segment.size() + " (after decimation total=" + centerline.size() + ")" + (usedGlobal ? " [GLOBAL]" : ""));
 		}
 
 		// NOTE: We already generate an explicit loop by using finish->...->finish waypoints.
@@ -128,9 +252,459 @@ public final class CenterlineBuilder {
 
 		// Rotate the loop to start at the finish line and ensure explicit closure at the same node.
 		try { ensureStartEndAtFinish(centerline, finish, finishCenter, logger, verbose); } catch (Throwable ignored) {}
+		// Ensure we only generate ONE lap: stop on first finish re-entry after the last checkpoint.
+		try { capAtFinishAfterLastCheckpoint(centerline, finish, cfg.getCheckpoints(), finishCenter, logger, verbose); } catch (Throwable ignored) {}
+		// Remove small self-loops/detours that can show up as "two lines" on straights.
+		// Keep anything that touches finish/checkpoint regions so we don't skip required course gates.
+		try { pruneLocalSelfLoops(centerline, finish, cfg.getCheckpoints(), logger, verbose); } catch (Throwable ignored) {}
+		// Re-normalize start/end around finish after any truncation/pruning.
+		try { ensureStartEndAtFinish(centerline, finish, finishCenter, logger, verbose); } catch (Throwable ignored) {}
 
 		if (verbose) info(logger, "Centerline build complete: totalNodes=" + centerline.size());
 		return centerline;
+	}
+
+	private static void capAtFinishAfterLastCheckpoint(
+			List<Location> centerline,
+			Region finish,
+			java.util.List<Region> checkpoints,
+			Location finishCenter,
+			Logger logger,
+			boolean verbose
+	) {
+		if (centerline == null || centerline.size() < 4 || finish == null)
+			return;
+
+		World w = null;
+		try {
+			if (finishCenter == null) finishCenter = centerOf(finish);
+			w = (finishCenter != null) ? finishCenter.getWorld() : null;
+		} catch (Throwable ignored) { w = null; }
+		if (w == null)
+			return;
+
+		Location finishSnap = null;
+		try {
+			int fy = findSurfaceY(w, finishCenter.getBlockX(), finishCenter.getBlockZ(), finishCenter.getBlockY(), logger, "finish(cap)", verbose);
+			if (fy != Integer.MIN_VALUE) finishSnap = new Location(w, finishCenter.getBlockX() + 0.5, fy + 1.0, finishCenter.getBlockZ() + 0.5);
+		} catch (Throwable ignored) { finishSnap = null; }
+
+		int cpCount = (checkpoints != null) ? checkpoints.size() : 0;
+		int nextCpIdx = 0;
+		boolean inTargetCp = false;
+		boolean leftFinish = false;
+
+		final int minNodesBeforeStop = 24;
+		java.util.ArrayList<Location> out = new java.util.ArrayList<>(centerline.size());
+
+		for (Location p : centerline) {
+			if (p == null || p.getWorld() == null || !p.getWorld().equals(w))
+				continue;
+
+			boolean inFinish = false;
+			try { inFinish = finish.containsXZ(p); } catch (Throwable ignored) { inFinish = false; }
+			if (!leftFinish && !inFinish)
+				leftFinish = true;
+
+			// Progress checkpoints in order.
+			if (cpCount > 0 && nextCpIdx < cpCount) {
+				Region target = checkpoints.get(nextCpIdx);
+				boolean inside = false;
+				try { inside = (target != null) && target.containsXZ(p); } catch (Throwable ignored) { inside = false; }
+				if (!inTargetCp && inside) {
+					nextCpIdx++;
+					inTargetCp = true;
+				} else if (inTargetCp && !inside) {
+					inTargetCp = false;
+				}
+			}
+
+			out.add(p);
+
+			// Stop only after we've left the initial finish, crossed all checkpoints, and re-entered finish.
+			if (leftFinish && inFinish && nextCpIdx >= cpCount && out.size() >= minNodesBeforeStop) {
+				break;
+			}
+		}
+
+		// If we didn't cap anything, keep original.
+		if (out.size() >= centerline.size())
+			return;
+
+		// Snap final node to finish center on ice to avoid edge snapping.
+		if (finishSnap != null) {
+			try {
+				Location last = out.get(out.size() - 1);
+				double dx = last.getX() - finishSnap.getX();
+				double dz = last.getZ() - finishSnap.getZ();
+				if ((dx * dx + dz * dz) <= (18.0 * 18.0)) {
+					out.set(out.size() - 1, finishSnap);
+				} else {
+					out.add(finishSnap);
+				}
+			} catch (Throwable ignored) {}
+		}
+
+		centerline.clear();
+		centerline.addAll(out);
+		if (verbose) info(logger, "Centerline cap: nodes=" + centerline.size() + " checkpointsReached=" + nextCpIdx + "/" + cpCount);
+	}
+
+	private static List<Location> aStar2DToRegionWithRetries(
+			Location a,
+			Region goalRegion,
+			Location snapTo,
+			int baseMargin,
+			int maxMargin,
+			int globalMinX,
+			int globalMaxX,
+			int globalMinZ,
+			int globalMaxZ,
+			Logger logger,
+			String label,
+			boolean verbose
+	) {
+		if (goalRegion == null) return null;
+		int margin = Math.max(0, baseMargin);
+		int cap = Math.max(margin, maxMargin);
+
+		while (true) {
+			if (verbose) info(logger, "A* " + label + " attempt: margin=" + margin);
+			List<Location> result = aStar2DToRegion(a, goalRegion, margin, logger, label, verbose);
+			if (result != null && !result.isEmpty()) {
+				return snapTail(result, snapTo);
+			}
+			if (margin >= cap) break;
+			margin = (margin == 0) ? 8 : Math.min(cap, margin * 2);
+		}
+
+		if (verbose) info(logger, "A* " + label + " fallback: trying global bounds search");
+		List<Location> r = aStar2DToRegionInBounds(a, goalRegion, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, label + "(global)", verbose);
+		return snapTail(r, snapTo);
+	}
+
+	private static List<Location> snapTail(List<Location> path, Location snapTo) {
+		if (path == null || path.isEmpty() || snapTo == null || snapTo.getWorld() == null)
+			return path;
+		try {
+			Location last = path.get(path.size() - 1);
+			if (last != null && last.getWorld() != null && last.getWorld().equals(snapTo.getWorld())) {
+				// Replace if already close; otherwise append (stays within the finish area).
+				double dx = last.getX() - snapTo.getX();
+				double dz = last.getZ() - snapTo.getZ();
+				if ((dx * dx + dz * dz) <= (12.0 * 12.0)) {
+					path.set(path.size() - 1, snapTo.clone());
+					return path;
+				}
+			}
+			path.add(snapTo.clone());
+		} catch (Throwable ignored) {}
+		return path;
+	}
+
+	private static List<Location> aStar2DToRegion(Location a, Region goalRegion, int margin, Logger logger, String label, boolean verbose) {
+		// Use the region center only to derive a corridor rectangle.
+		Location c;
+		try { c = centerOf(goalRegion); } catch (Throwable ignored) { c = null; }
+		if (c == null) return null;
+		int minX = Math.min(a.getBlockX(), c.getBlockX()) - margin;
+		int maxX = Math.max(a.getBlockX(), c.getBlockX()) + margin;
+		int minZ = Math.min(a.getBlockZ(), c.getBlockZ()) - margin;
+		int maxZ = Math.max(a.getBlockZ(), c.getBlockZ()) + margin;
+		return aStar2DToRegionInBounds(a, goalRegion, minX, maxX, minZ, maxZ, logger, label, verbose);
+	}
+
+	private static List<Location> aStar2DToRegionInBounds(Location a, Region goalRegion, int minX, int maxX, int minZ, int maxZ, Logger logger, String label, boolean verbose) {
+		World w = a.getWorld();
+		if (w == null || goalRegion.getWorldName() == null || !w.getName().equals(goalRegion.getWorldName())) {
+			warn(logger, "A* " + label + " aborted: world mismatch (a=" + fmt(a) + ", goalWorld=" + safe(goalRegion.getWorldName()) + ")");
+			return null;
+		}
+
+		int startHintY = a.getBlockY() - 1;
+		int startY = findSurfaceYNear(w, a.getBlockX(), a.getBlockZ(), startHintY, 8);
+		if (startY == Integer.MIN_VALUE) {
+			warn(logger, "A* " + label + " aborted: could not resolve start surface Y.");
+			return null;
+		}
+
+		Material aType = w.getBlockAt(a.getBlockX(), startY, a.getBlockZ()).getType();
+		if (!ALLOWED.contains(aType) || !isClearAbove(w, a.getBlockX(), startY, a.getBlockZ())) {
+			warn(logger, "A* " + label + " aborted: start not on allowed surface/clearance. aType=" + aType);
+			return null;
+		}
+
+		Node start = new Node(a.getBlockX(), startY, a.getBlockZ());
+		WalkGrid grid = WalkGrid.build(w, minX, maxX, minZ, maxZ, startY, 12, logger, label, verbose);
+		if (grid == null) {
+			if (verbose) warn(logger, "A* " + label + " switching to on-demand search (grid too large)");
+			return aStar2DToRegionInBoundsOnDemand(w, start, goalRegion, minX, maxX, minZ, maxZ, logger, label, verbose);
+		}
+		if (!grid.isWalkable(start.x, start.z)) {
+			warn(logger, "A* " + label + " aborted: start not walkable in grid.");
+			return null;
+		}
+
+		java.util.PriorityQueue<Node> open = new java.util.PriorityQueue<>(Comparator.comparingDouble(n -> n.f));
+		java.util.Map<Long, Node> all = new java.util.HashMap<>();
+		start.g = 0.0;
+		start.f = 0.0;
+		open.add(start);
+		all.put(key(start.x, start.y, start.z), start);
+
+		int expanded = 0;
+		final int maxStepUpDown = 2;
+		final int maxExpanded = 200_000;
+		final long startNs = System.nanoTime();
+		final long maxNs = 600_000_000L;
+
+		while (!open.isEmpty()) {
+			Node cur = open.poll();
+			// Success if we reached inside the goal region (XZ) on surface.
+			try {
+				Location here = new Location(w, cur.x + 0.5, cur.y + 1.0, cur.z + 0.5);
+				if (goalRegion.containsXZ(here)) {
+					if (verbose) info(logger, "A* " + label + " success(region): expanded=" + expanded + " visited=" + all.size());
+					return reconstruct(w, cur);
+				}
+			} catch (Throwable ignored) {}
+
+			cur.closed = true;
+			expanded++;
+			if (expanded >= maxExpanded) {
+				warn(logger, "A* " + label + " failed(region): expansion cap reached (" + maxExpanded + ")");
+				return null;
+			}
+			if ((expanded & 0x3FF) == 0 && (System.nanoTime() - startNs) > maxNs) {
+				warn(logger, "A* " + label + " failed(region): time budget exceeded (" + (maxNs / 1_000_000L) + "ms)");
+				return null;
+			}
+
+			for (int[] d : DIRS) {
+				int nx = cur.x + d[0];
+				int nz = cur.z + d[1];
+				double stepCost = d[2] / 10.0;
+				if (!grid.inBounds(nx, nz))
+					continue;
+				if (!grid.isWalkable(nx, nz))
+					continue;
+
+				int ny = grid.surfaceY(nx, nz);
+				if (ny == Integer.MIN_VALUE)
+					continue;
+				if (Math.abs(ny - cur.y) > maxStepUpDown)
+					continue;
+
+				long kk = key(nx, ny, nz);
+				Node nb = all.get(kk);
+				if (nb == null) { nb = new Node(nx, ny, nz); all.put(kk, nb); }
+				if (nb.closed)
+					continue;
+
+				int dy = Math.abs(ny - cur.y);
+				int distToEdge = grid.distToEdge(nx, nz);
+				if (distToEdge < 0) distToEdge = 0;
+				double centerPenalty = CENTER_BIAS / (distToEdge + 1.0);
+				double tg = cur.g + stepCost + (0.2 * dy) + centerPenalty;
+				if (tg < nb.g) {
+					nb.parent = cur;
+					nb.g = tg;
+					// Use 0 heuristic; region goal isn't a single point.
+					nb.f = tg;
+					open.remove(nb);
+					open.add(nb);
+				}
+			}
+		}
+
+		warn(logger, "A* " + label + " failed(region): no path. expanded=" + expanded + " visited=" + all.size() +
+				" corridor=[x:" + minX + ".." + maxX + ", z:" + minZ + ".." + maxZ + "]" +
+				" from=" + fmt(a) + " goalRegionWorld=" + safe(goalRegion.getWorldName()));
+		return null;
+	}
+
+	private static List<Location> aStar2DToRegionInBoundsOnDemand(
+			World w,
+			Node start,
+			Region goalRegion,
+			int minX,
+			int maxX,
+			int minZ,
+			int maxZ,
+			Logger logger,
+			String label,
+			boolean verbose
+	) {
+		java.util.PriorityQueue<Node> open = new java.util.PriorityQueue<>(Comparator.comparingDouble(n -> n.f));
+		java.util.Map<Long, Node> all = new java.util.HashMap<>();
+		java.util.Map<Long, Integer> surfaceCache = new java.util.HashMap<>();
+
+		start.g = 0.0;
+		start.f = 0.0;
+		open.add(start);
+		all.put(key(start.x, start.y, start.z), start);
+
+		int expanded = 0;
+		final int maxStepUpDown = 2;
+		final int maxExpanded = 200_000;
+		final long startNs = System.nanoTime();
+		final long maxNs = 600_000_000L;
+
+		while (!open.isEmpty()) {
+			Node cur = open.poll();
+			try {
+				Location here = new Location(w, cur.x + 0.5, cur.y + 1.0, cur.z + 0.5);
+				if (goalRegion.containsXZ(here)) {
+					if (verbose) info(logger, "A* " + label + " success(on-demand,region): expanded=" + expanded + " visited=" + all.size());
+					return reconstruct(w, cur);
+				}
+			} catch (Throwable ignored) {}
+
+			cur.closed = true;
+			expanded++;
+			if (expanded >= maxExpanded) {
+				warn(logger, "A* " + label + " failed(on-demand,region): expansion cap reached (" + maxExpanded + ")");
+				return null;
+			}
+			if ((expanded & 0x3FF) == 0 && (System.nanoTime() - startNs) > maxNs) {
+				warn(logger, "A* " + label + " failed(on-demand,region): time budget exceeded (" + (maxNs / 1_000_000L) + "ms)");
+				return null;
+			}
+
+			for (int[] d : DIRS) {
+				int nx = cur.x + d[0];
+				int nz = cur.z + d[1];
+				double stepCost = d[2] / 10.0;
+				if (nx < minX || nx > maxX || nz < minZ || nz > maxZ)
+					continue;
+
+				int ny = cachedSurfaceY(w, nx, nz, cur.y, 12, surfaceCache);
+				if (ny == Integer.MIN_VALUE)
+					continue;
+				if (!isClearAbove(w, nx, ny, nz))
+					continue;
+				Material t = w.getBlockAt(nx, ny, nz).getType();
+				if (!ALLOWED.contains(t))
+					continue;
+				if (Math.abs(ny - cur.y) > maxStepUpDown)
+					continue;
+
+				long kk = key(nx, ny, nz);
+				Node nb = all.get(kk);
+				if (nb == null) {
+					nb = new Node(nx, ny, nz);
+					all.put(kk, nb);
+				}
+				if (nb.closed)
+					continue;
+
+				int dy = Math.abs(ny - cur.y);
+				int distToCorridorEdge = Math.min(Math.min(nx - minX, maxX - nx), Math.min(nz - minZ, maxZ - nz));
+				if (distToCorridorEdge < 0)
+					distToCorridorEdge = 0;
+				double centerPenalty = CENTER_BIAS / (distToCorridorEdge + 1.0);
+				double tg = cur.g + stepCost + (0.2 * dy) + centerPenalty;
+				if (tg < nb.g) {
+					nb.parent = cur;
+					nb.g = tg;
+					nb.f = tg;
+					open.remove(nb);
+					open.add(nb);
+				}
+			}
+		}
+
+		warn(logger, "A* " + label + " failed(on-demand,region): no path. expanded=" + expanded + " visited=" + all.size() +
+				" corridor=[x:" + minX + ".." + maxX + ", z:" + minZ + ".." + maxZ + "]" +
+				" start=" + w.getName() + "(" + start.x + "," + start.y + "," + start.z + ")" +
+				" goalRegionWorld=" + safe(goalRegion.getWorldName()));
+		return null;
+	}
+
+	private static void pruneLocalSelfLoops(
+			List<Location> centerline,
+			Region finish,
+			java.util.List<Region> checkpoints,
+			Logger logger,
+			boolean verbose
+	) {
+		if (centerline == null || centerline.size() < 4)
+			return;
+
+		java.util.ArrayList<Location> out = new java.util.ArrayList<>(centerline.size());
+		java.util.HashMap<Long, Integer> seen = new java.util.HashMap<>();
+
+		int removed = 0;
+		for (Location p : centerline) {
+			if (p == null || p.getWorld() == null)
+				continue;
+
+			long k = (((long) p.getBlockX()) << 32) ^ (p.getBlockZ() & 0xffffffffL);
+			Integer prevIdx = seen.get(k);
+			if (prevIdx != null) {
+				int loopLen = out.size() - prevIdx;
+				// Ignore tiny duplicates (decimation/endpoints can create these).
+				if (loopLen <= 3)
+					continue;
+				// Only prune meaningful loops.
+				if (loopLen >= 10) {
+					boolean touchesGate = false;
+					for (int i = prevIdx; i < out.size(); i++) {
+						Location q = out.get(i);
+						if (q == null || q.getWorld() == null)
+							continue;
+						if (isInAnyGateRegionXZ(q, finish, checkpoints)) {
+							touchesGate = true;
+							break;
+						}
+					}
+					if (!touchesGate) {
+						// Remove the detour between prevIdx..end (keep the earlier node).
+						for (int i = out.size() - 1; i > prevIdx; i--) {
+							Location rm = out.remove(i);
+							if (rm != null) {
+								long rk = (((long) rm.getBlockX()) << 32) ^ (rm.getBlockZ() & 0xffffffffL);
+								seen.remove(rk);
+							}
+							removed++;
+						}
+						continue;
+					}
+				}
+
+				// If we can't prune, keep going but don't add duplicates.
+				continue;
+			}
+
+			seen.put(k, out.size());
+			out.add(p);
+		}
+
+		if (removed > 0) {
+			centerline.clear();
+			centerline.addAll(out);
+			if (verbose) info(logger, "Centerline prune: removedNodes=" + removed + " finalNodes=" + centerline.size());
+		}
+	}
+
+	private static boolean isInAnyGateRegionXZ(Location p, Region finish, java.util.List<Region> checkpoints) {
+		if (p == null || p.getWorld() == null)
+			return false;
+		try {
+			if (finish != null && finish.containsXZ(p))
+				return true;
+		} catch (Throwable ignored) {}
+		if (checkpoints != null) {
+			for (Region cp : checkpoints) {
+				if (cp == null)
+					continue;
+				try {
+					if (cp.containsXZ(p))
+						return true;
+				} catch (Throwable ignored) {}
+			}
+		}
+		return false;
 	}
 
 	private static void ensureStartEndAtFinish(List<Location> centerline, Region finish, Location finishCenter, Logger logger, boolean verbose) {
@@ -184,57 +758,6 @@ public final class CenterlineBuilder {
 			centerline.clear();
 			centerline.addAll(rotated);
 		}
-
-		// Prune accidental self-loops and stop at the first real finish re-entry.
-		// This prevents the builder from producing an extra lap or a parallel "second line"
-		// when A* chooses a different lane on a return segment.
-		try {
-			java.util.ArrayList<Location> pruned = new java.util.ArrayList<>(centerline.size());
-			java.util.HashMap<Long, Integer> seen = new java.util.HashMap<>();
-			boolean leftFinish = false;
-			for (Location p : centerline) {
-				if (p == null || p.getWorld() == null || !p.getWorld().equals(w))
-					continue;
-
-				boolean inFinish = false;
-				try { inFinish = finish.containsXZ(p); } catch (Throwable ignored) { inFinish = false; }
-				if (!leftFinish && !inFinish)
-					leftFinish = true;
-
-				// Once we've left the finish, the next time we re-enter it is the end of lap.
-				if (leftFinish && inFinish && pruned.size() >= 8) {
-					pruned.add(p);
-					break;
-				}
-
-				int bx = p.getBlockX();
-				int bz = p.getBlockZ();
-				long key = (((long) bx) << 32) ^ (bz & 0xffffffffL);
-				Integer prevIdx = seen.get(key);
-				if (prevIdx != null) {
-					int loopLen = pruned.size() - prevIdx;
-					// Ignore tiny duplicates; prune meaningful loops (self-intersections).
-					if (loopLen > 10 && !inFinish) {
-						for (int k = pruned.size() - 1; k > prevIdx; k--) {
-							Location rm = pruned.remove(k);
-							if (rm != null) {
-								long rk = (((long) rm.getBlockX()) << 32) ^ (rm.getBlockZ() & 0xffffffffL);
-								seen.remove(rk);
-							}
-						}
-						continue;
-					}
-					continue;
-				}
-
-				seen.put(key, pruned.size());
-				pruned.add(p);
-			}
-			if (!pruned.isEmpty()) {
-				centerline.clear();
-				centerline.addAll(pruned);
-			}
-		} catch (Throwable ignored) {}
 
 		// Ensure explicit closure at the exact same coordinate as the first node.
 		// IMPORTANT: Do NOT blindly append/replace the last node with the first node, because that can
@@ -312,6 +835,218 @@ public final class CenterlineBuilder {
 		BoundingBox b = r.getBox();
 		World w = Bukkit.getWorld(r.getWorldName());
 		return new Location(w, b.getCenterX(), b.getCenterY(), b.getCenterZ());
+	}
+
+	/**
+	 * Pick an anchor point inside a region (finish/checkpoint) on allowed surface.
+	 * Uses prev/next hints to keep the centerline consistent (avoids parallel "two lines").
+	 */
+	private static Location pickAnchorInRegion(Region r, Location prev, Location next, Logger logger, String label, boolean verbose) {
+		if (r == null || r.getBox() == null) return null;
+		World w = Bukkit.getWorld(r.getWorldName());
+		if (w == null) {
+			warn(logger, "Centerline: region world not loaded for " + label + " (world=" + safe(r.getWorldName()) + ")");
+			return null;
+		}
+
+		BoundingBox b = r.getBox();
+		double minXf = Math.min(b.getMinX(), b.getMaxX());
+		double maxXf = Math.max(b.getMinX(), b.getMaxX());
+		double minZf = Math.min(b.getMinZ(), b.getMaxZ());
+		double maxZf = Math.max(b.getMinZ(), b.getMaxZ());
+		int minX = (int) Math.floor(minXf);
+		int maxX = (int) Math.floor(maxXf);
+		int minZ = (int) Math.floor(minZf);
+		int maxZ = (int) Math.floor(maxZf);
+
+		int width = Math.max(1, (maxX - minX + 1));
+		int height = Math.max(1, (maxZ - minZ + 1));
+		long area = (long) width * (long) height;
+		int step = 1;
+		if (area > 16_384L) step = 4;
+		else if (area > 4_096L) step = 2;
+
+		// Determine a reasonable Y hint.
+		int yHint = (int) Math.floor(b.getCenterY());
+		try {
+			if (prev != null && prev.getWorld() != null && prev.getWorld().equals(w)) yHint = prev.getBlockY() - 1;
+			else if (next != null && next.getWorld() != null && next.getWorld().equals(w)) yHint = next.getBlockY() - 1;
+		} catch (Throwable ignored) {}
+		if (yHint < w.getMinHeight()) yHint = w.getMinHeight();
+		if (yHint > w.getMaxHeight() - 1) yHint = w.getMaxHeight() - 1;
+
+		double cx = b.getCenterX();
+		double cz = b.getCenterZ();
+		double bestScore = Double.POSITIVE_INFINITY;
+		int bestX = Integer.MIN_VALUE;
+		int bestZ = Integer.MIN_VALUE;
+		int bestY = Integer.MIN_VALUE;
+		java.util.Map<Long, Integer> surfaceCache = new java.util.HashMap<>();
+
+		for (int x = minX; x <= maxX; x += step) {
+			for (int z = minZ; z <= maxZ; z += step) {
+				int surfaceY = cachedSurfaceY(w, x, z, yHint, 8, surfaceCache);
+				if (surfaceY == Integer.MIN_VALUE) continue;
+				if (!isClearAbove(w, x, surfaceY, z)) continue;
+				Material t = w.getBlockAt(x, surfaceY, z).getType();
+				if (!ALLOWED.contains(t)) continue;
+
+				double px = x + 0.5;
+				double pz = z + 0.5;
+				double score = 0.0;
+
+				if (prev != null && prev.getWorld() != null && prev.getWorld().equals(w)) {
+					double dx = px - prev.getX();
+					double dz = pz - prev.getZ();
+					score += (dx * dx + dz * dz);
+				}
+				if (next != null && next.getWorld() != null && next.getWorld().equals(w)) {
+					double dx = px - next.getX();
+					double dz = pz - next.getZ();
+					score += 0.25 * (dx * dx + dz * dz);
+				}
+
+				// Gentle pull toward region center to avoid hugging edges when hints are far.
+				double dcx = px - cx;
+				double dcz = pz - cz;
+				score += 0.02 * (dcx * dcx + dcz * dcz);
+
+				if (score < bestScore) {
+					bestScore = score;
+					bestX = x;
+					bestZ = z;
+					bestY = surfaceY;
+				} else if (score == bestScore) {
+					// Deterministic tie-break.
+					if (x < bestX || (x == bestX && z < bestZ)) {
+						bestX = x;
+						bestZ = z;
+						bestY = surfaceY;
+					}
+				}
+			}
+		}
+
+		if (bestY == Integer.MIN_VALUE) {
+			if (verbose) warn(logger, "Centerline: no surface anchor found inside " + label + " region; falling back to center");
+			return null;
+		}
+
+		Location out = new Location(w, bestX + 0.5, bestY + 1.0, bestZ + 0.5);
+		if (verbose) info(logger, "Anchor " + label + ": x=" + bestX + " z=" + bestZ + " y=" + bestY + " -> " + fmt(out));
+		return out;
+	}
+
+	/**
+	 * Return a small ordered list of viable anchors inside a region.
+	 * Used to re-pick checkpoint anchors when the initial anchor causes a global detour.
+	 */
+	private static java.util.List<Location> listAnchorCandidatesInRegion(
+			Region r,
+			Location prev,
+			Location next,
+			int maxCandidates,
+			Logger logger,
+			String label,
+			boolean verbose
+	) {
+		if (r == null || r.getBox() == null || maxCandidates <= 0)
+			return java.util.Collections.emptyList();
+		World w = Bukkit.getWorld(r.getWorldName());
+		if (w == null)
+			return java.util.Collections.emptyList();
+
+		BoundingBox b = r.getBox();
+		double minXf = Math.min(b.getMinX(), b.getMaxX());
+		double maxXf = Math.max(b.getMinX(), b.getMaxX());
+		double minZf = Math.min(b.getMinZ(), b.getMaxZ());
+		double maxZf = Math.max(b.getMinZ(), b.getMaxZ());
+		int minX = (int) Math.floor(minXf);
+		int maxX = (int) Math.floor(maxXf);
+		int minZ = (int) Math.floor(minZf);
+		int maxZ = (int) Math.floor(maxZf);
+
+		int width = Math.max(1, (maxX - minX + 1));
+		int height = Math.max(1, (maxZ - minZ + 1));
+		long area = (long) width * (long) height;
+		int step = 1;
+		if (area > 16_384L) step = 4;
+		else if (area > 4_096L) step = 2;
+
+		int yHint = (int) Math.floor(b.getCenterY());
+		try {
+			if (prev != null && prev.getWorld() != null && prev.getWorld().equals(w)) yHint = prev.getBlockY() - 1;
+			else if (next != null && next.getWorld() != null && next.getWorld().equals(w)) yHint = next.getBlockY() - 1;
+		} catch (Throwable ignored) {}
+		if (yHint < w.getMinHeight()) yHint = w.getMinHeight();
+		if (yHint > w.getMaxHeight() - 1) yHint = w.getMaxHeight() - 1;
+
+		double cx = b.getCenterX();
+		double cz = b.getCenterZ();
+		java.util.Map<Long, Integer> surfaceCache = new java.util.HashMap<>();
+		java.util.ArrayList<long[]> scored = new java.util.ArrayList<>();
+
+		for (int x = minX; x <= maxX; x += step) {
+			for (int z = minZ; z <= maxZ; z += step) {
+				int surfaceY = cachedSurfaceY(w, x, z, yHint, 8, surfaceCache);
+				if (surfaceY == Integer.MIN_VALUE) continue;
+				if (!isClearAbove(w, x, surfaceY, z)) continue;
+				Material t = w.getBlockAt(x, surfaceY, z).getType();
+				if (!ALLOWED.contains(t)) continue;
+
+				double px = x + 0.5;
+				double pz = z + 0.5;
+				double score = 0.0;
+				if (prev != null && prev.getWorld() != null && prev.getWorld().equals(w)) {
+					double dx = px - prev.getX();
+					double dz = pz - prev.getZ();
+					score += (dx * dx + dz * dz);
+				}
+				if (next != null && next.getWorld() != null && next.getWorld().equals(w)) {
+					double dx = px - next.getX();
+					double dz = pz - next.getZ();
+					score += 0.25 * (dx * dx + dz * dz);
+				}
+				double dcx = px - cx;
+				double dcz = pz - cz;
+				score += 0.02 * (dcx * dcx + dcz * dcz);
+
+				long packed = (((long) x) & 0x3FFFFFL) << 42;
+				packed |= (((long) z) & 0x3FFFFFL) << 20;
+				packed |= ((long) surfaceY) & 0xFFFFFL;
+				long sBits = Double.doubleToRawLongBits(score);
+				scored.add(new long[] { sBits, packed });
+			}
+		}
+
+		if (scored.isEmpty())
+			return java.util.Collections.emptyList();
+
+		scored.sort((a, bArr) -> {
+			double sa = Double.longBitsToDouble(a[0]);
+			double sb = Double.longBitsToDouble(bArr[0]);
+			int c = Double.compare(sa, sb);
+			if (c != 0) return c;
+			// Stable deterministic tie-break by packed coordinate.
+			return Long.compare(a[1], bArr[1]);
+		});
+
+		int outN = Math.min(maxCandidates, scored.size());
+		java.util.ArrayList<Location> out = new java.util.ArrayList<>(outN);
+		for (int i = 0; i < outN; i++) {
+			long packed = scored.get(i)[1];
+			int x = (int) ((packed >> 42) & 0x3FFFFFL);
+			int z = (int) ((packed >> 20) & 0x3FFFFFL);
+			int y = (int) (packed & 0xFFFFFL);
+			// Restore signed values (stored in 22-bit for x/z).
+			if (x >= (1 << 21)) x -= (1 << 22);
+			if (z >= (1 << 21)) z -= (1 << 22);
+			out.add(new Location(w, x + 0.5, y + 1.0, z + 0.5));
+		}
+
+		if (verbose && !out.isEmpty())
+			info(logger, "Anchor candidates for " + label + ": " + out.size());
+		return out;
 	}
 
 	private static int findSurfaceY(World w, int x, int z, int yHint, Logger logger, String label, boolean verbose) {
@@ -392,6 +1127,41 @@ public final class CenterlineBuilder {
 		// Fallback: allow detours outside the segment rectangle by using global bounds.
 		if (verbose) info(logger, "A* " + label + " fallback: trying global bounds search");
 		return aStar2DInBounds(a, b, globalMinX, globalMaxX, globalMinZ, globalMaxZ, logger, label + "(global)", verbose);
+	}
+
+	// Same as aStar2DWithRetries, but NEVER falls back to global bounds.
+	private static List<Location> aStar2DWithRetriesLocalOnly(
+			Location a,
+			Location b,
+			int baseMargin,
+			int maxMargin,
+			Logger logger,
+			String label,
+			boolean verbose
+	) {
+		int margin = Math.max(0, baseMargin);
+		int cap = Math.max(margin, maxMargin);
+		while (true) {
+			if (verbose) info(logger, "A* " + label + " attempt: margin=" + margin);
+			List<Location> result = aStar2D(a, b, margin, logger, label, verbose);
+			if (result != null && !result.isEmpty()) return result;
+			if (margin >= cap) break;
+			margin = (margin == 0) ? 8 : Math.min(cap, margin * 2);
+		}
+		return null;
+	}
+
+	private static boolean isSuspiciousSegmentDetour(Location a, Location b, java.util.List<Location> path) {
+		if (a == null || b == null || path == null || path.isEmpty())
+			return false;
+		double dx = a.getX() - b.getX();
+		double dz = a.getZ() - b.getZ();
+		double dist = Math.sqrt(dx * dx + dz * dz);
+		// Heuristic: a segment shouldn't be "many laps" longer than straight-line.
+		// Allows some curvature but rejects accidental whole-track detours.
+		int maxNodes = (int) Math.ceil((dist * 6.0) + 200.0);
+		if (maxNodes < 400) maxNodes = 400;
+		return path.size() > maxNodes;
 	}
 
 	private static List<Location> aStar2D(Location a, Location b, int margin, Logger logger, String label, boolean verbose) {

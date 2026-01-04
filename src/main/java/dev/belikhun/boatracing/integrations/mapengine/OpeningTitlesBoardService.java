@@ -639,13 +639,6 @@ public final class OpeningTitlesBoardService {
 		}
 
 		if (eligibleViewers.isEmpty()) {
-			int online = safeOnlineCount();
-			// If players are online but none qualify, emit an IMPORTANT diagnostic line.
-			if (online > 0) {
-				debugLog("tick(): no eligible viewers; diagnose=" + diagnoseIdleFallback(), true);
-			} else {
-				debugLog("tick(): no eligible viewers (online=0)", false);
-			}
 			// No viewers right now (common during server startup before anyone joins).
 			// Do not self-stop; keep the task alive so idle fallback can pick up new players.
 			return;
