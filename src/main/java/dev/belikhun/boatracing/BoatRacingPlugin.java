@@ -2,6 +2,13 @@ package dev.belikhun.boatracing;
 
 import org.bukkit.Bukkit;
 // No TabExecutor needed: JavaPlugin already handles CommandExecutor and TabCompleter when overriding methods
+import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Boat;
+import org.bukkit.entity.ChestBoat;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
+import org.bukkit.entity.Projectile;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -44,6 +51,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	private String pluginVersion = "unknown";
 	private java.util.List<String> pluginAuthors = java.util.Collections.emptyList();
 	// Team and pit features removed
+	private NamespacedKey spawnedBoatKey;
 
 	public static BoatRacingPlugin getInstance() {
 		return instance;
@@ -136,6 +144,7 @@ public class BoatRacingPlugin extends JavaPlugin {
 	@Override
 	public void onEnable() {
 		instance = this;
+		this.spawnedBoatKey = new NamespacedKey(this, "boatracing_spawned_boat");
 		saveDefaultConfig();
 		// Ensure new default keys are merged into existing config.yml on updates
 		try {
@@ -348,6 +357,19 @@ public class BoatRacingPlugin extends JavaPlugin {
 					}
 				} catch (Throwable ignored) {
 				}
+			}
+		}, this);
+
+		// Prevent players from breaking racer boats mid-race.
+		Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
+			@org.bukkit.event.EventHandler(ignoreCancelled = true)
+			public void onVehicleDamage(org.bukkit.event.vehicle.VehicleDamageEvent e) {
+				handleBoatDamage(e.getVehicle(), e.getAttacker(), e);
+			}
+
+			@org.bukkit.event.EventHandler(ignoreCancelled = true)
+			public void onVehicleDestroy(org.bukkit.event.vehicle.VehicleDestroyEvent e) {
+				handleBoatDamage(e.getVehicle(), e.getAttacker(), e);
 			}
 		}, this);
 
@@ -720,6 +742,82 @@ public class BoatRacingPlugin extends JavaPlugin {
 		}
 
 		return touched || fileDeleted;
+	}
+
+	private void handleBoatDamage(Entity vehicle, Entity attackerEntity, org.bukkit.event.Cancellable cancellable) {
+		if (vehicle == null || cancellable == null)
+			return;
+		if (!isProtectedRaceBoat(vehicle))
+			return;
+
+		Player attacker = null;
+		try {
+			if (attackerEntity instanceof Player p)
+				attacker = p;
+			else if (attackerEntity instanceof Projectile proj && proj.getShooter() instanceof Player p)
+				attacker = p;
+		} catch (Throwable ignored) {
+		}
+
+		if (attacker == null)
+			return;
+		try {
+			if (attacker.hasPermission("boatracing.admin") || attacker.hasPermission("boatracing.*"))
+				return;
+		} catch (Throwable ignored) {
+		}
+
+		cancellable.setCancelled(true);
+		try {
+			Text.msg(attacker, "&cKhông thể phá thuyền của tay đua đang thi đấu.");
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private boolean isProtectedRaceBoat(Entity vehicle) {
+		if (!isBoatLike(vehicle))
+			return false;
+		try {
+			if (raceService != null) {
+				for (Entity passenger : vehicle.getPassengers()) {
+					if (passenger instanceof Player p) {
+						RaceManager rm = raceService.findRaceFor(p.getUniqueId());
+						if (rm != null && (rm.isRunning() || rm.isCountdownActiveFor(p.getUniqueId())))
+							return true;
+					}
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+
+		return isPluginSpawnedBoat(vehicle);
+	}
+
+	private boolean isPluginSpawnedBoat(Entity vehicle) {
+		if (vehicle == null)
+			return false;
+		if (!isBoatLike(vehicle))
+			return false;
+		try {
+			return spawnedBoatKey != null
+					&& vehicle.getPersistentDataContainer().has(spawnedBoatKey, PersistentDataType.BYTE);
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	private static boolean isBoatLike(Entity vehicle) {
+		if (vehicle == null)
+			return false;
+		if (vehicle instanceof Boat || vehicle instanceof ChestBoat)
+			return true;
+		try {
+			String t = vehicle.getType() != null ? vehicle.getType().name() : null;
+			return t != null && (t.endsWith("_BOAT") || t.endsWith("_CHEST_BOAT") || t.endsWith("_RAFT")
+					|| t.endsWith("_CHEST_RAFT") || t.equals("BOAT") || t.equals("CHEST_BOAT"));
+		} catch (Throwable ignored) {
+			return false;
+		}
 	}
 
 	// --- Lobby spawn (plugin-managed) ---
