@@ -109,6 +109,12 @@ public class EventService {
 				openingTitlesBoardService.reloadFromConfig();
 		} catch (Throwable ignored) {
 		}
+		// Keep the opening board alive so it can display an idle logo screen when nothing is playing.
+		try {
+			if (openingTitlesBoardService != null)
+				openingTitlesBoardService.start();
+		} catch (Throwable ignored) {
+		}
 		ensureTickTask();
 
 		// Auto-show the registration NPC after restart if registration is open.

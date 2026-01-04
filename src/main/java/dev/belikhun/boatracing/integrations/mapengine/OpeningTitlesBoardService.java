@@ -4,6 +4,7 @@ import de.pianoman911.mapengine.api.MapEngineApi;
 import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardFontLoader;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardPlacement;
+import dev.belikhun.boatracing.integrations.mapengine.board.BoardViewers;
 import dev.belikhun.boatracing.integrations.mapengine.board.MapEngineBoardDisplay;
 import dev.belikhun.boatracing.integrations.mapengine.board.RenderBuffers;
 import dev.belikhun.boatracing.integrations.mapengine.ui.BroadcastTheme;
@@ -88,6 +89,7 @@ public final class OpeningTitlesBoardService {
 	private long lastRenderAtMs = 0L;
 
 	private BukkitTask tickTask;
+	private int visibleRadiusChunks = 12;
 
 	private BoardPlacement placement;
 	private int updateTicks = 1;
@@ -167,6 +169,7 @@ public final class OpeningTitlesBoardService {
 		debug = plugin.getConfig().getBoolean("mapengine.opening-titles.debug", false);
 		mapBuffering = plugin.getConfig().getBoolean("mapengine.opening-titles.pipeline.buffering", true);
 		mapBundling = plugin.getConfig().getBoolean("mapengine.opening-titles.pipeline.bundling", false);
+		visibleRadiusChunks = clamp(plugin.getConfig().getInt("mapengine.opening-titles.visible-radius-chunks", 12), 1, 64);
 
 		String fontFile = plugin.getConfig().getString("mapengine.opening-titles.font-file", "");
 		Font base = BoardFontLoader.tryLoadBoardFont(plugin, fontFile, debug ? (m) -> {
@@ -215,6 +218,22 @@ public final class OpeningTitlesBoardService {
 		lastRenderedKey = Long.MIN_VALUE;
 		lastRacerUiRefreshAtMs = 0L;
 		lastRenderAtMs = 0L;
+	}
+
+	private String resolveActiveEventTitle() {
+		try {
+			if (plugin == null || plugin.getEventService() == null)
+				return null;
+			dev.belikhun.boatracing.event.RaceEvent e = plugin.getEventService().getActiveEvent();
+			if (e == null)
+				return null;
+			String t = e.title;
+			if (t == null || t.isBlank())
+				return null;
+			return t.trim();
+		} catch (Throwable ignored) {
+			return null;
+		}
 	}
 
 	public boolean start() {
@@ -555,6 +574,30 @@ public final class OpeningTitlesBoardService {
 			if (p == null || !p.isOnline())
 				continue;
 			eligibleViewers.add(id);
+		}
+
+		// Idle fallback: if nothing is driving the opening board right now, still show a static
+		// splash screen (logo) to nearby lobby players so the physical board is never blank.
+		if (eligibleViewers.isEmpty() && (desiredViewers == null || desiredViewers.isEmpty())
+				&& (previewViewers == null || previewViewers.isEmpty())) {
+			try {
+				for (Player p : Bukkit.getOnlinePlayers()) {
+					if (p == null || !p.isOnline() || p.getWorld() == null)
+						continue;
+					// Only lobby players (not currently in any race state).
+					try {
+						if (plugin.getRaceService() != null && plugin.getRaceService().findRaceFor(p.getUniqueId()) != null)
+							continue;
+					} catch (Throwable ignored) {
+						// If we can't resolve, be conservative and skip.
+						continue;
+					}
+					if (!BoardViewers.isWithinRadiusChunks(p, placement, visibleRadiusChunks))
+						continue;
+					eligibleViewers.add(p.getUniqueId());
+				}
+			} catch (Throwable ignored) {
+			}
 		}
 
 		if (eligibleViewers.isEmpty()) {
@@ -903,7 +946,7 @@ public final class OpeningTitlesBoardService {
 			icon = loadBundledLogoCached();
 		if (cachedFaviconUi != null && cachedFaviconW == w && cachedFaviconH == h && cachedFaviconImage == icon)
 			return cachedFaviconUi;
-		cachedFaviconUi = buildFaviconUi(w, h, pal, icon);
+		cachedFaviconUi = buildFaviconUi(w, h, pal, icon, resolveActiveEventTitle());
 		cachedFaviconW = w;
 		cachedFaviconH = h;
 		cachedFaviconImage = icon;
@@ -981,12 +1024,12 @@ public final class OpeningTitlesBoardService {
 
 	private UiElement buildRootFor(Screen s, UUID id, String name, int w, int h, BroadcastTheme.Palette pal, long showDtMs, boolean animateIn) {
 		return switch (s) {
-			case FAVICON -> buildFaviconUi(w, h, pal, null);
+			case FAVICON -> buildFaviconUi(w, h, pal, null, resolveActiveEventTitle());
 			case RACER_CARD -> buildRacerUi(w, h, pal, id, name, showDtMs, animateIn);
 		};
 	}
 
-	private UiElement buildFaviconUi(int w, int h, BroadcastTheme.Palette pal, BufferedImage iconOverride) {
+	private UiElement buildFaviconUi(int w, int h, BroadcastTheme.Palette pal, BufferedImage iconOverride, String eventTitle) {
 		BufferedImage icon = iconOverride;
 		if (icon == null) {
 			icon = loadFaviconIfNeeded();
@@ -1037,6 +1080,15 @@ public final class OpeningTitlesBoardService {
 				.defaultColor(pal.textDim())
 				.align(LegacyTextElement.Align.CENTER)
 				.trimToFit(true);
+		// Show active event title when available.
+		if (eventTitle != null && !eventTitle.isBlank()) {
+			LegacyTextElement ev = new LegacyTextElement("&f" + eventTitle)
+					.font(mid)
+					.defaultColor(pal.text())
+					.align(LegacyTextElement.Align.CENTER)
+					.trimToFit(true);
+			root.add(ev);
+		}
 		root.add(sub);
 
 		return root;
