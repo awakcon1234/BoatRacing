@@ -118,6 +118,77 @@ public final class FancyNpcsApi {
 		return false;
 	}
 
+		// Prefer SkinsRestorer (offline-safe) textures when available to avoid Mojang lookups.
+		private static String[] tryGetSkinsRestorerTextures(UUID playerId, String playerName) {
+			try {
+				Class<?> providerClazz = Class.forName("net.skinsrestorer.api.SkinsRestorerProvider");
+				Object api = providerClazz.getMethod("get").invoke(null);
+				if (api == null)
+					return null;
+
+				Object playerStorage;
+				try {
+					playerStorage = api.getClass().getMethod("getPlayerStorage").invoke(api);
+				} catch (Throwable ignored) {
+					playerStorage = null;
+				}
+				if (playerStorage == null)
+					return null;
+
+				Object opt;
+				try {
+					java.lang.reflect.Method m = playerStorage.getClass().getMethod("getSkinForPlayer", java.util.UUID.class, String.class);
+					opt = m.invoke(playerStorage, playerId, playerName);
+				} catch (Throwable ignored) {
+					opt = null;
+				}
+				if (opt == null)
+					return null;
+
+				Object prop = null;
+				try {
+					if (opt instanceof java.util.Optional<?> o && o.isPresent())
+						prop = o.get();
+				} catch (Throwable ignored) {
+				}
+				if (prop == null) {
+					try {
+						java.lang.reflect.Method isPresent = opt.getClass().getMethod("isPresent");
+						Object present = isPresent.invoke(opt);
+						if (present instanceof Boolean b && b.booleanValue()) {
+							java.lang.reflect.Method get = opt.getClass().getMethod("get");
+							prop = get.invoke(opt);
+						}
+					} catch (Throwable ignored) {
+						prop = null;
+					}
+				}
+				if (prop == null)
+					return null;
+
+				String value = null;
+				String signature = "";
+				try {
+					Object v = prop.getClass().getMethod("getValue").invoke(prop);
+					value = (v == null ? null : v.toString());
+				} catch (Throwable ignored) {
+					value = null;
+				}
+				try {
+					Object s = prop.getClass().getMethod("getSignature").invoke(prop);
+					signature = (s == null ? "" : s.toString());
+				} catch (Throwable ignored) {
+					signature = "";
+				}
+
+				if (value == null || value.isBlank())
+					return null;
+				return new String[] { value, signature };
+			} catch (Throwable ignored) {
+				return null;
+			}
+		}
+
 	private static String[] tryGetOnlinePlayerTextures(UUID playerId) {
 		if (playerId == null)
 			return null;
@@ -473,6 +544,17 @@ public final class FancyNpcsApi {
 		NpcData data = new NpcData(npcName, UUID.randomUUID(), location);
 
 		boolean applied = false;
+		try {
+			String[] tex = tryGetSkinsRestorerTextures(playerId, playerName);
+			if (tex != null && tex.length >= 1) {
+				String v = tex[0];
+				String s = (tex.length >= 2 ? tex[1] : "");
+				applied = tryApplyTextureSkin(data, v, s, slim, playerName);
+			}
+		} catch (Throwable ignored) {
+			applied = false;
+		}
+
 		try {
 			String[] tex = tryGetOnlinePlayerTextures(playerId);
 			if (tex != null && tex.length >= 1) {

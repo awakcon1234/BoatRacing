@@ -23,18 +23,56 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.io.File;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TrackSelectGUI implements Listener {
 	private static final Component TITLE = Text.title("🗺 Chọn đường đua");
 
 	private final BoatRacingPlugin plugin;
 	private final NamespacedKey KEY_TRACK;
+	private final ItemStack fillerPane;
+	private final File tracksDir;
+	private final Map<String, TrackSummary> summaryCache = new HashMap<>();
+	private final TrackConfig scratchConfig;
+
+	private static final class TrackSummary {
+		final String name;
+		final long lastModified;
+		final boolean loaded;
+		final boolean ready;
+		final List<String> missing;
+		final double trackLength;
+		final ItemStack icon;
+		final java.util.UUID authorId;
+		final String authorName;
+		final String authorText;
+
+		TrackSummary(String name, long lastModified, boolean loaded, boolean ready, List<String> missing,
+				double trackLength, ItemStack icon, java.util.UUID authorId, String authorName, String authorText) {
+			this.name = name;
+			this.lastModified = lastModified;
+			this.loaded = loaded;
+			this.ready = ready;
+			this.missing = (missing == null) ? java.util.Collections.emptyList() : java.util.List.copyOf(missing);
+			this.trackLength = trackLength;
+			this.icon = icon;
+			this.authorId = authorId;
+			this.authorName = authorName;
+			this.authorText = authorText;
+		}
+	}
 
 	public TrackSelectGUI(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
 		this.KEY_TRACK = new NamespacedKey(plugin, "track_select_name");
+		this.fillerPane = pane(Material.GRAY_STAINED_GLASS_PANE);
+		this.tracksDir = new File(plugin.getDataFolder(), "tracks");
+		this.scratchConfig = new TrackConfig(plugin, plugin.getDataFolder());
 	}
 
 	public void open(Player p) {
@@ -48,13 +86,17 @@ public class TrackSelectGUI implements Listener {
 		} catch (Throwable ignored) {
 		}
 
+		try {
+			summaryCache.keySet().retainAll(tracks);
+		} catch (Throwable ignored) {
+		}
+
 		int size = 54;
 		Inventory inv = Bukkit.createInventory(null, size, TITLE);
 
 		// Fill with simple panes.
-		ItemStack filler = pane(Material.GRAY_STAINED_GLASS_PANE);
 		for (int i = 0; i < size; i++)
-			inv.setItem(i, filler);
+			inv.setItem(i, fillerPane);
 
 		int idx = 0;
 		for (String name : tracks) {
@@ -101,6 +143,63 @@ public class TrackSelectGUI implements Listener {
 		}
 	}
 
+	private TrackSummary getTrackSummary(String trackName) {
+		if (trackName == null || trackName.isBlank()) {
+			return new TrackSummary(trackName, -1L, false, false, Collections.emptyList(), -1.0, null, null, null, null);
+		}
+
+		File f = new File(tracksDir, trackName + ".yml");
+		long mod = f.exists() ? f.lastModified() : -1L;
+		TrackSummary cached = summaryCache.get(trackName);
+		if (cached != null && cached.lastModified == mod)
+			return cached;
+
+		boolean loaded;
+		boolean ready;
+		List<String> missing;
+		double trackLength;
+		ItemStack icon;
+		java.util.UUID authorId;
+		String authorName;
+		String authorText;
+
+		if (!f.exists()) {
+			loaded = false;
+			ready = false;
+			missing = Collections.emptyList();
+			trackLength = -1.0;
+			icon = null;
+			authorId = null;
+			authorName = null;
+			authorText = null;
+		} else {
+			synchronized (scratchConfig) {
+				loaded = scratchConfig.load(trackName);
+				if (loaded) {
+					ready = scratchConfig.isReady();
+					missing = scratchConfig.missingRequirements();
+					trackLength = scratchConfig.getTrackLength();
+					icon = scratchConfig.getIcon();
+					authorId = scratchConfig.getAuthorId();
+					authorName = scratchConfig.getAuthorName();
+					authorText = scratchConfig.getAuthorText();
+				} else {
+					ready = false;
+					missing = Collections.emptyList();
+					trackLength = -1.0;
+					icon = null;
+					authorId = null;
+					authorName = null;
+					authorText = null;
+				}
+			}
+		}
+
+		TrackSummary summary = new TrackSummary(trackName, mod, loaded, ready, missing, trackLength, icon, authorId, authorName, authorText);
+		summaryCache.put(trackName, summary);
+		return summary;
+	}
+
 	private void appendRecordLines(java.util.UUID viewerId, String trackName, List<String> lore) {
 		if (trackName == null || trackName.isBlank() || lore == null) return;
 
@@ -139,14 +238,14 @@ public class TrackSelectGUI implements Listener {
 		lore.add(pbLine);
 	}
 
-	private void appendAuthorLine(TrackConfig tc, List<String> lore) {
-		if (tc == null || lore == null)
+	private void appendAuthorLine(TrackSummary summary, List<String> lore) {
+		if (summary == null || lore == null)
 			return;
 		String authorLine = null;
 		try {
-			java.util.UUID id = tc.getAuthorId();
-			String name = tc.getAuthorName();
-			String txt = tc.getAuthorText();
+			java.util.UUID id = summary.authorId;
+			String name = summary.authorName;
+			String txt = summary.authorText;
 			if (id != null) {
 				String display;
 				String n = (name == null || name.isBlank()) ? "(không rõ)" : name;
@@ -167,6 +266,21 @@ public class TrackSelectGUI implements Listener {
 			lore.add(authorLine);
 	}
 
+	private double resolveTrackLength(RaceManager rm, TrackSummary summary) {
+		double len = -1.0;
+		if (rm != null) {
+			try {
+				if (rm.getTrackConfig() != null)
+					len = rm.getTrackConfig().getTrackLength();
+			} catch (Throwable ignored) {
+				len = -1.0;
+			}
+		}
+		if ((len <= 0.0 || !Double.isFinite(len)) && summary != null)
+			len = summary.trackLength;
+		return len;
+	}
+
 	private ItemStack trackItem(Player viewer, String trackName) {
 		Material mat;
 		List<String> lore = new ArrayList<>();
@@ -180,19 +294,7 @@ public class TrackSelectGUI implements Listener {
 			rm = null;
 		}
 
-		boolean ready = false;
-		TrackConfig tc = null;
-		try {
-			// Always read the latest config from disk so the GUI reflects recent edits.
-			TrackConfig fresh = new TrackConfig(plugin, plugin.getDataFolder());
-			if (fresh.load(trackName)) {
-				tc = fresh;
-				ready = fresh.isReady();
-			}
-		} catch (Throwable ignored) {
-			ready = false;
-		}
-
+		TrackSummary summary = getTrackSummary(trackName);
 		boolean running = rm != null && rm.isRunning();
 		boolean countdown = rm != null && rm.isAnyCountdownActive();
 		boolean registering = rm != null && rm.isRegistering();
@@ -210,23 +312,18 @@ public class TrackSelectGUI implements Listener {
 		// - Blue (enchanted) = currently playing / cannot join
 		// - Red = maintenance/editing (not ready)
 		// - Green = open/waiting for players
-		if (tc == null) {
+		if (!summary.loaded) {
 			mat = Material.BARRIER;
 			lore.add("&cKhông thể tải đường đua này.");
-			// no author available
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7Vui lòng thử lại hoặc kiểm tra file cấu hình.");
-		} else if (!ready) {
+		} else if (!summary.ready) {
 			mat = Material.RED_CONCRETE;
 			lore.add("&7Trạng thái: &cĐang bảo trì / chỉnh sửa");
-			try {
-				List<String> miss = rm.getTrackConfig().missingRequirements();
-				if (miss != null && !miss.isEmpty())
-					lore.add("&7Thiếu: &f" + String.join(", ", miss));
-			} catch (Throwable ignored) {
-			}
-			appendAuthorLine(tc, lore);
+			if (summary.missing != null && !summary.missing.isEmpty())
+				lore.add("&7Thiếu: &f" + String.join(", ", summary.missing));
+			appendAuthorLine(summary, lore);
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột phải&7: &eXem thông tin");
@@ -245,7 +342,7 @@ public class TrackSelectGUI implements Listener {
 				} catch (Throwable ignored) {
 				}
 			}
-			appendAuthorLine(tc, lore);
+			appendAuthorLine(summary, lore);
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột phải&7: &aTheo dõi");
@@ -260,40 +357,34 @@ public class TrackSelectGUI implements Listener {
 				} catch (Throwable ignored) {
 				}
 			}
-			appendAuthorLine(tc, lore);
+			appendAuthorLine(summary, lore);
 			appendRecordLines(viewerId, trackName, lore);
 			lore.add("");
 			lore.add("&7● &fChuột trái&7: &aTham gia đăng ký");
 			lore.add("&7● &fChuột phải&7: &eXem thông tin");
 		}
 
-		// Always show racer count in lore when we can.
-		if (rm != null) {
-			lore.add(0, "&7👥 Tay đua: &f" + racers);
-			double trackLength = -1.0;
-			try {
-				if (rm != null && rm.getTrackConfig() != null)
-					trackLength = rm.getTrackConfig().getTrackLength();
-			} catch (Throwable ignored) {
-				trackLength = -1.0;
+		// Always show racer count and track length when we can.
+		double trackLength = resolveTrackLength(rm, summary);
+		if (rm != null || (trackLength > 0.0 && Double.isFinite(trackLength))) {
+			int idx = 0;
+			if (rm != null) {
+				lore.add(idx++, "&7👥 Tay đua: &f" + racers);
 			}
 			String len = (trackLength > 0.0 && Double.isFinite(trackLength))
 					? (String.format(java.util.Locale.US, "%.1f", trackLength) + "m")
 					: "-";
-			lore.add(1, "&7🛣 Độ dài: &f" + len);
-			lore.add(1, "");
+			lore.add(idx, "&7🛣 Độ dài: &f" + len);
+			lore.add(idx, "");
 		}
 
+		ItemStack baseIcon = summary.icon;
 		ItemStack it;
-		org.bukkit.inventory.ItemStack icon = null;
-		try {
-			if (tc != null) icon = tc.getIcon();
-		} catch (Throwable ignored) {
-			icon = null;
-		}
-		if (rm != null && icon != null && icon.getType() != Material.AIR) {
-			it = icon;
+		if (rm != null && baseIcon != null && baseIcon.getType() != Material.AIR) {
+			it = baseIcon.clone();
 			try { it.setAmount(stackAmountForCount(racers)); } catch (Throwable ignored) {}
+		} else if (baseIcon != null && baseIcon.getType() != Material.AIR) {
+			it = baseIcon.clone();
 		} else {
 			it = new ItemStack(mat, (rm == null ? 1 : stackAmountForCount(racers)));
 		}
@@ -303,7 +394,7 @@ public class TrackSelectGUI implements Listener {
 			im.lore(Text.lore(lore));
 
 			// Enchanted glow for "currently playing" tracks.
-			if (rm != null && ready && (running || countdown)) {
+			if (rm != null && summary.ready && (running || countdown)) {
 				trySetGlint(im, true);
 			}
 
