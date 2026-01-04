@@ -94,6 +94,11 @@ public final class OpeningTitlesBoardService {
 	private BukkitTask tickTask;
 	private int visibleRadiusChunks = 12;
 
+	// Debug (throttled)
+	private static final long DBG_THROTTLE_MS = 4000L;
+	private long lastDbgAtMs = 0L;
+	private String lastDbgSig = "";
+
 	private BoardPlacement placement;
 	private int updateTicks = 1;
 	private boolean debug = false;
@@ -245,21 +250,37 @@ public final class OpeningTitlesBoardService {
 		if (tickTask != null)
 			return true;
 		if (plugin == null)
+		{
+			debugLog("start(): plugin=null", true);
 			return false;
+		}
 		if (!plugin.getConfig().getBoolean("mapengine.opening-titles.enabled", false))
+		{
+			debugLog("start(): disabled via config (mapengine.opening-titles.enabled=false)", true);
 			return false;
+		}
 		if (placement == null || !placement.isValid())
+		{
+			debugLog("start(): invalid placement (mapengine.opening-titles.board.placement)", true);
 			return false;
+		}
 
 		MapEngineApi api = MapEngineService.get();
 		if (api == null)
+		{
+			debugLog("start(): MapEngine API not available", true);
 			return false;
+		}
 
 		boardDisplay.ensure(api, placement, mapBuffering, mapBundling);
 		if (!boardDisplay.isReady())
+		{
+			debugLog("start(): boardDisplay not ready after ensure()", true);
 			return false;
+		}
 
 		tickTask = Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, updateTicks);
+		debugLog("start(): tick task started (updateTicks=" + updateTicks + ") placement=" + safePlacementSummary(), true);
 		return true;
 	}
 
@@ -555,13 +576,25 @@ public final class OpeningTitlesBoardService {
 
 	private void tick() {
 		if (plugin == null)
+		{
+			debugLog("tick(): plugin=null", false);
 			return;
+		}
 		if (!plugin.getConfig().getBoolean("mapengine.opening-titles.enabled", false))
+		{
+			debugLog("tick(): disabled via config", false);
 			return;
+		}
 		if (placement == null || !placement.isValid())
+		{
+			debugLog("tick(): placement invalid", false);
 			return;
+		}
 		if (!boardDisplay.isReady())
+		{
+			debugLog("tick(): boardDisplay not ready", false);
 			return;
+		}
 
 		eligibleViewers.clear();
 		for (UUID id : desiredViewers) {
@@ -606,6 +639,13 @@ public final class OpeningTitlesBoardService {
 		}
 
 		if (eligibleViewers.isEmpty()) {
+			int online = safeOnlineCount();
+			// If players are online but none qualify, emit an IMPORTANT diagnostic line.
+			if (online > 0) {
+				debugLog("tick(): no eligible viewers; diagnose=" + diagnoseIdleFallback(), true);
+			} else {
+				debugLog("tick(): no eligible viewers (online=0)", false);
+			}
 			// No viewers right now (common during server startup before anyone joins).
 			// Do not self-stop; keep the task alive so idle fallback can pick up new players.
 			return;
@@ -636,11 +676,15 @@ public final class OpeningTitlesBoardService {
 				boardDisplay.ensureViewer(p);
 				spawnedTo.add(id);
 			} catch (Throwable ignored) {
+				debugLog("tick(): ensureViewer failed for " + p.getName(), true);
 			}
 		}
 
 		if (spawnedTo.isEmpty())
+		{
+			debugLog("tick(): spawnedTo empty after spawning attempt (eligible=" + eligibleViewers.size() + ")", false);
 			return;
+		}
 
 		long now = System.currentTimeMillis();
 		boolean viewersChanged = false;
@@ -656,9 +700,128 @@ public final class OpeningTitlesBoardService {
 
 		if (!shouldRenderNow(now, viewersChanged))
 			return;
-		BufferedImage img = renderUi(placement.pixelWidth(), placement.pixelHeight(), now);
-		boardDisplay.renderAndFlush(img);
+		try {
+			BufferedImage img = renderUi(placement.pixelWidth(), placement.pixelHeight(), now);
+			boardDisplay.renderAndFlush(img);
+		} catch (Throwable t) {
+			debugLog("tick(): render/flush failed: " + t.getClass().getSimpleName() + ": " + t.getMessage(), true);
+			return;
+		}
 		lastRenderAtMs = now;
+	}
+
+	private int safeOnlineCount() {
+		try {
+			return Bukkit.getOnlinePlayers() != null ? Bukkit.getOnlinePlayers().size() : 0;
+		} catch (Throwable ignored) {
+			return 0;
+		}
+	}
+
+	private String safePlacementSummary() {
+		try {
+			if (placement == null)
+				return "null";
+			return (placement.world + " "
+					+ placement.a.getBlockX() + "," + placement.a.getBlockY() + "," + placement.a.getBlockZ()
+					+ "->"
+					+ placement.b.getBlockX() + "," + placement.b.getBlockY() + "," + placement.b.getBlockZ()
+					+ " facing=" + placement.facing
+					+ " maps=" + placement.mapsWide + "x" + placement.mapsHigh
+					+ " radiusChunks=" + visibleRadiusChunks
+			);
+		} catch (Throwable ignored) {
+			return "?";
+		}
+	}
+
+	private String diagnoseIdleFallback() {
+		// Explain why online players are not being selected by idle fallback.
+		int online = 0;
+		int inRace = 0;
+		int wrongWorld = 0;
+		int outOfRadius = 0;
+		int ok = 0;
+		String sample = "";
+		try {
+			for (Player p : Bukkit.getOnlinePlayers()) {
+				online++;
+				if (p == null || !p.isOnline() || p.getWorld() == null)
+					continue;
+				boolean isInRace;
+				try {
+					isInRace = plugin.getRaceService() != null && plugin.getRaceService().findRaceFor(p.getUniqueId()) != null;
+				} catch (Throwable t) {
+					isInRace = true;
+				}
+				if (isInRace) {
+					inRace++;
+					continue;
+				}
+				try {
+					if (placement != null && placement.world != null && p.getWorld().getName() != null
+							&& !p.getWorld().getName().equalsIgnoreCase(placement.world)) {
+						wrongWorld++;
+						if (sample.isEmpty())
+							sample = "sample=" + p.getName() + " world=" + p.getWorld().getName() + " placementWorld=" + placement.world;
+						continue;
+					}
+				} catch (Throwable ignored) {
+				}
+				boolean within;
+				try {
+					within = BoardViewers.isWithinRadiusChunks(p, placement, visibleRadiusChunks);
+				} catch (Throwable t) {
+					within = false;
+				}
+				if (!within) {
+					outOfRadius++;
+					if (sample.isEmpty()) {
+						try {
+							int pcx = p.getLocation().getBlockX() >> 4;
+							int pcz = p.getLocation().getBlockZ() >> 4;
+							sample = "sample=" + p.getName() + " chunk=" + pcx + "," + pcz + " radiusChunks=" + visibleRadiusChunks;
+						} catch (Throwable ignored) {
+							sample = "sample=" + p.getName() + " outOfRadius";
+						}
+					}
+					continue;
+				}
+				ok++;
+				if (sample.isEmpty())
+					sample = "sample=" + p.getName() + " OK";
+			}
+		} catch (Throwable t) {
+			return "error=" + t.getClass().getSimpleName() + ":" + t.getMessage();
+		}
+		return "online=" + online + " ok=" + ok + " inRace=" + inRace + " wrongWorld=" + wrongWorld + " outOfRadius="
+				+ outOfRadius + " placement=" + safePlacementSummary() + (sample.isEmpty() ? "" : " " + sample);
+	}
+
+	private void debugLog(String msg, boolean important) {
+		if (!debug && !important)
+			return;
+		try {
+			long now = System.currentTimeMillis();
+			String sig = String.valueOf(msg);
+			if (!important) {
+				if (sig.equals(lastDbgSig) && (now - lastDbgAtMs) < DBG_THROTTLE_MS)
+					return;
+				if ((now - lastDbgAtMs) < DBG_THROTTLE_MS)
+					return;
+			}
+			lastDbgAtMs = now;
+			lastDbgSig = sig;
+			plugin.getLogger().info("[OpeningTitlesBoard] " + msg
+					+ " | dbg=" + debug
+					+ " | screen=" + (screen != null ? screen.name() : "?")
+					+ " desired=" + (desiredViewers == null ? -1 : desiredViewers.size())
+					+ " preview=" + (previewViewers == null ? -1 : previewViewers.size())
+					+ " eligible=" + eligibleViewers.size()
+					+ " spawned=" + spawnedTo.size()
+					+ " ready=" + boardDisplay.isReady());
+		} catch (Throwable ignored) {
+		}
 	}
 
 	private BufferedImage renderUi(int w, int h, long now) {
