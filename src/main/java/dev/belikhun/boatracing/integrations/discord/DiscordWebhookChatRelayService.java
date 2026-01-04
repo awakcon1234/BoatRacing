@@ -96,6 +96,33 @@ public final class DiscordWebhookChatRelayService {
 		ensureVentureChatListener();
 	}
 
+	/**
+	 * Send a system/announcement message via the same Discord webhook.
+	 * Uses a neutral username to avoid leaking placeholder templates.
+	 */
+	public void sendSystemMessage(String content) {
+		Config cfg = config.get();
+		if (!cfg.enabled)
+			return;
+		if (cfg.webhookUrl.isBlank())
+			return;
+
+		String renderedContent = DiscordWebhookSanitizer.stripAllFormatting(content == null ? "" : content);
+		if (cfg.trimTo2000 && renderedContent.length() > 2000)
+			renderedContent = renderedContent.substring(0, 1997) + "...";
+		if (renderedContent.isBlank())
+			return;
+
+		String renderedUsername = "BoatRacing";
+		try {
+			if (cfg.debug)
+				plugin.getLogger().info("[Discord][DBG] Enqueue system message=\"" + renderedContent + "\"");
+		} catch (Throwable ignored) {
+		}
+
+		enqueueWebhook(cfg, renderedContent, renderedUsername, "");
+	}
+
 	public void stop() {
 		try {
 			if (listener != null) {

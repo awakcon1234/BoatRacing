@@ -23,11 +23,15 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import net.kyori.adventure.title.Title;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import java.io.File;
 import org.bukkit.configuration.file.YamlConfiguration;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -49,7 +53,11 @@ public class EventService {
 		DUPLICATE,
 		NOT_FOUND
 	}
-
+	private enum StartNotice {
+		MIN30,
+		MIN10,
+		MIN5
+	}
 	private final BoatRacingPlugin plugin;
 	private final File dataFolder;
 	private final PodiumService podiumService;
@@ -68,6 +76,7 @@ public class EventService {
 	private static final int TRACK_SECONDS = 5 * 60;
 	private java.util.Set<java.util.UUID> currentTrackRoster = new java.util.LinkedHashSet<>();
 	private boolean trackWasRunning = false;
+	private final java.util.Map<String, EnumSet<StartNotice>> startNoticesSent = new java.util.HashMap<>();
 
 	// Event phase scheduling (runtime-only; not persisted)
 	private static final int FIRST_TRACK_WAIT_SECONDS = 60;
@@ -662,6 +671,7 @@ public class EventService {
 		e.state = EventState.REGISTRATION;
 		e.currentTrackIndex = 0;
 		e.startTimeMillis = 0L;
+		resetStartNotices(e);
 		activeTrackName = null;
 		trackCountdownStarted = false;
 		trackDeadlineMillis = 0L;
@@ -688,6 +698,7 @@ public class EventService {
 			return false;
 		int sec = Math.max(0, secondsFromNow);
 		e.startTimeMillis = System.currentTimeMillis() + (sec * 1000L);
+		resetStartNotices(e);
 		EventStorage.saveEvent(dataFolder, e);
 		return true;
 	}
@@ -700,6 +711,7 @@ public class EventService {
 			return false;
 		long t = Math.max(0L, startTimeMillis);
 		e.startTimeMillis = t;
+		resetStartNotices(e);
 		EventStorage.saveEvent(dataFolder, e);
 		return true;
 	}
@@ -717,6 +729,7 @@ public class EventService {
 			return false;
 		e.state = EventState.CANCELLED;
 		e.startTimeMillis = 0L;
+		resetStartNotices(e);
 		EventStorage.saveEvent(dataFolder, e);
 		try {
 			if (activeTrackName != null && !activeTrackName.isBlank()) {
@@ -882,11 +895,17 @@ public class EventService {
 		if (e.state == EventState.CANCELLED || e.state == EventState.COMPLETED || e.state == EventState.DISABLED)
 			return;
 
-		// Auto-start at startTime when in registration.
-		if (e.state == EventState.REGISTRATION && e.startTimeMillis > 0L && System.currentTimeMillis() >= e.startTimeMillis) {
+		if (e.state == EventState.REGISTRATION && e.startTimeMillis > 0L) {
 			try {
-				startEvent(e);
+				tickStartNotices(e);
 			} catch (Throwable ignored) {
+			}
+			// Auto-start at startTime when in registration.
+			if (System.currentTimeMillis() >= e.startTimeMillis) {
+				try {
+					startEvent(e);
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 
@@ -985,6 +1004,7 @@ public class EventService {
 		if (e.state != EventState.REGISTRATION && e.state != EventState.DRAFT)
 			return false;
 
+		resetStartNotices(e);
 		e.state = EventState.RUNNING;
 		e.currentTrackIndex = Math.max(0, e.currentTrackIndex);
 		// Preserve the event's start timestamp for UI (boards/HUD). This used to be
@@ -1001,6 +1021,10 @@ public class EventService {
 		lobbyWaitEndMillis = 0L;
 		breakEndMillis = 0L;
 		lobbyGatherDone = false;
+		try {
+			sendDiscordEventMessage("🚦 Sự kiện " + safeName(e.title) + " đã bắt đầu!");
+		} catch (Throwable ignored) {
+		}
 
 		// Stop any ongoing races on tracks in the pool to free them for the event.
 		try {
@@ -1309,6 +1333,7 @@ public class EventService {
 				openingTitlesController.stop(true);
 		} catch (Throwable ignored) {
 		}
+		resetStartNotices(e);
 		e.state = EventState.COMPLETED;
 		EventStorage.saveEvent(dataFolder, e);
 		broadcastToParticipants(e, msg);
@@ -1417,6 +1442,102 @@ public class EventService {
 				}
 			} catch (Throwable ignored) {
 			}
+		}
+
+		try {
+			notifyDiscordFinalRanking(e, list);
+		} catch (Throwable ignored) {
+		}
+	}
+
+	private void notifyDiscordFinalRanking(RaceEvent e, java.util.List<EventParticipant> list) {
+		if (e == null)
+			return;
+		java.util.List<EventParticipant> standings = (list == null) ? java.util.Collections.emptyList() : list;
+		StringBuilder sb = new StringBuilder("🏁 Sự kiện " + safeName(e.title) + " đã kết thúc.");
+		if (standings.isEmpty()) {
+			sb.append(" Không có bảng xếp hạng.");
+			sendDiscordEventMessage(sb.toString());
+			return;
+		}
+
+		sb.append(" Top 3: ");
+		int shown = 0;
+		for (EventParticipant ep : standings) {
+			if (ep == null || ep.id == null)
+				continue;
+			shown++;
+			String name = (ep.nameSnapshot == null || ep.nameSnapshot.isBlank())
+					? java.util.Optional.ofNullable(Bukkit.getOfflinePlayer(ep.id).getName()).orElse("Tay đua " + shortId(ep.id))
+					: ep.nameSnapshot;
+			sb.append("#").append(shown).append(" ").append(name).append(" (")
+					.append(Math.max(0, ep.pointsTotal)).append("đ)");
+			if (shown >= 3)
+				break;
+			sb.append(", ");
+		}
+
+		sendDiscordEventMessage(sb.toString());
+	}
+
+	private void tickStartNotices(RaceEvent e) {
+		if (e == null || e.id == null)
+			return;
+		long remainingMs = e.startTimeMillis - System.currentTimeMillis();
+		if (remainingMs <= 0L)
+			return;
+		EnumSet<StartNotice> sent = startNoticesSent.computeIfAbsent(e.id, k -> EnumSet.noneOf(StartNotice.class));
+		checkStartNotice(e, sent, StartNotice.MIN30, remainingMs, 30);
+		checkStartNotice(e, sent, StartNotice.MIN10, remainingMs, 10);
+		checkStartNotice(e, sent, StartNotice.MIN5, remainingMs, 5);
+	}
+
+	private void checkStartNotice(RaceEvent e, EnumSet<StartNotice> sent, StartNotice notice, long remainingMs,
+			int minutesThreshold) {
+		if (sent == null || notice == null)
+			return;
+		long thresholdMs = minutesThreshold * 60L * 1000L;
+		long windowStart = Math.max(0L, thresholdMs - 60_000L);
+		if (remainingMs > thresholdMs || remainingMs <= windowStart)
+			return;
+		if (sent.contains(notice))
+			return;
+		sent.add(notice);
+		sendDiscordCountdown(e, minutesThreshold);
+	}
+
+	private void sendDiscordCountdown(RaceEvent e, int minutes) {
+		if (e == null)
+			return;
+		String timeStr = formatClock(e.startTimeMillis);
+		String content = "⌛ " + minutes + " phút nữa sự kiện " + safeName(e.title) + " sẽ bắt đầu (dự kiến "
+				+ timeStr + ").";
+		sendDiscordEventMessage(content);
+	}
+
+	private String formatClock(long millis) {
+		try {
+			DateTimeFormatter fmt = DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault());
+			return fmt.format(Instant.ofEpochMilli(millis));
+		} catch (Throwable ignored) {
+			return Time.formatStopwatchMillis(Math.max(0L, millis));
+		}
+	}
+
+	private void resetStartNotices(RaceEvent e) {
+		if (e == null || e.id == null)
+			return;
+		startNoticesSent.remove(e.id);
+	}
+
+	private void sendDiscordEventMessage(String content) {
+		if (plugin == null)
+			return;
+		try {
+			var svc = plugin.getDiscordChatRelayService();
+			if (svc != null)
+				svc.sendSystemMessage(content);
+		} catch (Throwable ignored) {
 		}
 	}
 

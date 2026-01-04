@@ -454,6 +454,7 @@ mapengine:
       placement: {}
 
 # Discord webhook (tùy chọn): gửi toàn bộ tin nhắn chat trong game sang Discord.
+# Webhook này cũng được dùng cho thông báo kỷ lục và tiến trình sự kiện.
 # Lưu ý:
 # - Tính năng này chỉ gửi ra Discord, KHÔNG ảnh hưởng chat trong game.
 # - Tất cả MiniMessage tags (ví dụ: <red>) và mã màu (&a, §a, hex) sẽ bị loại bỏ trước khi gửi.

@@ -4294,6 +4294,15 @@ public class RaceManager {
 			return;
 		String t = (trackName == null || trackName.isBlank()) ? "(không rõ)" : trackName;
 		String holder = racerDisplayLegacy(holderId, holderName);
+		String holderPlain = holderName;
+		if (holderPlain == null || holderPlain.isBlank()) {
+			try {
+				holderPlain = holderId == null ? "(ẩn danh)" : java.util.Optional
+						.ofNullable(Bukkit.getOfflinePlayer(holderId).getName()).orElse("(ẩn danh)");
+			} catch (Throwable ignored) {
+				holderPlain = "(ẩn danh)";
+			}
+		}
 		String msg = "&6✔ &eKỷ lục mới tại &f" + t + "&e: " + holder + " &7(⌚ &f"
 				+ Time.formatStopwatchMillis(Math.max(0L, timeMillis)) + "&7)";
 		try {
@@ -4302,6 +4311,16 @@ public class RaceManager {
 					Text.msg(p, msg);
 				} catch (Throwable ignored) {
 				}
+			}
+		} catch (Throwable ignored) {
+		}
+
+		// Discord broadcast (optional)
+		try {
+			if (plugin instanceof BoatRacingPlugin br && br.getDiscordChatRelayService() != null) {
+				String content = "🏁 Kỷ lục mới tại " + t + ": " + holderPlain + " - "
+						+ Time.formatStopwatchMillis(Math.max(0L, timeMillis));
+				br.getDiscordChatRelayService().sendSystemMessage(content);
 			}
 		} catch (Throwable ignored) {
 		}
