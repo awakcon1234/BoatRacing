@@ -1407,6 +1407,7 @@ public class EventService {
 		private final OpeningTitlesBoardService board;
 
 		private org.bukkit.scheduler.BukkitTask cameraTask;
+		private dev.belikhun.boatracing.cinematic.CinematicMusicService.LoopHandle flybyTune;
 		private final java.util.Set<Integer> scheduledTaskIds = new java.util.HashSet<>();
 
 		private final java.util.Map<UUID, GameMode> savedModes = new java.util.HashMap<>();
@@ -1671,6 +1672,8 @@ public class EventService {
 		void stop(boolean restorePlayers) {
 			running = false;
 
+			stopFlybyTune();
+
 			// Always restore visibility when the intro stops.
 			try {
 				showBetween(hiddenAudience, hiddenAudience);
@@ -1782,6 +1785,12 @@ public class EventService {
 			} catch (Throwable ignored) {
 			}
 
+			// Background tune during the flyby (lightweight loop).
+			try {
+				startFlybyTune(e);
+			} catch (Throwable ignored) {
+			}
+
 			showTitleToAudience(e,
 					cfgText("event.opening-titles.text.welcome_title", "Chào mừng!"),
 					cfgText("event.opening-titles.text.welcome_subtitle", "%event_title%"),
@@ -1801,6 +1810,8 @@ public class EventService {
 			phase = Phase.INTRO_GAP;
 			phaseStartMs = System.currentTimeMillis();
 			phaseDurationMs = introGapSeconds * 1000L;
+
+			stopFlybyTune();
 
 			try {
 				updateOpeningBoardViewers(e);
@@ -1934,6 +1945,7 @@ public class EventService {
 			if (!running)
 				return;
 			running = false;
+			stopFlybyTune();
 			if (cameraTask != null) {
 				try {
 					cameraTask.cancel();
@@ -1973,6 +1985,27 @@ public class EventService {
 			} catch (Throwable ignored) {
 			}
 			onComplete = null;
+		}
+
+		private void stopFlybyTune() {
+			if (flybyTune == null)
+				return;
+			try {
+				flybyTune.stop();
+			} catch (Throwable ignored) {
+			}
+			flybyTune = null;
+		}
+
+		private void startFlybyTune(RaceEvent e) {
+			stopFlybyTune();
+			if (plugin == null)
+				return;
+			flybyTune = dev.belikhun.boatracing.cinematic.CinematicMusicService.startOpeningFlybyTune(
+					plugin,
+					() -> running && phase == Phase.WELCOME_FLYBY,
+					(sound, volume, pitch) -> playSoundToAudience(e, sound, volume, pitch)
+			);
 		}
 
 		private void startCameraTask() {

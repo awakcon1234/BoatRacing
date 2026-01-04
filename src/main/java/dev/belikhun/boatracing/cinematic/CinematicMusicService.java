@@ -1,13 +1,125 @@
 package dev.belikhun.boatracing.cinematic;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Sound;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.BooleanSupplier;
 
 public class CinematicMusicService {
+
+	@FunctionalInterface
+	public interface SoundSink {
+		void play(Sound sound, float volume, float pitch);
+	}
+
+	public static final class LoopHandle {
+		private BukkitTask task;
+
+		private LoopHandle(BukkitTask task) {
+			this.task = task;
+		}
+
+		public void stop() {
+			if (task == null)
+				return;
+			try {
+				task.cancel();
+			} catch (Throwable ignored) {
+			}
+			task = null;
+		}
+
+		public boolean isRunning() {
+			return task != null;
+		}
+	}
+
+	/**
+	 * Start a lightweight looping tune used during event opening flyby.
+	 * The returned handle MUST be stopped when the cinematic ends.
+	 */
+	public static LoopHandle startOpeningFlybyTune(JavaPlugin plugin, BooleanSupplier shouldContinue, SoundSink sink) {
+		if (plugin == null || sink == null)
+			return new LoopHandle(null);
+
+		// "F1 / Epic" style: fast 16-step loop with percussion + stabs.
+		final long periodTicks = 2L;
+		final float leadVol = 0.55f;
+		final float bassVol = 0.38f;
+		final float drumVol = 0.65f;
+		final float hatVol = 0.22f;
+
+		final float[] lead = new float[] {
+				Pitches.Fs4, 0, Pitches.A4, 0,
+				Pitches.Cs5, 0, Pitches.D5, 0,
+				Pitches.E5, 0, Pitches.D5, 0,
+				Pitches.Cs5, 0, Pitches.A4, 0
+		};
+		final float[] bass = new float[] {
+				Pitches.Fs3, 0, Pitches.Fs3, 0,
+				Pitches.D4, 0, Pitches.D4, 0,
+				Pitches.E4, 0, Pitches.E4, 0,
+				Pitches.Cs4, 0, Pitches.Cs4, 0
+		};
+
+		final int[] idx = new int[] {0};
+		final BukkitTask[] taskRef = new BukkitTask[1];
+
+		Runnable tick = () -> {
+			try {
+				if (shouldContinue != null && !shouldContinue.getAsBoolean()) {
+					try {
+						if (taskRef[0] != null)
+							taskRef[0].cancel();
+					} catch (Throwable ignored) {
+					}
+					return;
+				}
+
+				int step = Math.floorMod(idx[0], 16);
+				idx[0]++;
+
+				// Hats (constant energy)
+				sink.play(Sound.BLOCK_NOTE_BLOCK_HAT, hatVol, 1.65f);
+				if ((step % 2) == 0)
+					sink.play(Sound.BLOCK_NOTE_BLOCK_HAT, hatVol * 0.65f, 1.2f);
+
+				// Kick/Snare (driving beat)
+				if (step == 0 || step == 6 || step == 8 || step == 14)
+					sink.play(Sound.BLOCK_NOTE_BLOCK_BASEDRUM, drumVol, 1.0f);
+				if (step == 4 || step == 12)
+					sink.play(Sound.BLOCK_NOTE_BLOCK_SNARE, drumVol * 0.9f, 1.05f);
+
+				// Bass pulse
+				float bp = bass[step];
+				if (bp > 0)
+					sink.play(Sound.BLOCK_NOTE_BLOCK_BASS, bassVol, bp);
+
+				// Lead stabs + layer (cinematic/brass-ish)
+				float lp = lead[step];
+				if (lp > 0) {
+					sink.play(Sound.BLOCK_NOTE_BLOCK_BIT, leadVol * 0.7f, lp);
+					sink.play(Sound.BLOCK_NOTE_BLOCK_PLING, leadVol * 0.45f, lp);
+					// Accent on the downbeat.
+					if (step == 0)
+						sink.play(Sound.BLOCK_NOTE_BLOCK_CHIME, leadVol * 0.35f, 1.5f);
+				}
+			} catch (Throwable ignored) {
+			}
+		};
+
+		// Delay 1 tick so taskRef is set before first execution.
+		BukkitTask task = Bukkit.getScheduler().runTaskTimer(plugin, tick, 1L, periodTicks);
+		taskRef[0] = task;
+		return new LoopHandle(task);
+	}
 
 	public static class IntroTune {
 		public final String name;
