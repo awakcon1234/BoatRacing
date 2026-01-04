@@ -741,6 +741,7 @@ public final class EventBoardService {
 		}
 
 		RowContainer leftHead = new RowContainer().gap(Math.max(10, gap / 2)).alignItems(UiAlign.END).justifyContent(UiJustify.START);
+		Font participantsFont = body.deriveFont(Font.BOLD, Math.max(17f, body.getSize2D() * 1.15f));
 		leftHead.add(text("NGƯỜI THAM GIA", section, fg, TextElement.Align.LEFT));
 		Spacer leftPush = new Spacer();
 		leftPush.style().flexGrow(1);
@@ -756,7 +757,7 @@ public final class EventBoardService {
 			racersText = racersText + "/" + max;
 		leftHead.add(text(racersText + " TAY ĐUA", body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), muted, TextElement.Align.RIGHT));
 		left.add(leftHead);
-		left.add(buildParticipantsRows(e, colMax, body.deriveFont(Font.BOLD, Math.max(14f, body.getSize2D())), fg));
+		left.add(buildParticipantsRows(e, colMax, participantsFont, fg));
 		left.add(text("ⓘ Ở gần bảng để theo dõi cập nhật.", body.deriveFont(Font.PLAIN, Math.max(13f, body.getSize2D() * 0.95f)), muted, TextElement.Align.LEFT));
 		main.add(left);
 
@@ -1097,45 +1098,66 @@ public final class EventBoardService {
 			return an.compareToIgnoreCase(bn);
 		});
 
-		int est = Math.max(140, font.getSize() * 11);
-		int perRow = Math.max(4, Math.min(8, maxWidth / est));
-		int maxShown = Math.max(1, perRow * 2);
-
 		java.util.List<String> displays = new java.util.ArrayList<>();
-		for (int i = 0; i < list.size() && i < maxShown; i++) {
-			var it = list.get(i);
+		for (var it : list) {
 			displays.add(formatRacerBoard(it.getKey(), it.getValue()));
 		}
 
-		ColumnContainer rows = new ColumnContainer().gap(Math.max(4, font.getSize() / 2)).alignItems(UiAlign.CENTER);
+		ColumnContainer rows = new ColumnContainer().gap(Math.max(6, font.getSize() / 2)).alignItems(UiAlign.STRETCH);
 		if (displays.isEmpty()) {
 			rows.add(text("(Chưa có)", font, color, TextElement.Align.CENTER));
 			return rows;
 		}
 
-		int idx = 0;
-		for (int r = 0; r < 2 && idx < displays.size(); r++) {
-			RowContainer row = new RowContainer().gap(Math.max(10, font.getSize() / 2)).alignItems(UiAlign.CENTER).justifyContent(UiJustify.CENTER);
-			int count = 0;
-			while (idx < displays.size() && count < perRow) {
-				if (count > 0) {
-					row.add(text("●", font, color, TextElement.Align.CENTER));
-				}
-				LegacyTextElement racer = new LegacyTextElement(displays.get(idx))
-						.font(font)
-						.defaultColor(color)
-						.align(LegacyTextElement.Align.LEFT)
-						.trimToFit(false);
-				row.add(racer);
-				idx++;
-				count++;
+		java.awt.font.FontRenderContext frc = new java.awt.font.FontRenderContext(null, true, true);
+		double maxRowWidth = Math.max(140.0, maxWidth > 0 ? maxWidth * 0.96 : 320.0);
+		double sepWidth = font.getStringBounds("●", frc).getWidth();
+		int gapPx = Math.max(10, font.getSize() / 2);
+
+		RowContainer row = new RowContainer().gap(gapPx).alignItems(UiAlign.CENTER).justifyContent(UiJustify.START);
+		boolean rowHasEntries = false;
+		double used = 0.0;
+		int shown = 0;
+		int maxShown = Math.max(4, Math.min(64, displays.size()));
+
+		for (String disp : displays) {
+			if (shown >= maxShown) break;
+			double width = font.getStringBounds(stripLegacy(disp), frc).getWidth();
+			double nextWidth = width + (rowHasEntries ? (sepWidth + gapPx) : 0.0);
+			boolean needsBreak = rowHasEntries && (used + nextWidth > maxRowWidth);
+			if (needsBreak) {
+				rows.add(row);
+				row = new RowContainer().gap(gapPx).alignItems(UiAlign.CENTER).justifyContent(UiJustify.START);
+				rowHasEntries = false;
+				used = 0.0;
 			}
-			rows.add(row);
+
+			if (rowHasEntries) {
+				row.add(text("●", font, color, TextElement.Align.CENTER));
+				used += sepWidth + gapPx;
+			}
+			LegacyTextElement racer = new LegacyTextElement(disp)
+					.font(font)
+					.defaultColor(color)
+					.align(LegacyTextElement.Align.LEFT)
+					.trimToFit(true);
+			row.add(racer);
+			used += width;
+			rowHasEntries = true;
+			shown++;
 		}
-		if (list.size() > maxShown) {
+
+		if (rowHasEntries) rows.add(row);
+		if (displays.size() > shown) {
 			rows.add(text("…", font, color, TextElement.Align.CENTER));
 		}
 		return rows;
+	}
+
+	private static String stripLegacy(String s) {
+		if (s == null) return "";
+		// Remove legacy color codes (& or §) to approximate render width.
+		return s.replaceAll("[&§][0-9A-FK-ORa-fk-or]", "");
 	}
 
 	private String formatRacerBoard(java.util.UUID id, String name) {

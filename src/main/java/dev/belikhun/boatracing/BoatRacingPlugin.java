@@ -11,6 +11,7 @@ import dev.belikhun.boatracing.util.Text;
 import dev.belikhun.boatracing.track.TrackConfig;
 import dev.belikhun.boatracing.track.TrackLibrary;
 import dev.belikhun.boatracing.race.RaceManager;
+import dev.belikhun.boatracing.MatchmakingCommand;
 import dev.belikhun.boatracing.setup.SetupWizard;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -554,6 +555,11 @@ public class BoatRacingPlugin extends JavaPlugin {
 			JoinCommand handler = new JoinCommand(this);
 			getCommand("join").setExecutor(handler);
 			getCommand("join").setTabCompleter(handler);
+		}
+
+		if (getCommand("mm") != null) {
+			MatchmakingCommand handler = new MatchmakingCommand(this);
+			getCommand("mm").setExecutor(handler);
 		}
 
 		// Start event service (single-active-event orchestrator)

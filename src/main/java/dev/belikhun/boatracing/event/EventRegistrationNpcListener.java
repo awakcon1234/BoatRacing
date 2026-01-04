@@ -25,19 +25,9 @@ public class EventRegistrationNpcListener implements Listener {
 		}
 	}
 
-	@EventHandler(ignoreCancelled = true)
-	public void onInteract(PlayerInteractAtEntityEvent e) {
-		if (e == null)
-			return;
-		Player p = e.getPlayer();
+	private void openRegistrationGui(Player p) {
 		if (p == null)
 			return;
-		Entity clicked = e.getRightClicked();
-		EventRegistrationNpcService rs = svc();
-		if (rs == null || !rs.isRegisterNpcEntity(clicked))
-			return;
-
-		e.setCancelled(true);
 
 		EventService es;
 		try {
@@ -64,6 +54,22 @@ public class EventRegistrationNpcListener implements Listener {
 	}
 
 	@EventHandler(ignoreCancelled = true)
+	public void onInteract(PlayerInteractAtEntityEvent e) {
+		if (e == null)
+			return;
+		Player p = e.getPlayer();
+		if (p == null)
+			return;
+		Entity clicked = e.getRightClicked();
+		EventRegistrationNpcService rs = svc();
+		if (rs == null || !rs.isRegisterNpcEntity(clicked))
+			return;
+
+		e.setCancelled(true);
+		openRegistrationGui(p);
+	}
+
+	@EventHandler(ignoreCancelled = true)
 	public void onDamage(EntityDamageByEntityEvent e) {
 		if (e == null)
 			return;
@@ -73,5 +79,7 @@ public class EventRegistrationNpcListener implements Listener {
 		if (!rs.isRegisterNpcEntity(e.getEntity()))
 			return;
 		e.setCancelled(true);
+		if (e.getDamager() instanceof Player p)
+			openRegistrationGui(p);
 	}
 }

@@ -15,6 +15,7 @@ import java.util.*;
 public class RaceService {
 	private final BoatRacingPlugin plugin;
 	private final File dataFolder;
+	private final MatchmakingService matchmaking;
 
 	private final Map<String, RaceManager> raceByTrack = new HashMap<>();
 	private final Map<UUID, String> trackByPlayer = new HashMap<>();
@@ -36,6 +37,10 @@ public class RaceService {
 
 	private final Map<UUID, SpectateState> spectateByPlayer = new HashMap<>();
 	private final Map<UUID, org.bukkit.GameMode> pendingRestoreSpectateModes = new HashMap<>();
+
+	public MatchmakingService getMatchmaking() {
+		return matchmaking;
+	}
 
 	private void teleportToLobby(org.bukkit.entity.Player p) {
 		if (p == null)
@@ -100,6 +105,11 @@ public class RaceService {
 	public RaceService(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
 		this.dataFolder = plugin.getDataFolder();
+		this.matchmaking = new MatchmakingService(plugin, this);
+		try {
+			this.matchmaking.start();
+		} catch (Throwable ignored) {
+		}
 	}
 
 	public synchronized void setDefaultLaps(int laps) {
@@ -111,6 +121,26 @@ public class RaceService {
 
 	public synchronized int getDefaultLaps() {
 		return Math.max(1, defaultLaps);
+	}
+
+	public boolean matchmakingJoin(org.bukkit.entity.Player p) {
+		if (p == null) return false;
+		matchmaking.join(p);
+		return true;
+	}
+
+	public boolean matchmakingLeave(org.bukkit.entity.Player p) {
+		if (p == null) return false;
+		matchmaking.leave(p);
+		return true;
+	}
+
+	public boolean isInMatchmaking(UUID id) {
+		return matchmaking.isQueued(id);
+	}
+
+	public void matchmakingRemove(UUID id) {
+		matchmaking.removeIfQueued(id);
 	}
 
 	public synchronized RaceManager getOrCreate(String trackName) {
@@ -221,6 +251,7 @@ public class RaceService {
 			return false;
 		if (trackName == null || trackName.isBlank())
 			return false;
+		try { matchmakingRemove(p.getUniqueId()); } catch (Throwable ignored) {}
 
 		String key = trackName.trim();
 		RaceManager rm = getOrCreate(key);
@@ -557,6 +588,7 @@ public class RaceService {
 	 */
 	public synchronized boolean join(String trackName, org.bukkit.entity.Player p) {
 		if (p == null) return false;
+		try { matchmakingRemove(p.getUniqueId()); } catch (Throwable ignored) {}
 		// If an event is running, lock event tracks from manual joining.
 		try {
 			var es = plugin != null ? plugin.getEventService() : null;
@@ -584,6 +616,7 @@ public class RaceService {
 		RaceManager rm = getOrCreate(trackName);
 		if (rm == null) return false;
 		boolean ok = rm.leave(p);
+		try { matchmakingRemove(p.getUniqueId()); } catch (Throwable ignored) {}
 		if (ok) trackByPlayer.remove(p.getUniqueId());
 		return ok;
 	}
@@ -602,6 +635,12 @@ public class RaceService {
 					pendingRestoreSpectateModes.put(playerId, st.returnGameMode);
 				return true;
 			}
+		} catch (Throwable ignored) {
+		}
+
+		// Remove from matchmaking queue on disconnect.
+		try {
+			matchmakingRemove(playerId);
 		} catch (Throwable ignored) {
 		}
 
@@ -948,6 +987,10 @@ public class RaceService {
 		}
 		for (UUID id : touched) trackByPlayer.remove(id);
 		raceByTrack.clear();
+		try {
+			matchmaking.stop();
+		} catch (Throwable ignored) {
+		}
 	}
 }
 

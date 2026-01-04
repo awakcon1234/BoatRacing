@@ -4,6 +4,7 @@ import dev.belikhun.boatracing.BoatRacingPlugin;
 import dev.belikhun.boatracing.cinematic.CinematicCameraService;
 import dev.belikhun.boatracing.cinematic.CinematicKeyframe;
 import dev.belikhun.boatracing.cinematic.CinematicSequence;
+import dev.belikhun.boatracing.profile.PlayerProfileManager;
 import dev.belikhun.boatracing.track.TrackConfig;
 import dev.belikhun.boatracing.track.Region;
 import dev.belikhun.boatracing.util.Text;
@@ -2495,6 +2496,64 @@ public class RaceManager {
 		return true;
 	}
 
+	/**
+	 * Deterministic grid ordering to reduce start-slot advantage:
+	 * - Sort by personal best on this track (slower/no-PB first, faster to the back).
+	 * - Tie-break by lowercase name, then UUID to stay stable across runs.
+	 */
+	private List<Player> orderParticipantsForGrid(List<Player> participants) {
+		if (participants == null || participants.isEmpty())
+			return java.util.Collections.emptyList();
+		List<Player> ordered = new ArrayList<>(participants);
+		String trackName = (trackId == null || trackId.isBlank()) ? (trackConfig != null ? trackConfig.getCurrentName() : "") : trackId;
+		PlayerProfileManager pm = null;
+		try {
+			pm = (plugin instanceof dev.belikhun.boatracing.BoatRacingPlugin brp) ? brp.getProfileManager() : null;
+		} catch (Throwable ignored) {
+			pm = null;
+		}
+
+		final PlayerProfileManager finalPm = pm;
+		final String tn = trackName == null ? "" : trackName.trim();
+
+		ordered.sort((a, b) -> {
+			if (a == null && b == null) return 0;
+			if (a == null) return 1;
+			if (b == null) return -1;
+			long pbA = Long.MAX_VALUE;
+			long pbB = Long.MAX_VALUE;
+			try {
+				if (finalPm != null)
+					pbA = Math.max(0L, finalPm.getPersonalBestMillis(a.getUniqueId(), tn));
+			} catch (Throwable ignored) {
+				pbA = Long.MAX_VALUE;
+			}
+			try {
+				if (finalPm != null)
+					pbB = Math.max(0L, finalPm.getPersonalBestMillis(b.getUniqueId(), tn));
+			} catch (Throwable ignored) {
+				pbB = Long.MAX_VALUE;
+			}
+			if (pbA <= 0L) pbA = Long.MAX_VALUE;
+			if (pbB <= 0L) pbB = Long.MAX_VALUE;
+			// Larger PB (slower/unknown) first; faster racers to the back.
+			int cmp = Long.compare(pbB, pbA);
+			if (cmp != 0) return cmp;
+			String na = safeLowerName(a.getName());
+			String nb = safeLowerName(b.getName());
+			cmp = na.compareTo(nb);
+			if (cmp != 0) return cmp;
+			return a.getUniqueId().compareTo(b.getUniqueId());
+		});
+
+		return ordered;
+	}
+
+	private static String safeLowerName(String s) {
+		if (s == null) return "";
+		try { return s.toLowerCase(java.util.Locale.ROOT); } catch (Throwable ignored) { return s; }
+	}
+
 	public void ensureRacerHasBoat(Player p) {
 		if (p == null || !p.isOnline())
 			return;
@@ -4461,9 +4520,12 @@ public class RaceManager {
 		List<Location> starts = trackConfig.getStarts();
 		if (starts.isEmpty())
 			return Collections.emptyList();
+		// Deterministic, fairness-oriented ordering: slower/unknown racers get front
+		// slots; faster PBs start further back. No randomness to avoid luck.
+		List<Player> ordered = orderParticipantsForGrid(participants);
 		List<Player> placed = new ArrayList<>();
 		int slot = 0;
-		for (Player p : participants) {
+		for (Player p : ordered) {
 			if (slot >= starts.size())
 				break; // no more slots
 			Location boatSpawn = starts.get(slot).clone();

@@ -13,6 +13,7 @@ import org.bukkit.Color;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.meta.FireworkMeta;
@@ -467,8 +468,9 @@ public class EventService {
 	}
 
 	/**
-	 * During a RUNNING event, all tracks in the pool are locked.
-	 * This prevents non-event races from being started on event tracks.
+	 * Lock event tracks to prevent ad-hoc races:
+	 * - While the event is running
+	 * - 15 minutes before scheduled start time during registration
 	 */
 	public synchronized boolean isTrackLocked(String trackName) {
 		if (trackName == null || trackName.isBlank())
@@ -476,13 +478,26 @@ public class EventService {
 		RaceEvent e = getActiveEvent();
 		if (e == null)
 			return false;
-		if (e.state != EventState.RUNNING)
-			return false;
 		if (e.trackPool == null || e.trackPool.isEmpty())
 			return false;
 		String tn = trackName.trim();
+		boolean inPool = false;
 		for (String s : e.trackPool) {
-			if (s != null && s.equalsIgnoreCase(tn))
+			if (s != null && s.equalsIgnoreCase(tn)) {
+				inPool = true;
+				break;
+			}
+		}
+		if (!inPool)
+			return false;
+
+		if (e.state == EventState.RUNNING)
+			return true;
+
+		if (e.state == EventState.REGISTRATION && e.startTimeMillis > 0L) {
+			long now = System.currentTimeMillis();
+			long windowStart = e.startTimeMillis - (15L * 60L * 1000L);
+			if (now >= windowStart)
 				return true;
 		}
 		return false;
@@ -986,6 +1001,18 @@ public class EventService {
 		lobbyWaitEndMillis = 0L;
 		breakEndMillis = 0L;
 		lobbyGatherDone = false;
+
+		// Stop any ongoing races on tracks in the pool to free them for the event.
+		try {
+			if (plugin != null && plugin.getRaceService() != null && e.trackPool != null) {
+				for (String tn : e.trackPool) {
+					if (tn == null || tn.isBlank()) continue;
+					try {
+						plugin.getRaceService().forceStopRace(tn.trim());
+					} catch (Throwable ignored) {}
+				}
+			}
+		} catch (Throwable ignored) {}
 
 		// Replace legacy 30s placeholder intro with the real opening titles intro sequence.
 		// Only run it for the first track.
@@ -2034,7 +2061,12 @@ public class EventService {
 					Player p = (id != null) ? Bukkit.getPlayer(id) : null;
 					if (p == null || !p.isOnline())
 						continue;
-					p.playSound(p.getLocation(), sound, volume, pitch);
+					try {
+						// Target per-player and use RECORDS channel to avoid phasing when many nearby listeners.
+						p.playSound(p, sound, SoundCategory.RECORDS, volume, pitch);
+					} catch (Throwable ignored) {
+						p.playSound(p.getLocation(), sound, SoundCategory.RECORDS, volume, pitch);
+					}
 				} catch (Throwable ignored) {
 				}
 			}

@@ -5,6 +5,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Sound;
+import org.bukkit.SoundCategory;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitTask;
@@ -305,12 +306,12 @@ public class CinematicCameraService {
 			if (p == null || !p.isOnline())
 				continue;
 			try {
-				// Play sound attached to the player entity so it follows them
-				p.playSound(p, sound, volume, pitch);
+				// Play in the RECORDS channel so multiple note sounds don't phase with nearby sources.
+				p.playSound(p, sound, SoundCategory.RECORDS, volume, pitch);
 			} catch (Throwable t) {
 				// Fallback
 				try {
-					p.playSound(p.getLocation(), sound, volume, pitch);
+					p.playSound(p.getLocation(), sound, SoundCategory.RECORDS, volume, pitch);
 				} catch (Throwable ignored) {
 				}
 			}

@@ -1208,6 +1208,7 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 					subs.add("board");
 					subs.add("opening");
 					subs.add("podium");
+					subs.add("regnpc");
 				}
 				String pref2 = args[1] == null ? "" : args[1].toLowerCase();
 				return subs.stream().filter(s -> s.startsWith(pref2)).toList();
@@ -1217,6 +1218,11 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 			if (args.length == 3 && args[1].equalsIgnoreCase("podium")) {
 				String pref3 = args[2] == null ? "" : args[2].toLowerCase();
 				return java.util.List.of("help", "set", "clear", "status", "spawn")
+						.stream().filter(s -> s.startsWith(pref3)).toList();
+			}
+			if (args.length == 3 && args[1].equalsIgnoreCase("regnpc")) {
+				String pref3 = args[2] == null ? "" : args[2].toLowerCase();
+				return java.util.List.of("help", "set", "clear", "status", "skin")
 						.stream().filter(s -> s.startsWith(pref3)).toList();
 			}
 			if (args.length == 4 && args[1].equalsIgnoreCase("podium") && args[2].equalsIgnoreCase("set")) {
@@ -1231,6 +1237,16 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 				String pref3 = args[2] == null ? "" : args[2].toLowerCase();
 				return java.util.List.of("help", "status", "start", "stop", "stage", "camera", "board", "flyby")
 						.stream().filter(s -> s.startsWith(pref3)).toList();
+			}
+			if (args.length == 4 && args[1].equalsIgnoreCase("regnpc") && args[2].equalsIgnoreCase("skin")) {
+				String pref4 = args[3] == null ? "" : args[3].toLowerCase();
+				return java.util.List.of("set", "clear").stream().filter(s -> s.startsWith(pref4)).toList();
+			}
+			if (args.length >= 5 && args[1].equalsIgnoreCase("regnpc") && args[2].equalsIgnoreCase("skin")
+					&& args[3].equalsIgnoreCase("set")) {
+				String pref5 = args[4] == null ? "" : args[4].toLowerCase();
+				return java.util.List.of("@none", "@mirror", "name", "url", "file")
+						.stream().filter(s -> s.toLowerCase().startsWith(pref5)).toList();
 			}
 			if (args.length == 4 && args[1].equalsIgnoreCase("opening")
 					&& (args[2].equalsIgnoreCase("stage") || args[2].equalsIgnoreCase("camera"))) {

@@ -303,16 +303,16 @@ public class EventRegistrationNpcService {
 
 		String timeLeft;
 		if (e.startTimeMillis > 0L) {
-			long remainSec = Math.max(0L, (e.startTimeMillis - System.currentTimeMillis()) / 1000L);
-			int sec = (int) Math.min(Integer.MAX_VALUE, remainSec);
-			timeLeft = Time.formatCountdownSeconds(sec);
+			long remainMs = Math.max(0L, e.startTimeMillis - System.currentTimeMillis());
+			timeLeft = Time.formatDurationShort(remainMs);
 		} else {
 			timeLeft = "Chưa đặt lịch";
 		}
 
 		return "&6&lSự kiện: &f" + title
 				+ "\n&a● &fĐã đăng ký: &a" + slotsPart
-				+ "\n&e⌚ &fCòn lại: &e" + timeLeft;
+				+ "\n&e⌚ &fCòn lại: &e" + timeLeft
+				+ "\n&7ℹ &fPhải chuột để đăng ký";
 	}
 
 	private int countRegistered(RaceEvent e) {

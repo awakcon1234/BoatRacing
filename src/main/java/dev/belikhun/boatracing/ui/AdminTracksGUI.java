@@ -80,36 +80,37 @@ public class AdminTracksGUI implements Listener {
 
 	public void open(Player p) {
 		if (!hasSetup(p)) { Text.msg(p, "&cBạn không có quyền thực hiện điều đó."); return; }
-		int size = 36;
+		int size = 54;
 		Inventory inv = Bukkit.createInventory(null, size, TITLE);
 		ItemStack filler = pane(Material.GRAY_STAINED_GLASS_PANE);
 		for (int i = 0; i < size; i++) inv.setItem(i, filler);
 
-		// Top status
-		inv.setItem(10, statusCard());
-
-		// Track meta (icon/author)
-		inv.setItem(9, buttonWithLore(Material.NAME_TAG, Text.item("&b&lTác giả"), Action.SET_AUTHOR,
-				List.of("&7Đặt tên tác giả cho đường đua", "&8Có thể là tên người chơi hoặc chuỗi bất kỳ"), true));
-		inv.setItem(17, buttonWithLore(Material.ITEM_FRAME, Text.item("&d&lIcon đường"), Action.SET_ICON,
-				List.of("&7Đặt icon bằng vật phẩm bạn đang cầm"), true));
-		inv.setItem(0, buttonWithLore(Material.BARRIER, Text.item("&cXóa tác giả"), Action.CLEAR_AUTHOR,
-				List.of("&7Xóa tác giả đã đặt"), true));
-		inv.setItem(1, buttonWithLore(Material.BARRIER, Text.item("&cXóa icon"), Action.CLEAR_ICON,
-				List.of("&7Xóa icon đã đặt"), true));
-
-		// Row of core actions
 		String cur = lib.getCurrent();
 		boolean canDelete = cur != null && lib.exists(cur);
-		inv.setItem(12, buttonWithLore(Material.MAP, Text.item("&b&lChọn đường"), Action.PICK_TRACK,
-				List.of("&7Chọn đường đua hiện tại"), true));
-		inv.setItem(13, buttonWithLore(Material.PAPER, Text.item("&a&lLưu"), Action.SAVE,
+		boolean vizOn = vizTasks.containsKey(p.getUniqueId());
+
+		// Overview
+		inv.setItem(4, statusCard());
+
+		// Section: quản lý đường (row 2)
+		inv.setItem(9, label(Material.YELLOW_STAINED_GLASS_PANE, Text.item("&e&lQuản lý đường")));
+		inv.setItem(10, buttonWithLore(Material.MAP, Text.item("&b&lChọn đường"), Action.PICK_TRACK,
+				List.of("&7Chọn đường đua hiện tại", "", "&7Mở danh sách và chọn/ tạo"), true));
+		inv.setItem(11, buttonWithLore(Material.PAPER, Text.item("&a&lLưu"), Action.SAVE,
 				List.of("&7Lưu cấu hình đường đua hiện tại"), true));
-		inv.setItem(14, buttonWithLore(Material.BOOK, Text.item("&e&lLưu thành..."), Action.SAVE_AS,
-				List.of("&7Nhập tên mới để lưu"), true));
-		inv.setItem(16, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), Action.REFRESH,
-				List.of("&7Cập nhật thông tin"), true));
-		inv.setItem(27, buttonWithLore(Material.TNT, Text.item("&c&lXóa đường"), Action.DELETE_TRACK,
+		inv.setItem(12, buttonWithLore(Material.BOOK, Text.item("&e&lLưu thành..."), Action.SAVE_AS,
+				List.of("&7Nhập tên mới để lưu", "", "&8Tạo một bản sao"), true));
+		inv.setItem(13, buttonWithLore(Material.WRITABLE_BOOK, Text.item("&a&lTạo đường mới"), Action.NEW_TRACK,
+				List.of("&7Tạo file đường trống", "&8Không sao chép dữ liệu hiện tại"), true));
+		inv.setItem(14, buttonWithLore(Material.CLOCK, Text.item("&e&lLàm mới"), Action.REFRESH,
+				List.of("&7Tải lại thông tin đường hiện tại"), true));
+		inv.setItem(15, buttonWithLore(Material.ENDER_PEARL, Text.item("&b&lDịch chuyển tới đường"), Action.TELEPORT_TRACK,
+				List.of(
+					"&7Dịch chuyển đến vị trí của đường đua",
+					"",
+					"&fƯu tiên:&7 Spawn chờ 🡢 Start 🡢 Đích"
+				), true));
+		inv.setItem(16, buttonWithLore(Material.TNT, Text.item("&c&lXóa đường"), Action.DELETE_TRACK,
 				List.of(
 					"&7Xóa file đường đua hiện tại và dữ liệu liên quan",
 					"&7(kỷ lục và PB cá nhân).",
@@ -117,50 +118,54 @@ public class AdminTracksGUI implements Listener {
 					"&cYêu cầu nhập lại tên để xác nhận.",
 					"&7Dừng cuộc đua trước khi xóa."
 				), canDelete));
-		inv.setItem(31, buttonWithLore(Material.ENDER_PEARL, Text.item("&b&lDịch chuyển tới đường"), Action.TELEPORT_TRACK,
-				List.of(
-					"&7Dịch chuyển đến vị trí của đường đua hiện tại",
-					"",
-					"&fƯu tiên:&7 Spawn chờ 🡢 Start 🡢 Đích"
-				), true));
-		boolean vizOn = vizTasks.containsKey(p.getUniqueId());
-		inv.setItem(15, buttonWithLore(vizOn ? Material.AMETHYST_SHARD : Material.GLASS,
+		inv.setItem(17, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
+				List.of("&7Đóng trình quản lý đường đua"), true));
+
+		// Section: tác giả & icon (row 3)
+		inv.setItem(18, label(Material.LIGHT_BLUE_STAINED_GLASS_PANE, Text.item("&b&lTác giả & Icon")));
+		inv.setItem(19, buttonWithLore(Material.NAME_TAG, Text.item("&bĐặt tác giả"), Action.SET_AUTHOR,
+				List.of("&7Đặt tên tác giả cho đường đua", "&8Có thể là tên người chơi hoặc chuỗi bất kỳ"), true));
+		inv.setItem(20, buttonWithLore(Material.BARRIER, Text.item("&cXóa tác giả"), Action.CLEAR_AUTHOR,
+				List.of("&7Xóa tác giả đã đặt"), true));
+		inv.setItem(21, buttonWithLore(Material.ITEM_FRAME, Text.item("&dĐặt icon"), Action.SET_ICON,
+				List.of("&7Đặt icon bằng vật phẩm bạn đang cầm"), true));
+		inv.setItem(22, buttonWithLore(Material.BARRIER, Text.item("&cXóa icon"), Action.CLEAR_ICON,
+				List.of("&7Xóa icon đã đặt"), true));
+		inv.setItem(23, buttonWithLore(vizOn ? Material.AMETHYST_SHARD : Material.GLASS,
 			Text.item((vizOn?"&d&lẨn":"&d&lHiện") + " đường giữa"), Action.TOGGLE_VIZ,
 			List.of(vizOn?"&7Tắt hiển thị đường giữa bằng hạt": "&7Hiện đường giữa bằng hạt (debug)",
 				"&8Mẹo: chỉ hiện các nút trong phạm vi 64m"), true));
 
-		// Editing tools
-		inv.setItem(18, buttonWithLore(Material.OAK_BOAT, Text.item("&aThêm Start"), Action.ADD_START,
-				List.of("&7Thêm vị trí hiện tại làm vị trí bắt đầu"), true));
-		inv.setItem(19, buttonWithLore(Material.BARRIER, Text.item("&cXóa Start"), Action.CLEAR_STARTS,
-				List.of("&7Xóa tất cả vị trí bắt đầu"), true));
-		inv.setItem(20, buttonWithLore(Material.BEACON, Text.item("&bĐặt Vùng bao"), Action.SET_BOUNDS,
+		// Section: cấu hình khu vực & spawn (row 4)
+		inv.setItem(27, label(Material.LIME_STAINED_GLASS_PANE, Text.item("&a&lKhu vực & Spawn")));
+		inv.setItem(28, buttonWithLore(Material.BEACON, Text.item("&bĐặt Vùng bao"), Action.SET_BOUNDS,
 			List.of("&7Dùng selection để đặt vùng bao (bounds)"), true));
-		inv.setItem(21, buttonWithLore(Material.WHITE_BANNER, Text.item("&6Đặt Đích"), Action.SET_FINISH,
+		inv.setItem(29, buttonWithLore(Material.WHITE_BANNER, Text.item("&6Đặt Đích"), Action.SET_FINISH,
 				List.of("&7Dùng selection để đặt vùng đích"), true));
-		inv.setItem(22, buttonWithLore(Material.RESPAWN_ANCHOR, Text.item("&aĐặt Spawn chờ"), Action.SET_WAIT_SPAWN,
+		inv.setItem(30, buttonWithLore(Material.RESPAWN_ANCHOR, Text.item("&aĐặt Spawn chờ"), Action.SET_WAIT_SPAWN,
 			List.of("&7Đặt điểm spawn chờ từ vị trí hiện tại"), true));
-		// Pit mechanic disabled: hide pit button
-		inv.setItem(23, buttonWithLore(Material.LODESTONE, Text.item("&aThêm Checkpoint"), Action.ADD_CHECKPOINT,
-				List.of("&7Dùng selection để thêm checkpoint"), true));
-		inv.setItem(24, buttonWithLore(Material.REDSTONE_LAMP, Text.item("&6Thêm Đèn"), Action.ADD_LIGHT,
-				List.of("&7Nhìn vào Đèn Redstone và bấm"), true));
-		inv.setItem(25, buttonWithLore(Material.LAVA_BUCKET, Text.item("&cXóa Checkpoint"), Action.CLEAR_CHECKPOINTS,
-				List.of("&7Xóa tất cả checkpoint"), true));
-		inv.setItem(26, buttonWithLore(Material.FLINT_AND_STEEL, Text.item("&cXóa Đèn"), Action.CLEAR_LIGHTS,
-			List.of("&7Xóa tất cả đèn xuất phát"), true));
-		// Place build-path button in free slot (11) to avoid exceeding 27-slot inventory bounds
-		inv.setItem(11, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
-			List.of("&7Tạo đường giữa bằng A* trên băng."), true));
+		inv.setItem(31, buttonWithLore(Material.OAK_BOAT, Text.item("&aThêm Start"), Action.ADD_START,
+				List.of("&7Thêm vị trí hiện tại làm vị trí bắt đầu"), true));
+		inv.setItem(32, buttonWithLore(Material.BARRIER, Text.item("&cXóa Start"), Action.CLEAR_STARTS,
+				List.of("&7Xóa tất cả vị trí bắt đầu"), true));
+		inv.setItem(33, buttonWithLore(Material.COMPASS, Text.item("&b&lXây dựng đường giữa"), Action.BUILD_PATH,
+				List.of("&7Tạo đường giữa bằng A* trên băng."), true));
 
-		// Close
-		// Move close button to top-right corner to avoid overlap with editing tools
-		inv.setItem(8, buttonWithLore(Material.BARRIER, Text.item("&c&lĐóng"), Action.CLOSE,
-			List.of("&7Đóng trình quản lý đường đua"), true));
+		// Section: checkpoint & đèn (row 5)
+		inv.setItem(36, label(Material.ORANGE_STAINED_GLASS_PANE, Text.item("&6&lCheckpoint & Đèn")));
+		inv.setItem(37, buttonWithLore(Material.LODESTONE, Text.item("&aThêm Checkpoint"), Action.ADD_CHECKPOINT,
+				List.of("&7Dùng selection để thêm checkpoint"), true));
+		inv.setItem(38, buttonWithLore(Material.LAVA_BUCKET, Text.item("&cXóa Checkpoint"), Action.CLEAR_CHECKPOINTS,
+				List.of("&7Xóa tất cả checkpoint"), true));
+		inv.setItem(39, buttonWithLore(Material.REDSTONE_LAMP, Text.item("&6Thêm Đèn"), Action.ADD_LIGHT,
+				List.of("&7Nhìn vào Đèn Redstone và bấm"), true));
+		inv.setItem(40, buttonWithLore(Material.FLINT_AND_STEEL, Text.item("&cXóa Đèn"), Action.CLEAR_LIGHTS,
+				List.of("&7Xóa tất cả đèn xuất phát"), true));
 
 		p.openInventory(inv);
 		p.playSound(p.getLocation(), org.bukkit.Sound.UI_BUTTON_CLICK, 0.8f, 1.2f);
 	}
+
 
 	private ItemStack statusCard() {
 		TrackConfig cfg = plugin.getTrackConfig();
@@ -228,6 +233,17 @@ public class AdminTracksGUI implements Listener {
 		ItemMeta im = it.getItemMeta();
 		if (im != null) {
 			im.displayName(Component.text(" "));
+			im.addItemFlags(ItemFlag.values());
+			it.setItemMeta(im);
+		}
+		return it;
+	}
+
+	private ItemStack label(Material mat, Component name) {
+		ItemStack it = new ItemStack(mat);
+		ItemMeta im = it.getItemMeta();
+		if (im != null) {
+			im.displayName(name);
 			im.addItemFlags(ItemFlag.values());
 			it.setItemMeta(im);
 		}

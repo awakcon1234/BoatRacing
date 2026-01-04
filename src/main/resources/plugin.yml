@@ -25,6 +25,10 @@ commands:
     description: Dịch chuyển về sảnh (spawn)
     usage: /<command>
     permission: boatracing.spawn
+  mm:
+    description: Ghép trận nhanh
+    usage: /<command>
+    permission: boatracing.matchmaking
 permissions:
   boatracing.*:
     description: Cấp TẤT CẢ quyền của BoatRacing
@@ -44,6 +48,7 @@ permissions:
       boatracing.race.leave: true
       boatracing.race.status: true
       boatracing.race.admin: true
+      boatracing.matchmaking: true
   boatracing.use:
     description: Quyền meta cho việc dùng cơ bản BoatRacing
     default: true
@@ -56,6 +61,7 @@ permissions:
       boatracing.race.join: true
       boatracing.race.leave: true
       boatracing.race.status: true
+      boatracing.matchmaking: true
   boatracing.spawn:
     description: Dùng /spawn để về sảnh
     default: true
@@ -96,6 +102,10 @@ permissions:
   boatracing.race.admin:
     description: Quản lý cuộc đua (mở/bắt đầu/cưỡng chế/dừng)
     default: op
+
+  boatracing.matchmaking:
+    description: Dùng ghép trận nhanh /mm và nút hotbar tương ứng
+    default: true
 
   boatracing.event.join:
     description: Đăng ký tham gia sự kiện

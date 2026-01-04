@@ -26,6 +26,7 @@ public class HotbarService {
 
 	public enum Action {
 		QUICK_JOIN,
+		MATCHMAKE,
 		MAP_SELECT,
 		PROFILE,
 		ADMIN_PANEL,
@@ -121,9 +122,47 @@ public class HotbarService {
 			case MAP_SELECT -> {
 				try { plugin.getTrackSelectGUI().open(p); } catch (Throwable ignored) {}
 			}
-			case QUICK_JOIN -> {
-				// If there is exactly 1 ready track, join it; otherwise open selection.
+			case MATCHMAKE -> {
 				try {
+					if (raceService.isInMatchmaking(p.getUniqueId())) {
+						raceService.matchmakingLeave(p);
+					} else {
+						raceService.matchmakingJoin(p);
+					}
+				} catch (Throwable ignored) {}
+			}
+			case QUICK_JOIN -> {
+				// Prefer an active registration with waiting racers; fall back to the single ready track.
+				try {
+					String bestTrack = null;
+					int bestWaiting = -1;
+					for (RaceManager rm : raceService.allRaces()) {
+						if (rm == null) continue;
+						try {
+							if (!rm.isRegistering()) continue;
+							if (rm.isRunning() || rm.isAnyCountdownActive()) continue;
+							if (rm.getTrackConfig() == null || !rm.getTrackConfig().isReady()) continue;
+							int waiting = rm.getRegistered() == null ? 0 : rm.getRegistered().size();
+							if (waiting <= 0) continue;
+							String tn = (rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null);
+							if (tn == null || tn.isBlank()) continue;
+							// Pick the race with the most people waiting; tie-break alphabetically for stability.
+							if (waiting > bestWaiting || (waiting == bestWaiting && bestTrack != null && tn.compareToIgnoreCase(bestTrack) < 0) || (waiting == bestWaiting && bestTrack == null)) {
+								bestWaiting = waiting;
+								bestTrack = tn;
+							}
+						} catch (Throwable ignored) {
+						}
+					}
+
+					if (bestTrack != null) {
+						if (!raceService.join(bestTrack, p)) {
+							Text.msg(p, "&cKhông thể tham gia đăng ký ngay lúc này.");
+						}
+						return;
+					}
+
+					// No waiting race found: fall back to previous single-ready-track behavior.
 					var lib = plugin.getTrackLibrary();
 					if (lib == null) {
 						Text.msg(p, "&cHiện chưa có đường đua nào.");
@@ -250,13 +289,14 @@ public class HotbarService {
 						"&7và quay về sảnh."));
 			}
 			case LOBBY -> {
-				setSlot(p, 0, item(Material.FEATHER, "&a&l⚡ Tham gia nhanh", Action.QUICK_JOIN,
-					"&7Tự động vào đường đua nếu chỉ có &f1&7 đường sẵn sàng.",
-					"&7Nếu có nhiều đường, sẽ mở &emenu chọn đường&7."));
-				setSlot(p, 1, item(Material.FILLED_MAP, "&e&l🗺 Chọn đường đua", Action.MAP_SELECT,
+				setSlot(p, 0, item(Material.SLIME_BALL, "&a&l🔁 Ghép trận", Action.MATCHMAKE,
+					"&7Vào hàng chờ ghép trận tự động.",
+					"&7Đủ người hoặc chờ lâu sẽ tự xếp vào đường đua và bắt đầu."));
+				setSlot(p, 1, item(Material.FEATHER, "&a&l⚡ Tham gia nhanh", Action.QUICK_JOIN,
+					"&7Vào ngay đường đang mở đăng ký có người chờ.",
+					"&7Nếu không có, sẽ mở &emenu chọn đường&7."));
+				setSlot(p, 4, item(Material.FILLED_MAP, "&e&l🗺 Chọn đường đua", Action.MAP_SELECT,
 					"&7Mở danh sách đường đua để tham gia."));
-
-				setSlot(p, 4, null);
 
 				// UX: Keep the rightmost hotbar slot filled.
 				// If the admin panel is not available, shift the profile item to slot 9.
