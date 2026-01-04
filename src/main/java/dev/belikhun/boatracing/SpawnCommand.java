@@ -29,6 +29,16 @@ public class SpawnCommand implements CommandExecutor {
 		}
 
 		var rs = (plugin != null ? plugin.getRaceService() : null);
+
+		// If the player is spectating, /spawn should act as a quick exit back to lobby.
+		try {
+			if (rs != null && rs.isSpectating(p.getUniqueId())) {
+				rs.spectateLeaveToLobby(p);
+				p.playSound(p.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.2f);
+				return true;
+			}
+		} catch (Throwable ignored) {
+		}
 		RaceManager rm = (rs != null ? rs.findRaceFor(p.getUniqueId()) : null);
 
 		boolean inLiveRace = false;

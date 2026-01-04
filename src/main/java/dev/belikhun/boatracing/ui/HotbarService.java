@@ -30,12 +30,14 @@ public class HotbarService {
 		PROFILE,
 		ADMIN_PANEL,
 		LEAVE_TO_LOBBY,
+		LEAVE_SPECTATE,
 		FORCE_START,
 		RESPAWN_CHECKPOINT
 	}
 
 	public enum State {
 		LOBBY,
+		SPECTATING,
 		WAITING,
 		COUNTDOWN,
 		RACING,
@@ -158,6 +160,14 @@ public class HotbarService {
 					}
 				} catch (Throwable ignored) {}
 			}
+			case LEAVE_SPECTATE -> {
+				try {
+					boolean ok = plugin.getRaceService().spectateLeaveToLobby(p);
+					if (!ok) {
+						Text.msg(p, "&cBạn hiện không ở chế độ theo dõi.");
+					}
+				} catch (Throwable ignored) {}
+			}
 			case FORCE_START -> {
 				if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
 					Text.msg(p, "&cBạn không có quyền sử dụng chức năng này.");
@@ -196,6 +206,11 @@ public class HotbarService {
 	}
 
 	private State resolveState(UUID id) {
+		try {
+			if (raceService.isSpectating(id))
+				return State.SPECTATING;
+		} catch (Throwable ignored) {
+		}
 		RaceManager rm = raceService.findRaceFor(id);
 		if (rm == null) return State.LOBBY;
 
@@ -224,6 +239,16 @@ public class HotbarService {
 
 		// Clear / set per-state.
 		switch (st) {
+			case SPECTATING -> {
+				// Spectate UX: keep it simple and provide a clear escape back to lobby.
+				setSlot(p, 0, null);
+				setSlot(p, 1, null);
+				setSlot(p, 4, null);
+				setSlot(p, 7, null);
+				setSlot(p, 8, item(Material.BARRIER, "&c&l⎋ Thoát theo dõi", Action.LEAVE_SPECTATE,
+						"&7Thoát chế độ theo dõi",
+						"&7và quay về sảnh."));
+			}
 			case LOBBY -> {
 				setSlot(p, 0, item(Material.FEATHER, "&a&l⚡ Tham gia nhanh", Action.QUICK_JOIN,
 					"&7Tự động vào đường đua nếu chỉ có &f1&7 đường sẵn sàng.",

@@ -309,7 +309,7 @@ public class RaceService {
 
 		try {
 			Text.msg(p, "&a👁 Bạn đang theo dõi đường đua: &f" + key);
-			Text.tell(p, "&7Dùng: &f/boatracing race spectate leave &7để thoát.");
+			Text.tell(p, "&7Dùng: &f/spawn &7hoặc &fitem ⎋ Thoát theo dõi &7để về sảnh.");
 		} catch (Throwable ignored) {
 		}
 
@@ -374,6 +374,70 @@ public class RaceService {
 			Text.msg(p, "&a👁 Đã thoát chế độ theo dõi.");
 		} catch (Throwable ignored) {
 		}
+		return true;
+	}
+
+	/**
+	 * Leave spectate mode and always teleport the player to the lobby.
+	 *
+	 * This is intended for quick UX exits like /spawn or a hotbar button.
+	 */
+	public synchronized boolean spectateLeaveToLobby(org.bukkit.entity.Player p) {
+		if (p == null)
+			return false;
+		java.util.UUID id = p.getUniqueId();
+		if (id == null)
+			return false;
+
+		SpectateState st = spectateByPlayer.remove(id);
+		if (st == null)
+			return false;
+
+		try {
+			if (st.monitorTask != null)
+				st.monitorTask.cancel();
+		} catch (Throwable ignored) {
+		}
+		st.monitorTask = null;
+
+		if (!p.isOnline()) {
+			// Restore their gamemode and teleport them to lobby on next join.
+			try {
+				org.bukkit.GameMode gm = st.returnGameMode != null ? st.returnGameMode : org.bukkit.GameMode.ADVENTURE;
+				pendingRestoreSpectateModes.put(id, gm);
+			} catch (Throwable ignored) {
+			}
+			try {
+				pendingLobbyTeleport.add(id);
+			} catch (Throwable ignored) {
+			}
+			return true;
+		}
+
+		try {
+			if (st.returnGameMode != null)
+				p.setGameMode(st.returnGameMode);
+			else
+				p.setGameMode(org.bukkit.GameMode.ADVENTURE);
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			if (p.isInsideVehicle())
+				p.leaveVehicle();
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			teleportToLobby(p);
+		} catch (Throwable ignored) {
+		}
+
+		try {
+			Text.msg(p, "&a⎋ Đã thoát chế độ theo dõi và về sảnh.");
+		} catch (Throwable ignored) {
+		}
+
 		return true;
 	}
 
