@@ -56,6 +56,7 @@ public class ScoreboardService {
 		boolean needsSpeed;
 		boolean needsNeighbors;
 		boolean needsEventLobby;
+		boolean needsNav;
 	}
 
 	private TemplateUsage usage = new TemplateUsage();
@@ -1376,6 +1377,48 @@ public class ScoreboardService {
 		ph.put("speed_color_name", speedColorName);
 		ph.put("speed_color", miniOpenTag(speedColorName));
 		ph.put("speed_color_close", miniCloseTag(speedColorName));
+
+		// Navigation + turn hints
+		RaceManager.NavHint nav = null;
+		if (usage == null || usage.needsNav) {
+			try {
+				nav = rm.getNavHint(p.getUniqueId(), riderOrVehicleLocation(p));
+			} catch (Throwable ignored) {}
+		}
+		if (nav != null && nav.valid) {
+			String arrowColor = (nav.arrowColorName == null || nav.arrowColorName.isBlank()) ? "yellow" : nav.arrowColorName;
+			String arrowIcon = (nav.arrowIcon == null || nav.arrowIcon.isBlank()) ? "🡢" : nav.arrowIcon;
+			ph.put("nav_arrow_icon", arrowIcon);
+			ph.put("nav_arrow_color", miniOpenTag(arrowColor));
+			ph.put("nav_arrow_color_close", miniCloseTag(arrowColor));
+			ph.put("nav_arrow", miniWrapTag(arrowColor, arrowIcon));
+			ph.put("nav_angle", fmt1(Math.abs(nav.angleDelta)));
+			ph.put("nav_distance", nav.distanceMeters >= 0.0 ? fmt1(nav.distanceMeters) : "-");
+
+			String turnColor = (nav.turnColorName == null || nav.turnColorName.isBlank()) ? "yellow" : nav.turnColorName;
+			String turnIcon = (nav.turnIcon == null || nav.turnIcon.isBlank()) ? "🡢" : nav.turnIcon;
+			String turnLabel = (nav.turnLabel == null || nav.turnLabel.isBlank()) ? "Thẳng" : nav.turnLabel;
+			ph.put("next_turn_icon", turnIcon);
+			ph.put("next_turn_label", turnLabel);
+			ph.put("next_turn_color", miniOpenTag(turnColor));
+			ph.put("next_turn_color_close", miniCloseTag(turnColor));
+			ph.put("next_turn", miniWrapTag(turnColor, turnIcon + " " + turnLabel));
+			ph.put("next_turn_angle", fmt1(nav.turnAngle));
+		} else {
+			ph.put("nav_arrow_icon", "🡢");
+			ph.put("nav_arrow_color", "<gray>");
+			ph.put("nav_arrow_color_close", "</gray>");
+			ph.put("nav_arrow", miniWrapTag("gray", "🡢"));
+			ph.put("nav_angle", "-");
+			ph.put("nav_distance", "-");
+			ph.put("next_turn_icon", "🡢");
+			ph.put("next_turn_label", "Thẳng");
+			ph.put("next_turn_color", "<gray>");
+			ph.put("next_turn_color_close", "</gray>");
+			ph.put("next_turn", miniWrapTag("gray", "🡢 Thẳng"));
+			ph.put("next_turn_angle", "-");
+		}
+
 		Component c = parse(p, tpl, ph);
 		sendActionBar(p, c);
 		log("Applied racing actionbar to " + p.getName() + " tpl='" + tpl + "' pos=" + pos + " lap=" + lapCurrent + "/" + lapTotal + " speed(bps)=" + fmt2(bps) + " unit=" + unit);
@@ -1924,6 +1967,7 @@ public class ScoreboardService {
 		boolean needsSpeed = false;
 		boolean needsNeighbors = false;
 		boolean needsEventLobby = false;
+		boolean needsNav = false;
 		for (String s : pool) {
 			if (s == null)
 				continue;
@@ -1933,11 +1977,14 @@ public class ScoreboardService {
 				needsNeighbors = true;
 			if (s.contains("%event_") || s.contains("%rank_"))
 				needsEventLobby = true;
+			if (s.contains("%nav_") || s.contains("%next_turn"))
+				needsNav = true;
 		}
 
 		u.needsSpeed = u.actionbarEnabled && needsSpeed;
 		u.needsNeighbors = needsNeighbors;
 		u.needsEventLobby = needsEventLobby;
+		u.needsNav = needsNav;
 		return u;
 	}
 }

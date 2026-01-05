@@ -150,6 +150,8 @@ racing:
     #   %track_author_name% %track_author_display%
     #   %track_icon_material%
     # Racing: %track% %timer% %lap_current% %lap_total% %position% %joined% %lap_progress% %track_progress% %checkpoint_passed% %checkpoint_total%
+    # Racing nav/turn: %nav_arrow% %nav_arrow_icon% %nav_arrow_color% %nav_arrow_color_close% %nav_angle% %nav_distance%
+    #   %next_turn% %next_turn_icon% %next_turn_label% %next_turn_color% %next_turn_color_close% %next_turn_angle%
     # Racing neighbor (ahead/behind) placeholders:
     #   %ahead_position% %ahead_position_tag% %ahead_racer_name% %ahead_racer_display%
     #   %ahead_speed_display% %ahead_speed% %ahead_speed_unit% %ahead_speed_color% %ahead_speed_color_close%
@@ -296,9 +298,11 @@ racing:
         # Waiting placeholders: %countdown% %joined% %max%
         waiting: "<yellow>Bắt đầu trong <white>%countdown%</white> ● <gray>%joined%/%max%</gray>"
         # Racing placeholders: %position% %racer_display% %lap_current% %lap_total% %lap_progress% %track_progress% %speed_display% %speed% %speed_unit% %speed_bps% %speed_kmh% %speed_bph% %next_checkpoint% %checkpoint_passed% %checkpoint_total% %speed_color%
+        # Navigation placeholders: %nav_arrow% %nav_arrow_icon% %nav_arrow_color% %nav_arrow_color_close% %nav_angle% %nav_distance%
+        # Turn placeholders: %next_turn% %next_turn_icon% %next_turn_label% %next_turn_color% %next_turn_color_close% %next_turn_angle%
         # - %speed_display% is a pre-colored and unit-aware string (recommended).
         # - %speed_color% returns the full MiniMessage tag (e.g. "<red>"), not just a tag name.
-        racing: "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> <yellow>%lap_progress%%</yellow> %speed_display%"
+        racing: "%position_tag% %racer_display% <white>%lap_current%/%lap_total%</white> <white>%checkpoint_passed%/%checkpoint_total%</white> %nav_arrow% %next_turn% <yellow>%lap_progress%%</yellow> %speed_display%"
         # Completed placeholders: %finish_pos% %racer_display% %finish_time% %avg_speed_display% %avg_speed% %speed_unit% %speed_color%
         completed: "%finish_pos_tag% %racer_display% <gray>●</gray> <white>%finish_time%</white> <gray>●</gray> %avg_speed_display%"
 

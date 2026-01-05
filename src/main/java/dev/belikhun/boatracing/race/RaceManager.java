@@ -3671,6 +3671,18 @@ public class RaceManager {
 		}
 	}
 
+	public static class NavHint {
+		public boolean valid = false;
+		public String arrowIcon = "";
+		public String arrowColorName = "gray";
+		public double angleDelta = 0.0;
+		public double distanceMeters = -1.0;
+		public String turnIcon = "";
+		public String turnLabel = "";
+		public String turnColorName = "gray";
+		public double turnAngle = 0.0;
+	}
+
 	private static double clamp(double v, double min, double max) {
 		return Math.max(min, Math.min(max, v));
 	}
@@ -5948,6 +5960,187 @@ public class RaceManager {
 		if (!Double.isFinite(d) || d < 0.0)
 			return -1.0;
 		return d;
+	}
+
+	public NavHint getNavHint(UUID id, org.bukkit.Location riderLocation) {
+		NavHint out = new NavHint();
+		if (id == null || riderLocation == null || riderLocation.getWorld() == null)
+			return out;
+		ParticipantState s = participants.get(id);
+		if (s == null || s.finished)
+			return out;
+
+		org.bukkit.Location target = resolveNavTarget(s);
+		if (target == null || target.getWorld() == null)
+			return out;
+		if (!target.getWorld().equals(riderLocation.getWorld()))
+			return out;
+
+		try {
+			double dist = riderLocation.distance(target);
+			if (Double.isFinite(dist))
+				out.distanceMeters = dist;
+		} catch (Throwable ignored) {
+			out.distanceMeters = -1.0;
+		}
+
+		org.bukkit.util.Vector dir = target.toVector().subtract(riderLocation.toVector());
+		dir.setY(0.0);
+		if (dir.lengthSquared() > 1.0e-4) {
+			double bearing = Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
+			double delta = wrapDegrees(bearing - (double) riderLocation.getYaw());
+			out.angleDelta = delta;
+			out.arrowIcon = navArrowForDelta(delta);
+			out.arrowColorName = navColorForDelta(delta);
+		}
+
+		resolveNextTurn(out, s);
+		out.valid = true;
+		return out;
+	}
+
+	private org.bukkit.Location resolveNavTarget(ParticipantState s) {
+		org.bukkit.Location target = null;
+		try {
+			if (pathReady && path != null && !path.isEmpty() && gateIndex != null && gateIndex.length > 0) {
+				int gi = Math.max(0, Math.min(s.nextCheckpointIndex, gateIndex.length - 1));
+				int pathIdx = clampIndex(gateIndex[gi], path.size());
+				target = path.get(pathIdx);
+			}
+		} catch (Throwable ignored) {
+			target = null;
+		}
+
+		if (target != null)
+			return target;
+
+		try {
+			java.util.List<Region> cps = trackConfig != null ? trackConfig.getCheckpoints() : null;
+			if (cps != null && s.nextCheckpointIndex >= 0 && s.nextCheckpointIndex < cps.size()) {
+				target = centerOf(cps.get(s.nextCheckpointIndex));
+			} else {
+				Region fin = trackConfig != null ? trackConfig.getFinish() : null;
+				if (fin != null)
+					target = centerOf(fin);
+			}
+		} catch (Throwable ignored) {
+			target = null;
+		}
+		return target;
+	}
+
+	private void resolveNextTurn(NavHint out, ParticipantState s) {
+		if (out == null || s == null)
+			return;
+		int totalCp = totalCheckpointsForProgress();
+		if (s.nextCheckpointIndex >= totalCp) {
+			out.turnIcon = "✔";
+			out.turnLabel = "Đích";
+			out.turnColorName = "green";
+			out.turnAngle = 0.0;
+			return;
+		}
+		if (!pathReady || path == null || path.size() < 3 || gateIndex == null || gateIndex.length == 0)
+			return;
+
+		int n = path.size();
+		int gateCount = gateIndex.length;
+		int seg = Math.max(0, Math.min(s.nextCheckpointIndex, gateCount - 1));
+
+		int currGate = clampIndex(gateIndex[seg], n);
+		int prevGate;
+		if (seg == 0) {
+			prevGate = finishGateIndex();
+		} else {
+			prevGate = clampIndex(gateIndex[Math.max(0, Math.min(seg - 1, gateCount - 1))], n);
+		}
+		int nextGate;
+		if (seg + 1 < gateCount) {
+			nextGate = clampIndex(gateIndex[seg + 1], n);
+		} else {
+			nextGate = finishGateIndex();
+		}
+
+		org.bukkit.Location a = path.get(prevGate);
+		org.bukkit.Location b = path.get(currGate);
+		org.bukkit.Location c = path.get(nextGate);
+		if (a == null || b == null || c == null)
+			return;
+		org.bukkit.util.Vector v1 = b.toVector().subtract(a.toVector());
+		org.bukkit.util.Vector v2 = c.toVector().subtract(b.toVector());
+		v1.setY(0.0);
+		v2.setY(0.0);
+		double len1 = v1.length();
+		double len2 = v2.length();
+		if (len1 < 1.0e-4 || len2 < 1.0e-4)
+			return;
+		double dot = v1.dot(v2) / (len1 * len2);
+		dot = Math.max(-1.0, Math.min(1.0, dot));
+		double angle = Math.toDegrees(Math.acos(dot));
+		double cross = v1.getX() * v2.getZ() - v1.getZ() * v2.getX();
+		boolean left = cross > 0.0;
+		String icon;
+		String label;
+		String color;
+		if (angle < 15.0) {
+			icon = "🡢";
+			label = "Thẳng";
+			color = "green";
+		} else if (angle < 35.0) {
+			icon = left ? "🡧" : "🡥";
+			label = left ? "Cong trái" : "Cong phải";
+			color = "yellow";
+		} else if (angle < 80.0) {
+			icon = left ? "⮌" : "⮎";
+			label = left ? "Rẽ trái" : "Rẽ phải";
+			color = "gold";
+		} else {
+			icon = left ? "⮍" : "⮏";
+			label = left ? "Cua trái gắt" : "Cua phải gắt";
+			color = "red";
+		}
+		out.turnIcon = icon;
+		out.turnLabel = label;
+		out.turnColorName = color;
+		out.turnAngle = angle;
+	}
+
+	private static double wrapDegrees(double angle) {
+		double a = angle % 360.0;
+		if (a >= 180.0)
+			a -= 360.0;
+		if (a < -180.0)
+			a += 360.0;
+		return a;
+	}
+
+	private static String navArrowForDelta(double delta) {
+		double a = Math.abs(delta);
+		if (a <= 15.0)
+			return "🡢";
+		if (delta < 0.0) {
+			if (a <= 45.0)
+				return "🡥";
+			if (a <= 110.0)
+				return "⮎";
+			return "🡡";
+		}
+		if (a <= 45.0)
+			return "🡧";
+		if (a <= 110.0)
+			return "⮌";
+		return "🡡";
+	}
+
+	private static String navColorForDelta(double delta) {
+		double a = Math.abs(delta);
+		if (a <= 15.0)
+			return "green";
+		if (a <= 45.0)
+			return "yellow";
+		if (a <= 90.0)
+			return "gold";
+		return "red";
 	}
 
 	private static org.bukkit.Location centerOf(Region r) {
