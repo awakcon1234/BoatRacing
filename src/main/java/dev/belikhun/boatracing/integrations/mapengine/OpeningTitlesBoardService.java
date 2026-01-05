@@ -604,8 +604,6 @@ public final class OpeningTitlesBoardService {
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
 				continue;
-			if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
-				continue;
 			eligibleViewers.add(id);
 		}
 		for (UUID id : previewViewers) {
@@ -613,8 +611,6 @@ public final class OpeningTitlesBoardService {
 				continue;
 			Player p = Bukkit.getPlayer(id);
 			if (p == null || !p.isOnline())
-				continue;
-			if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
 				continue;
 			eligibleViewers.add(id);
 		}
@@ -626,8 +622,6 @@ public final class OpeningTitlesBoardService {
 			try {
 				for (Player p : Bukkit.getOnlinePlayers()) {
 					if (p == null || !p.isOnline() || p.getWorld() == null)
-						continue;
-					if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
 						continue;
 					// Only lobby players (not currently in any race state).
 					try {

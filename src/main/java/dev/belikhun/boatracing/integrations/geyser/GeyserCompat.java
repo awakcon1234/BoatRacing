@@ -24,10 +24,8 @@ public final class GeyserCompat {
 
 		// First try Geyser API
 		try {
-			if (GeyserApi.api().isBedrockPlayer(uuid)) {
-				LOG.info("GeyserCompat: detected Bedrock player via Geyser API: " + uuid);
+			if (GeyserApi.api().isBedrockPlayer(uuid))
 				return true;
-			}
 		} catch (NoClassDefFoundError | Exception ignored) {
 			if (!loggedGeyserMissing) {
 				loggedGeyserMissing = true;
@@ -38,10 +36,8 @@ public final class GeyserCompat {
 		// Fallback: Floodgate (if installed)
 		try {
 			FloodgateApi floodgate = FloodgateApi.getInstance();
-			if (floodgate != null && (floodgate.isFloodgatePlayer(uuid) || floodgate.isFloodgateId(uuid))) {
-				LOG.info("GeyserCompat: detected Bedrock player via Floodgate API: " + uuid);
+			if (floodgate != null && (floodgate.isFloodgatePlayer(uuid) || floodgate.isFloodgateId(uuid)))
 				return true;
-			}
 		} catch (NoClassDefFoundError | Exception ignored) {
 			if (!loggedFloodgateMissing) {
 				loggedFloodgateMissing = true;

@@ -444,8 +444,6 @@ public final class EventBoardService {
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			if (p == null || !p.isOnline() || p.getWorld() == null)
 				continue;
-			if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
-				continue;
 			try {
 				if (plugin != null && plugin.getRaceService() != null
 						&& plugin.getRaceService().findRaceFor(p.getUniqueId()) != null)

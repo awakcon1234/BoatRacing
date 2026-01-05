@@ -493,6 +493,7 @@ public final class LobbyBoardService {
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			if (p == null || !p.isOnline() || p.getWorld() == null)
 				continue;
+			// Hide lobby board from Bedrock players (MapEngine not supported there).
 			if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
 				continue;
 
