@@ -1557,6 +1557,9 @@ public class EventService {
 		private org.bukkit.scheduler.BukkitTask cameraTask;
 		private dev.belikhun.boatracing.cinematic.CinematicMusicService.LoopHandle flybyTune;
 		private final java.util.Set<Integer> scheduledTaskIds = new java.util.HashSet<>();
+		// Cache audience snapshot during flyby music to avoid rebuilding the set for every note.
+		private java.util.Set<java.util.UUID> cachedFlybyAudience = java.util.Collections.emptySet();
+		private long cachedFlybyAudienceExpiryMs = 0L;
 
 		private final java.util.Map<UUID, GameMode> savedModes = new java.util.HashMap<>();
 		private final java.util.Map<UUID, Location> savedLocations = new java.util.HashMap<>();
@@ -1819,6 +1822,7 @@ public class EventService {
 
 		void stop(boolean restorePlayers) {
 			running = false;
+			invalidateFlybyAudienceCache();
 
 			stopFlybyTune();
 
@@ -2149,6 +2153,7 @@ public class EventService {
 			} catch (Throwable ignored) {
 			}
 			flybyTune = null;
+			invalidateFlybyAudienceCache();
 		}
 
 		private void startFlybyTune(RaceEvent e) {
@@ -2158,8 +2163,24 @@ public class EventService {
 			flybyTune = dev.belikhun.boatracing.cinematic.CinematicMusicService.startOpeningFlybyTune(
 					plugin,
 					() -> running && phase == Phase.WELCOME_FLYBY,
-					(sound, volume, pitch) -> playSoundToAudience(e, sound, volume, pitch)
+					(sound, volume, pitch) -> playSoundToAudienceCached(e, sound, volume, pitch)
 			);
+		}
+
+		private void invalidateFlybyAudienceCache() {
+			cachedFlybyAudience = java.util.Collections.emptySet();
+			cachedFlybyAudienceExpiryMs = 0L;
+		}
+
+		private java.util.Set<java.util.UUID> collectAudienceCached() {
+			long now = System.currentTimeMillis();
+			// Refresh roughly every 75ms (a bit faster than the 2-tick tune period) to follow joins/leaves
+			// without rebuilding the set for every single note when many players are listening.
+			if (now >= cachedFlybyAudienceExpiryMs) {
+				cachedFlybyAudience = collectAudience();
+				cachedFlybyAudienceExpiryMs = now + 75L;
+			}
+			return cachedFlybyAudience;
 		}
 
 		private void startCameraTask() {
@@ -2184,6 +2205,25 @@ public class EventService {
 						continue;
 					try {
 						// Target per-player and use RECORDS channel to avoid phasing when many nearby listeners.
+						p.playSound(p, sound, SoundCategory.RECORDS, volume, pitch);
+					} catch (Throwable ignored) {
+						p.playSound(p.getLocation(), sound, SoundCategory.RECORDS, volume, pitch);
+					}
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+
+		private void playSoundToAudienceCached(RaceEvent e, Sound sound, float volume, float pitch) {
+			if (sound == null)
+				return;
+			java.util.Set<UUID> audience = collectAudienceCached();
+			for (UUID id : audience) {
+				try {
+					Player p = (id != null) ? Bukkit.getPlayer(id) : null;
+					if (p == null || !p.isOnline())
+						continue;
+					try {
 						p.playSound(p, sound, SoundCategory.RECORDS, volume, pitch);
 					} catch (Throwable ignored) {
 						p.playSound(p.getLocation(), sound, SoundCategory.RECORDS, volume, pitch);
