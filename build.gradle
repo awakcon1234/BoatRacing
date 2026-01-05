@@ -26,6 +26,9 @@ repositories {
 	maven { url = uri('https://repo.fancyinnovations.com/releases') }
 	// MapEngine (map-based GUI rendering)
 	maven { url = uri('https://repo.minceraft.dev/releases/') }
+	// Geyser/Floodgate API artifacts
+	maven { url = uri('https://repo.opencollab.dev/maven-releases/') }
+	maven { url = uri('https://repo.opencollab.dev/maven-snapshots/') }
 }
 
 dependencies {
@@ -43,6 +46,9 @@ dependencies {
 	runtimeOnly 'net.megavex:scoreboard-library-modern:2.4.4'
 	// PlaceholderAPI (optional at runtime)
 	compileOnly 'me.clip:placeholderapi:2.11.7'
+	// Geyser/Floodgate (optional at runtime; used for Bedrock detection)
+	compileOnly 'org.geysermc.geyser:api:2.3.0-SNAPSHOT'
+	compileOnly 'org.geysermc.floodgate:api:2.2.3-SNAPSHOT'
 
 	testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'

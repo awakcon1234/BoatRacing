@@ -1,6 +1,7 @@
 package dev.belikhun.boatracing.integrations.mapengine;
 
 import de.pianoman911.mapengine.api.MapEngineApi;
+import dev.belikhun.boatracing.integrations.geyser.GeyserCompat;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardFontLoader;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardPlacement;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardViewers;
@@ -491,6 +492,8 @@ public final class LobbyBoardService {
 		eligibleViewers.clear();
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			if (p == null || !p.isOnline() || p.getWorld() == null)
+				continue;
+			if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
 				continue;
 
 			// Only lobby players (not in any race).

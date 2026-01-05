@@ -8,6 +8,7 @@ import dev.belikhun.boatracing.event.EventService;
 import dev.belikhun.boatracing.event.EventState;
 import dev.belikhun.boatracing.event.RaceEvent;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardFontLoader;
+import dev.belikhun.boatracing.integrations.geyser.GeyserCompat;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardPlacement;
 import dev.belikhun.boatracing.integrations.mapengine.board.BoardViewers;
 import dev.belikhun.boatracing.integrations.mapengine.board.MapEngineBoardDisplay;
@@ -442,6 +443,8 @@ public final class EventBoardService {
 		eligibleViewers.clear();
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			if (p == null || !p.isOnline() || p.getWorld() == null)
+				continue;
+			if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
 				continue;
 			try {
 				if (plugin != null && plugin.getRaceService() != null
