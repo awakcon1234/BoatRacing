@@ -5988,7 +5988,7 @@ public class RaceManager {
 		dir.setY(0.0);
 		if (dir.lengthSquared() > 1.0e-4) {
 			double bearing = Math.toDegrees(Math.atan2(-dir.getX(), dir.getZ()));
-			double delta = wrapDegrees(bearing - (double) riderLocation.getYaw());
+			double delta = wrapDegrees((double) riderLocation.getYaw() - bearing);
 			out.angleDelta = delta;
 			out.arrowIcon = navArrowForDelta(delta);
 			out.arrowColorName = navColorForDelta(delta);
