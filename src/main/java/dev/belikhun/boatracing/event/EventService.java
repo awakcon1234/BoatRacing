@@ -40,11 +40,13 @@ import java.util.UUID;
  * Event orchestrator (draft).
  *
  * This is intentionally minimal scaffolding to establish the public surface.
- * The actual runtime orchestration (start tracks, hook race completion, podium NPCs)
+ * The actual runtime orchestration (start tracks, hook race completion, podium
+ * NPCs)
  * will be implemented in follow-up steps.
  */
 public class EventService {
 	private static final LegacyComponentSerializer TITLE_LEGACY = LegacyComponentSerializer.legacySection();
+
 	public enum TrackPoolResult {
 		OK,
 		NO_SUCH_EVENT,
@@ -53,11 +55,13 @@ public class EventService {
 		DUPLICATE,
 		NOT_FOUND
 	}
+
 	private enum StartNotice {
 		MIN30,
 		MIN10,
 		MIN5
 	}
+
 	private final BoatRacingPlugin plugin;
 	private final File dataFolder;
 	private final PodiumService podiumService;
@@ -74,6 +78,10 @@ public class EventService {
 	private String activeTrackName;
 	private boolean trackCountdownStarted = false;
 	private static final int TRACK_SECONDS = 5 * 60;
+	// Safety cap to avoid a hung track when nobody finishes (e.g., very long track
+	// or racers stuck).
+	private static final int TRACK_SAFETY_SECONDS = 15 * 60;
+	private long trackSafetyDeadlineMillis = 0L;
 	private java.util.Set<java.util.UUID> currentTrackRoster = new java.util.LinkedHashSet<>();
 	private boolean trackWasRunning = false;
 	private final java.util.Map<String, EnumSet<StartNotice>> startNoticesSent = new java.util.HashMap<>();
@@ -119,7 +127,8 @@ public class EventService {
 				openingTitlesBoardService.reloadFromConfig();
 		} catch (Throwable ignored) {
 		}
-		// Keep the opening board alive so it can display an idle logo screen when nothing is playing.
+		// Keep the opening board alive so it can display an idle logo screen when
+		// nothing is playing.
 		try {
 			if (openingTitlesBoardService != null)
 				openingTitlesBoardService.start();
@@ -142,14 +151,16 @@ public class EventService {
 				try {
 					String eid = (e == null ? "<null>" : (e.id == null ? "<no-id>" : e.id));
 					String st = (e == null || e.state == null) ? "<null>" : e.state.name();
-					plugin.getLogger().info("[Event][PodiumDBG] Startup: activeEventId=" + activeEventId + " loadedEventId=" + eid + " state=" + st);
+					plugin.getLogger().info("[Event][PodiumDBG] Startup: activeEventId=" + activeEventId
+							+ " loadedEventId=" + eid + " state=" + st);
 				} catch (Throwable ignored) {
 				}
 			}
 			if (e != null && e.state == EventState.COMPLETED && podiumService != null) {
 				if (podiumDebug) {
 					try {
-						plugin.getLogger().info("[Event][PodiumDBG] Active event is COMPLETED; scheduling podium auto-spawn retries.");
+						plugin.getLogger().info(
+								"[Event][PodiumDBG] Active event is COMPLETED; scheduling podium auto-spawn retries.");
 					} catch (Throwable ignored) {
 					}
 				}
@@ -160,7 +171,8 @@ public class EventService {
 					long delay = 20L + (i * 40L); // 1s, 3s, 5s, 7s, 9s
 					if (podiumDebug) {
 						try {
-							plugin.getLogger().info("[Event][PodiumDBG] Scheduling auto-spawn attempt " + attempt + "/" + maxAttempts + " in " + delay + " ticks.");
+							plugin.getLogger().info("[Event][PodiumDBG] Scheduling auto-spawn attempt " + attempt + "/"
+									+ maxAttempts + " in " + delay + " ticks.");
 						} catch (Throwable ignored) {
 						}
 					}
@@ -168,8 +180,10 @@ public class EventService {
 						try {
 							if (podiumDebug) {
 								try {
-									plugin.getLogger().info("[Event][PodiumDBG] Running auto-spawn attempt " + attempt + "/" + maxAttempts
-											+ " (alreadySpawned=" + podiumService.hasSpawnedAnything() + ")");
+									plugin.getLogger()
+											.info("[Event][PodiumDBG] Running auto-spawn attempt " + attempt + "/"
+													+ maxAttempts
+													+ " (alreadySpawned=" + podiumService.hasSpawnedAnything() + ")");
 								} catch (Throwable ignored) {
 								}
 							}
@@ -178,21 +192,27 @@ public class EventService {
 							podiumService.spawnTop3(e);
 							if (podiumDebug) {
 								try {
-									plugin.getLogger().info("[Event][PodiumDBG] Attempt " + attempt + " completed (spawnedAnything=" + podiumService.hasSpawnedAnything() + ")");
+									plugin.getLogger()
+											.info("[Event][PodiumDBG] Attempt " + attempt
+													+ " completed (spawnedAnything="
+													+ podiumService.hasSpawnedAnything() + ")");
 								} catch (Throwable ignored) {
 								}
 							}
 						} catch (Throwable ignored) {
 							if (podiumDebug) {
 								try {
-									plugin.getLogger().warning("[Event][PodiumDBG] Exception while spawning podium on attempt " + attempt + ": " + ignored.getMessage());
+									plugin.getLogger()
+											.warning("[Event][PodiumDBG] Exception while spawning podium on attempt "
+													+ attempt + ": " + ignored.getMessage());
 								} catch (Throwable ignored2) {
 								}
 							}
 						}
 						try {
 							if (!podiumService.hasSpawnedAnything() && attempt == maxAttempts) {
-								plugin.getLogger().warning("[Event] Podium auto-spawn failed after restart (no entities spawned).");
+								plugin.getLogger().warning(
+										"[Event] Podium auto-spawn failed after restart (no entities spawned).");
 							}
 						} catch (Throwable ignored) {
 						}
@@ -201,7 +221,8 @@ public class EventService {
 			} else if (e != null && e.state == EventState.DISABLED && podiumService != null) {
 				if (podiumDebug) {
 					try {
-						plugin.getLogger().info("[Event][PodiumDBG] Active event is DISABLED; scheduling podium auto-spawn retries.");
+						plugin.getLogger().info(
+								"[Event][PodiumDBG] Active event is DISABLED; scheduling podium auto-spawn retries.");
 					} catch (Throwable ignored) {
 					}
 				}
@@ -212,7 +233,8 @@ public class EventService {
 					long delay = 20L + (i * 40L); // 1s, 3s, 5s, 7s, 9s
 					if (podiumDebug) {
 						try {
-							plugin.getLogger().info("[Event][PodiumDBG] Scheduling auto-spawn attempt " + attempt + "/" + maxAttempts + " in " + delay + " ticks.");
+							plugin.getLogger().info("[Event][PodiumDBG] Scheduling auto-spawn attempt " + attempt + "/"
+									+ maxAttempts + " in " + delay + " ticks.");
 						} catch (Throwable ignored) {
 						}
 					}
@@ -220,8 +242,10 @@ public class EventService {
 						try {
 							if (podiumDebug) {
 								try {
-									plugin.getLogger().info("[Event][PodiumDBG] Running auto-spawn attempt " + attempt + "/" + maxAttempts
-											+ " (alreadySpawned=" + podiumService.hasSpawnedAnything() + ")");
+									plugin.getLogger()
+											.info("[Event][PodiumDBG] Running auto-spawn attempt " + attempt + "/"
+													+ maxAttempts
+													+ " (alreadySpawned=" + podiumService.hasSpawnedAnything() + ")");
 								} catch (Throwable ignored) {
 								}
 							}
@@ -230,21 +254,27 @@ public class EventService {
 							podiumService.spawnTop3(e);
 							if (podiumDebug) {
 								try {
-									plugin.getLogger().info("[Event][PodiumDBG] Attempt " + attempt + " completed (spawnedAnything=" + podiumService.hasSpawnedAnything() + ")");
+									plugin.getLogger()
+											.info("[Event][PodiumDBG] Attempt " + attempt
+													+ " completed (spawnedAnything="
+													+ podiumService.hasSpawnedAnything() + ")");
 								} catch (Throwable ignored) {
 								}
 							}
 						} catch (Throwable ignored) {
 							if (podiumDebug) {
 								try {
-									plugin.getLogger().warning("[Event][PodiumDBG] Exception while spawning podium on attempt " + attempt + ": " + ignored.getMessage());
+									plugin.getLogger()
+											.warning("[Event][PodiumDBG] Exception while spawning podium on attempt "
+													+ attempt + ": " + ignored.getMessage());
 								} catch (Throwable ignored2) {
 								}
 							}
 						}
 						try {
 							if (!podiumService.hasSpawnedAnything() && attempt == maxAttempts) {
-								plugin.getLogger().warning("[Event] Podium auto-spawn failed after restart (no entities spawned).");
+								plugin.getLogger().warning(
+										"[Event] Podium auto-spawn failed after restart (no entities spawned).");
 							}
 						} catch (Throwable ignored) {
 						}
@@ -253,8 +283,10 @@ public class EventService {
 			} else if (podiumDebug) {
 				try {
 					String st = (e == null || e.state == null) ? "<null>" : e.state.name();
-					plugin.getLogger().info("[Event][PodiumDBG] Skipping auto-spawn (event=" + (e == null ? "null" : "present") + ", state=" + st
-							+ ", podiumService=" + (podiumService == null ? "null" : "present") + ")");
+					plugin.getLogger()
+							.info("[Event][PodiumDBG] Skipping auto-spawn (event=" + (e == null ? "null" : "present")
+									+ ", state=" + st
+									+ ", podiumService=" + (podiumService == null ? "null" : "present") + ")");
 				} catch (Throwable ignored) {
 				}
 			}
@@ -359,7 +391,8 @@ public class EventService {
 		}
 	}
 
-	// ===================== Runtime snapshot getters (for UI/boards) =====================
+	// ===================== Runtime snapshot getters (for UI/boards)
+	// =====================
 	public synchronized String getActiveTrackNameRuntime() {
 		return (activeTrackName == null || activeTrackName.isBlank()) ? null : activeTrackName;
 	}
@@ -545,7 +578,7 @@ public class EventService {
 		try {
 			java.io.File f = EventStorage.eventFile(dataFolder, key);
 			if (f.exists()) {
-				//noinspection ResultOfMethodCallIgnored
+				// noinspection ResultOfMethodCallIgnored
 				f.delete();
 			}
 		} catch (Throwable ignored) {
@@ -611,16 +644,19 @@ public class EventService {
 		e.startTimeMillis = 0L;
 		put(e);
 
-		// If there is no ongoing active event, treat the newly created event as the new active
+		// If there is no ongoing active event, treat the newly created event as the new
+		// active
 		// context so UI/boards don't keep showing stale data from the previous event.
 		try {
 			RaceEvent active = getActiveEvent();
-			boolean finished = (active != null && (active.state == EventState.CANCELLED || active.state == EventState.COMPLETED || active.state == EventState.DISABLED));
+			boolean finished = (active != null && (active.state == EventState.CANCELLED
+					|| active.state == EventState.COMPLETED || active.state == EventState.DISABLED));
 			if (active == null || finished) {
 				setActiveEvent(e.id);
 				activeTrackName = null;
 				trackCountdownStarted = false;
 				trackDeadlineMillis = 0L;
+				trackSafetyDeadlineMillis = 0L;
 				currentTrackRoster.clear();
 				trackWasRunning = false;
 				introEndMillis = 0L;
@@ -675,6 +711,7 @@ public class EventService {
 		activeTrackName = null;
 		trackCountdownStarted = false;
 		trackDeadlineMillis = 0L;
+		trackSafetyDeadlineMillis = 0L;
 		currentTrackRoster.clear();
 		trackWasRunning = false;
 		introEndMillis = 0L;
@@ -740,6 +777,7 @@ public class EventService {
 		activeTrackName = null;
 		trackCountdownStarted = false;
 		trackDeadlineMillis = 0L;
+		trackSafetyDeadlineMillis = 0L;
 		currentTrackRoster.clear();
 		trackWasRunning = false;
 		introEndMillis = 0L;
@@ -914,7 +952,8 @@ public class EventService {
 		if (activeTrackName == null || activeTrackName.isBlank())
 			return;
 
-		// Opening titles (per-tick runtime). When active, block the normal pre-track timers.
+		// Opening titles (per-tick runtime). When active, block the normal pre-track
+		// timers.
 		try {
 			if (openingTitlesController != null && openingTitlesController.isRunning() && e.currentTrackIndex == 0)
 				return;
@@ -965,6 +1004,20 @@ public class EventService {
 		}
 		if (!trackWasRunning && runningNow) {
 			trackWasRunning = true;
+			trackDeadlineMillis = 0L;
+			trackSafetyDeadlineMillis = System.currentTimeMillis() + (TRACK_SAFETY_SECONDS * 1000L);
+		}
+
+		boolean anyFinished = false;
+		try {
+			anyFinished = rm.hasAnyFinishedParticipant();
+		} catch (Throwable ignored) {
+			anyFinished = false;
+		}
+
+		// Arm the per-track timeout only after the first racer finishes, so long tracks
+		// don't auto-DNF the whole roster before anyone crosses the line.
+		if (trackWasRunning && anyFinished && trackDeadlineMillis == 0L) {
 			trackDeadlineMillis = System.currentTimeMillis() + (TRACK_SECONDS * 1000L);
 		}
 
@@ -988,10 +1041,20 @@ public class EventService {
 		}
 
 		// Per-track time limit.
-		if (trackWasRunning && trackDeadlineMillis > 0L && System.currentTimeMillis() >= trackDeadlineMillis) {
-			try {
-				finishTrack(e, rm, true);
-			} catch (Throwable ignored) {
+		long nowMs = System.currentTimeMillis();
+		if (trackWasRunning) {
+			if (trackDeadlineMillis > 0L && nowMs >= trackDeadlineMillis) {
+				try {
+					finishTrack(e, rm, true);
+				} catch (Throwable ignored) {
+				}
+				return;
+			}
+			if (trackSafetyDeadlineMillis > 0L && nowMs >= trackSafetyDeadlineMillis) {
+				try {
+					finishTrack(e, rm, true);
+				} catch (Throwable ignored) {
+				}
 			}
 		}
 	}
@@ -1014,6 +1077,7 @@ public class EventService {
 		activeTrackName = e.currentTrackName();
 		trackCountdownStarted = false;
 		trackDeadlineMillis = 0L;
+		trackSafetyDeadlineMillis = 0L;
 		currentTrackRoster.clear();
 		trackWasRunning = false;
 		// Phase schedule
@@ -1030,15 +1094,19 @@ public class EventService {
 		try {
 			if (plugin != null && plugin.getRaceService() != null && e.trackPool != null) {
 				for (String tn : e.trackPool) {
-					if (tn == null || tn.isBlank()) continue;
+					if (tn == null || tn.isBlank())
+						continue;
 					try {
 						plugin.getRaceService().forceStopRace(tn.trim());
-					} catch (Throwable ignored) {}
+					} catch (Throwable ignored) {
+					}
 				}
 			}
-		} catch (Throwable ignored) {}
+		} catch (Throwable ignored) {
+		}
 
-		// Replace legacy 30s placeholder intro with the real opening titles intro sequence.
+		// Replace legacy 30s placeholder intro with the real opening titles intro
+		// sequence.
 		// Only run it for the first track.
 		boolean useOpeningTitles = (e.currentTrackIndex == 0);
 		introEndMillis = 0L;
@@ -1050,7 +1118,8 @@ public class EventService {
 			try {
 				if (openingTitlesController != null)
 					openingTitlesController.start(e, () -> {
-						// After titles: ensure everyone is in lobby, then allow starting track countdown.
+						// After titles: ensure everyone is in lobby, then allow starting track
+						// countdown.
 						try {
 							gatherEligibleToLobby();
 						} catch (Throwable ignored) {
@@ -1128,6 +1197,10 @@ public class EventService {
 	private void finishTrack(RaceEvent e, RaceManager rm, boolean timedOut) {
 		if (e == null || rm == null)
 			return;
+
+		trackWasRunning = false;
+		trackDeadlineMillis = 0L;
+		trackSafetyDeadlineMillis = 0L;
 
 		if (timedOut)
 			broadcastToParticipants(e, "&c⌛ Hết giờ chặng! &7DNF = 0 điểm.");
@@ -1318,6 +1391,7 @@ public class EventService {
 		trackCountdownStarted = false;
 		trackWasRunning = false;
 		trackDeadlineMillis = 0L;
+		trackSafetyDeadlineMillis = 0L;
 		currentTrackRoster.clear();
 		// Break time before next track.
 		breakEndMillis = System.currentTimeMillis() + (BREAK_SECONDS * 1000L);
@@ -1391,7 +1465,8 @@ public class EventService {
 		int left = filler / 2;
 		int right = filler - left;
 		lines.add("&6&l┏" + "━".repeat(left) + " &e" + boxTitle + " &6&l" + "━".repeat(right) + "┓");
-		lines.add("&7Sự kiện: &f" + safeName(e.title) + " &8● &7Tổng chặng: &f" + (e.trackPool == null ? 0 : e.trackPool.size()));
+		lines.add("&7Sự kiện: &f" + safeName(e.title) + " &8● &7Tổng chặng: &f"
+				+ (e.trackPool == null ? 0 : e.trackPool.size()));
 
 		int shown = 0;
 		for (EventParticipant ep : list) {
@@ -1468,7 +1543,8 @@ public class EventService {
 				continue;
 			shown++;
 			String name = (ep.nameSnapshot == null || ep.nameSnapshot.isBlank())
-					? java.util.Optional.ofNullable(Bukkit.getOfflinePlayer(ep.id).getName()).orElse("Tay đua " + shortId(ep.id))
+					? java.util.Optional.ofNullable(Bukkit.getOfflinePlayer(ep.id).getName())
+							.orElse("Tay đua " + shortId(ep.id))
 					: ep.nameSnapshot;
 			sb.append("#").append(shown).append(" ").append(name).append(" (")
 					.append(Math.max(0, ep.pointsTotal)).append("đ)");
@@ -1557,7 +1633,8 @@ public class EventService {
 		private org.bukkit.scheduler.BukkitTask cameraTask;
 		private dev.belikhun.boatracing.cinematic.CinematicMusicService.LoopHandle flybyTune;
 		private final java.util.Set<Integer> scheduledTaskIds = new java.util.HashSet<>();
-		// Cache audience snapshot during flyby music to avoid rebuilding the set for every note.
+		// Cache audience snapshot during flyby music to avoid rebuilding the set for
+		// every note.
 		private java.util.Set<java.util.UUID> cachedFlybyAudience = java.util.Collections.emptySet();
 		private long cachedFlybyAudienceExpiryMs = 0L;
 
@@ -1741,7 +1818,8 @@ public class EventService {
 				}
 			}
 
-			// Apply hide for newly added members (bidirectional with existing hiddenAudience and among added).
+			// Apply hide for newly added members (bidirectional with existing
+			// hiddenAudience and among added).
 			if (!added.isEmpty()) {
 				java.util.Set<UUID> current = new java.util.HashSet<>(hiddenAudience);
 				hideBetween(added, current);
@@ -1853,7 +1931,8 @@ public class EventService {
 			scheduledTaskIds.clear();
 
 			// Do NOT stop/destroy the board here.
-			// After the intro ends, the board should fall back to idle splash rather than going blank.
+			// After the intro ends, the board should fall back to idle splash rather than
+			// going blank.
 			try {
 				if (board != null) {
 					board.setViewers(java.util.Collections.emptySet());
@@ -1981,7 +2060,8 @@ public class EventService {
 
 			showTitleToAudience(e,
 					cfgText("event.opening-titles.text.racers_intro_title", ""),
-					cfgText("event.opening-titles.text.racers_intro_subtitle", "Đây là những gương mặt sẽ tranh tài hôm nay"),
+					cfgText("event.opening-titles.text.racers_intro_subtitle",
+							"Đây là những gương mặt sẽ tranh tài hôm nay"),
 					Math.max(1, introGapSeconds));
 
 			try {
@@ -2117,7 +2197,8 @@ public class EventService {
 			scheduledTaskIds.clear();
 
 			// Do NOT stop/destroy the board here.
-			// Keep it alive so the idle fallback splash remains visible between event phases.
+			// Keep it alive so the idle fallback splash remains visible between event
+			// phases.
 			try {
 				if (board != null) {
 					board.setViewers(java.util.Collections.emptySet());
@@ -2163,8 +2244,7 @@ public class EventService {
 			flybyTune = dev.belikhun.boatracing.cinematic.CinematicMusicService.startOpeningFlybyTune(
 					plugin,
 					() -> running && phase == Phase.WELCOME_FLYBY,
-					(sound, volume, pitch) -> playSoundToAudienceCached(e, sound, volume, pitch)
-			);
+					(sound, volume, pitch) -> playSoundToAudienceCached(e, sound, volume, pitch));
 		}
 
 		private void invalidateFlybyAudienceCache() {
@@ -2174,8 +2254,10 @@ public class EventService {
 
 		private java.util.Set<java.util.UUID> collectAudienceCached() {
 			long now = System.currentTimeMillis();
-			// Refresh roughly every 75ms (a bit faster than the 2-tick tune period) to follow joins/leaves
-			// without rebuilding the set for every single note when many players are listening.
+			// Refresh roughly every 75ms (a bit faster than the 2-tick tune period) to
+			// follow joins/leaves
+			// without rebuilding the set for every single note when many players are
+			// listening.
 			if (now >= cachedFlybyAudienceExpiryMs) {
 				cachedFlybyAudience = collectAudience();
 				cachedFlybyAudienceExpiryMs = now + 75L;
@@ -2204,7 +2286,8 @@ public class EventService {
 					if (p == null || !p.isOnline())
 						continue;
 					try {
-						// Target per-player and use RECORDS channel to avoid phasing when many nearby listeners.
+						// Target per-player and use RECORDS channel to avoid phasing when many nearby
+						// listeners.
 						p.playSound(p, sound, SoundCategory.RECORDS, volume, pitch);
 					} catch (Throwable ignored) {
 						p.playSound(p.getLocation(), sound, SoundCategory.RECORDS, volume, pitch);
@@ -2296,7 +2379,8 @@ public class EventService {
 				return;
 
 			java.util.Set<UUID> audience = collectAudience();
-			// Hide spectators from each other to avoid visible player heads at the shared camera.
+			// Hide spectators from each other to avoid visible player heads at the shared
+			// camera.
 			// Keep the featured racer visible during their showcase.
 			java.util.Set<UUID> desiredHidden = new java.util.HashSet<>(audience);
 			UUID featured = featuredRacer;
@@ -2497,7 +2581,8 @@ public class EventService {
 
 					if (explicit.size() >= 2) {
 						// Do NOT auto-close the loop (no forced last->first connector).
-						// If you want a loop, explicitly set the last point equal to the first in config.
+						// If you want a loop, explicitly set the last point equal to the first in
+						// config.
 						return explicit;
 					}
 				}
