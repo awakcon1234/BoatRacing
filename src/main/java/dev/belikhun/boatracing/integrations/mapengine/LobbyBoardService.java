@@ -594,14 +594,24 @@ public final class LobbyBoardService {
 
 	private boolean shouldPauseForIntro() {
 		try {
+			if (plugin != null && plugin.getEventService() != null) {
+				var es = plugin.getEventService();
+				long introEnd = es.getIntroEndMillis();
+				if (introEnd > System.currentTimeMillis())
+					return true;
+				if (es.isOpeningTitlesRunning())
+					return true;
+			}
+		} catch (Throwable ignored) {}
+
+		try {
 			if (raceService != null) {
 				for (RaceManager rm : raceService.allRaces()) {
 					if (rm != null && rm.isIntroActive())
 						return true;
 				}
 			}
-		} catch (Throwable ignored) {
-		}
+		} catch (Throwable ignored) {}
 		return false;
 	}
 

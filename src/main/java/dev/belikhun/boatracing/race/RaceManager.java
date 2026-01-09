@@ -6139,7 +6139,8 @@ public class RaceManager {
 			label = left ? "Rẽ trái" : "Rẽ phải";
 			color = "gold";
 		} else {
-			icon = left ? "⮍" : "⮏";
+			// Sharp turns: ensure left/right icons are oriented correctly
+			icon = left ? "⮏" : "⮍";
 			label = left ? "Cua trái gắt" : "Cua phải gắt";
 			color = "red";
 		}

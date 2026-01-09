@@ -509,10 +509,13 @@ public final class EventBoardService {
 	private boolean shouldPauseForIntro() {
 		long now = System.currentTimeMillis();
 		try {
-			if (eventService != null && eventService.getIntroEndMillis() > now)
-				return true;
-		} catch (Throwable ignored) {
-		}
+			if (eventService != null) {
+				if (eventService.getIntroEndMillis() > now)
+					return true;
+				if (eventService.isOpeningTitlesRunning())
+					return true;
+			}
+		} catch (Throwable ignored) {}
 		try {
 			if (plugin != null && plugin.getRaceService() != null) {
 				for (RaceManager rm : plugin.getRaceService().allRaces()) {
@@ -520,8 +523,7 @@ public final class EventBoardService {
 						return true;
 				}
 			}
-		} catch (Throwable ignored) {
-		}
+		} catch (Throwable ignored) {}
 		return false;
 	}
 
