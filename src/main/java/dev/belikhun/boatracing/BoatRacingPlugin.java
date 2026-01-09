@@ -227,51 +227,71 @@ public class BoatRacingPlugin extends JavaPlugin {
 		// Movement listener for race tracking
 		Bukkit.getPluginManager().registerEvents(new org.bukkit.event.Listener() {
 			private final java.util.Map<java.util.UUID, Long> lastCpDbg = new java.util.HashMap<>();
+		// Performance: cache checkpoint debug flag (avoid config lookup on every event)
+		private volatile boolean cpDbgCached = false;
+		private volatile long lastCpDbgCheckMs = 0L;
 
-			@org.bukkit.event.EventHandler
-			public void onMove(org.bukkit.event.player.PlayerMoveEvent e) {
-				if (e.getTo() == null)
-					return;
-				if (raceService == null)
-					return;
-				var rm = raceService.findRaceFor(e.getPlayer().getUniqueId());
-				if (rm == null || !rm.isRunning())
-					return;
-				rm.tickPlayer(e.getPlayer(), e.getFrom(), e.getTo());
+		@org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.MONITOR, ignoreCancelled = true)
+		public void onMove(org.bukkit.event.player.PlayerMoveEvent e) {
+			// Optimization: skip if player hasn't moved at least 1 block (head rotation only)
+			if (e.getTo() == null || e.getFrom() == null)
+				return;
+			if (e.getFrom().getBlockX() == e.getTo().getBlockX()
+					&& e.getFrom().getBlockY() == e.getTo().getBlockY()
+					&& e.getFrom().getBlockZ() == e.getTo().getBlockZ())
+				return;
+
+			if (raceService == null)
+				return;
+			var rm = raceService.findRaceFor(e.getPlayer().getUniqueId());
+			if (rm == null || !rm.isRunning())
+				return;
+			rm.tickPlayer(e.getPlayer(), e.getFrom(), e.getTo());
+		}
+
+		@org.bukkit.event.EventHandler(priority = org.bukkit.event.EventPriority.MONITOR, ignoreCancelled = true)
+		public void onVehicleMove(org.bukkit.event.vehicle.VehicleMoveEvent e) {
+			if (raceService == null)
+				return;
+
+			// Optimization: skip if vehicle hasn't moved (avoids processing when parked)
+			org.bukkit.Location to = e.getTo();
+			org.bukkit.Location from = e.getFrom();
+			if (to == null || from == null)
+				return;
+			if (from.getBlockX() == to.getBlockX()
+					&& from.getBlockY() == to.getBlockY()
+					&& from.getBlockZ() == to.getBlockZ())
+				return;
+
+			org.bukkit.entity.Entity vehicle = e.getVehicle();
+			boolean boatLike = (vehicle instanceof org.bukkit.entity.Boat)
+					|| (vehicle instanceof org.bukkit.entity.ChestBoat);
+			if (!boatLike) {
+				try {
+					String t = vehicle.getType() != null ? vehicle.getType().name() : null;
+					boatLike = t != null && (t.endsWith("_BOAT") || t.endsWith("_CHEST_BOAT") || t.endsWith("_RAFT")
+							|| t.endsWith("_CHEST_RAFT")
+							|| t.equals("BOAT") || t.equals("CHEST_BOAT"));
+				} catch (Throwable ignored) {
+					boatLike = false;
+				}
+			}
+			if (!boatLike)
+				return;
+
+			// Cache checkpoint debug flag (only check config every 5 seconds)
+			long now = System.currentTimeMillis();
+			if (now - lastCpDbgCheckMs >= 5000L) {
+				try {
+					cpDbgCached = getConfig().getBoolean("racing.debug.checkpoints", false);
+				} catch (Throwable ignored) {
+					cpDbgCached = false;
+				}
+				lastCpDbgCheckMs = now;
 			}
 
-			@org.bukkit.event.EventHandler(ignoreCancelled = true)
-			public void onVehicleMove(org.bukkit.event.vehicle.VehicleMoveEvent e) {
-				if (raceService == null)
-					return;
-				org.bukkit.entity.Entity vehicle = e.getVehicle();
-				boolean boatLike = (vehicle instanceof org.bukkit.entity.Boat)
-						|| (vehicle instanceof org.bukkit.entity.ChestBoat);
-				if (!boatLike) {
-					try {
-						String t = vehicle.getType() != null ? vehicle.getType().name() : null;
-						boatLike = t != null && (t.endsWith("_BOAT") || t.endsWith("_CHEST_BOAT") || t.endsWith("_RAFT")
-								|| t.endsWith("_CHEST_RAFT")
-								|| t.equals("BOAT") || t.equals("CHEST_BOAT"));
-					} catch (Throwable ignored) {
-						boatLike = false;
-					}
-				}
-				if (!boatLike)
-					return;
-				org.bukkit.Location to = e.getTo();
-				org.bukkit.Location from = e.getFrom();
-				if (to == null || from == null)
-					return;
-
-				boolean cpDbg = false;
-				try {
-					cpDbg = getConfig().getBoolean("racing.debug.checkpoints", false);
-				} catch (Throwable ignored) {
-				}
-
-				// Tick checkpoints using the vehicle position (players in boats may not fire
-				// PlayerMoveEvent reliably)
+			boolean cpDbg = cpDbgCached;
 				// Tick checkpoints using the vehicle position (players in boats may not fire
 				// PlayerMoveEvent reliably)
 				// Route to the correct race manager per player (supports multiple concurrent
@@ -282,10 +302,10 @@ public class BoatRacingPlugin extends JavaPlugin {
 						if (raceManager == null || !raceManager.isRunning())
 							continue;
 						if (cpDbg) {
-							long now = System.currentTimeMillis();
+							long nowDbg = System.currentTimeMillis();
 							Long prev = lastCpDbg.get(p.getUniqueId());
-							if (prev == null || (now - prev) >= 1000L) {
-								lastCpDbg.put(p.getUniqueId(), now);
+							if (prev == null || (nowDbg - prev) >= 1000L) {
+								lastCpDbg.put(p.getUniqueId(), nowDbg);
 								getLogger().info("[CPDBG] VehicleMoveEvent tick for " + p.getName()
 										+ " to=" + dev.belikhun.boatracing.util.Text.fmtPos(to)
 										+ " checkpoints="

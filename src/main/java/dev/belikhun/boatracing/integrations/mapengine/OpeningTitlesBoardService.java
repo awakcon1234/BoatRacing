@@ -575,6 +575,9 @@ public final class OpeningTitlesBoardService {
 		transitioning = true;
 	}
 
+	// Performance: cache players to avoid repeated lookups
+	private final java.util.Map<UUID, Player> cachedPlayers = new java.util.HashMap<>();
+
 	private void tick() {
 		if (plugin == null)
 		{
@@ -597,20 +600,27 @@ public final class OpeningTitlesBoardService {
 			return;
 		}
 
+		// Build player cache once per tick
+		cachedPlayers.clear();
+		for (Player p : Bukkit.getOnlinePlayers()) {
+			if (p != null && p.isOnline())
+				cachedPlayers.put(p.getUniqueId(), p);
+		}
+
 		eligibleViewers.clear();
 		for (UUID id : desiredViewers) {
 			if (id == null)
 				continue;
-			Player p = Bukkit.getPlayer(id);
-			if (p == null || !p.isOnline())
+			Player p = cachedPlayers.get(id);
+			if (p == null)
 				continue;
 			eligibleViewers.add(id);
 		}
 		for (UUID id : previewViewers) {
 			if (id == null)
 				continue;
-			Player p = Bukkit.getPlayer(id);
-			if (p == null || !p.isOnline())
+			Player p = cachedPlayers.get(id);
+			if (p == null)
 				continue;
 			eligibleViewers.add(id);
 		}
@@ -620,8 +630,8 @@ public final class OpeningTitlesBoardService {
 		if (eligibleViewers.isEmpty() && (desiredViewers == null || desiredViewers.isEmpty())
 				&& (previewViewers == null || previewViewers.isEmpty())) {
 			try {
-				for (Player p : Bukkit.getOnlinePlayers()) {
-					if (p == null || !p.isOnline() || p.getWorld() == null)
+				for (Player p : cachedPlayers.values()) {
+					if (p.getWorld() == null)
 						continue;
 					// Only lobby players (not currently in any race state).
 					try {
@@ -645,26 +655,25 @@ public final class OpeningTitlesBoardService {
 			return;
 		}
 
-		// Spawn/despawn
-		for (java.util.Iterator<UUID> it = spawnedTo.iterator(); it.hasNext();) {
-			UUID id = it.next();
+		// Spawn/despawn (use cached players)
+		spawnedTo.removeIf(id -> {
 			if (eligibleViewers.contains(id))
-				continue;
-			Player p = Bukkit.getPlayer(id);
+				return false;
+			Player p = cachedPlayers.get(id);
 			if (p != null && p.isOnline()) {
 				try {
 					boardDisplay.removeViewer(p);
 				} catch (Throwable ignored) {
 				}
 			}
-			it.remove();
-		}
+			return true;
+		});
 
 		for (UUID id : eligibleViewers) {
 			if (spawnedTo.contains(id))
 				continue;
-			Player p = Bukkit.getPlayer(id);
-			if (p == null || !p.isOnline())
+			Player p = cachedPlayers.get(id);
+			if (p == null)
 				continue;
 			try {
 				boardDisplay.ensureViewer(p);

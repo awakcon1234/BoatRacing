@@ -232,14 +232,29 @@ public class HotbarService {
 		} catch (Throwable ignored) {}
 	}
 
+	// Performance: cache last state per player to avoid redundant item updates
+	private final java.util.Map<java.util.UUID, State> lastStateCache = new java.util.concurrent.ConcurrentHashMap<>();
+
 	private void tick() {
 		// If RaceService hasn't initialized yet, do nothing.
 		if (raceService == null) return;
 
+		// Clean offline players from cache
+		lastStateCache.keySet().removeIf(id -> {
+			Player p = Bukkit.getPlayer(id);
+			return p == null || !p.isOnline();
+		});
+
 		for (Player p : Bukkit.getOnlinePlayers()) {
 			try {
-				State state = resolveState(p.getUniqueId());
-				applyFor(p, state);
+				UUID id = p.getUniqueId();
+				State state = resolveState(id);
+				State last = lastStateCache.get(id);
+				// Only update if state changed (avoid redundant setItem calls)
+				if (last != state) {
+					applyFor(p, state);
+					lastStateCache.put(id, state);
+				}
 			} catch (Throwable ignored) {}
 		}
 	}

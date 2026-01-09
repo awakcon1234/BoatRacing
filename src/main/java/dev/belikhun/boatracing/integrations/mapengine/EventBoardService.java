@@ -414,6 +414,9 @@ public final class EventBoardService {
 		}
 	}
 
+	// Performance: cache players to avoid repeated lookups
+	private final java.util.Map<UUID, Player> cachedPlayers = new java.util.HashMap<>();
+
 	private void tick() {
 		if (placement == null || !placement.isValid())
 			return;
@@ -437,12 +440,17 @@ public final class EventBoardService {
 			active = null;
 		}
 
-		// Determine eligible viewers:
-		// - within radius
-		// - everyone in lobby (not in any race)
-		eligibleViewers.clear();
+		// Build player cache once per tick
+		cachedPlayers.clear();
 		for (Player p : Bukkit.getOnlinePlayers()) {
-			if (p == null || !p.isOnline() || p.getWorld() == null)
+			if (p != null && p.isOnline())
+				cachedPlayers.put(p.getUniqueId(), p);
+		}
+
+		// Determine eligible viewers using cached players
+		eligibleViewers.clear();
+		for (Player p : cachedPlayers.values()) {
+			if (p.getWorld() == null)
 				continue;
 			try {
 				if (plugin != null && plugin.getRaceService() != null
@@ -455,20 +463,19 @@ public final class EventBoardService {
 			eligibleViewers.add(p.getUniqueId());
 		}
 
-		// Spawn/despawn
-		for (java.util.Iterator<UUID> it = spawnedTo.iterator(); it.hasNext();) {
-			UUID id = it.next();
+		// Spawn/despawn (use cached players)
+		spawnedTo.removeIf(id -> {
 			if (eligibleViewers.contains(id))
-				continue;
-			Player p = Bukkit.getPlayer(id);
+				return false;
+			Player p = cachedPlayers.get(id);
 			if (p != null && p.isOnline()) {
 				try {
 					boardDisplay.removeViewer(p);
 				} catch (Throwable ignored) {
 				}
 			}
-			it.remove();
-		}
+			return true;
+		});
 
 		long now = System.currentTimeMillis();
 		boolean reensure = (now - lastReensureAtMs) >= REENSURE_EXISTING_VIEWERS_MS;
@@ -476,8 +483,8 @@ public final class EventBoardService {
 			lastReensureAtMs = now;
 
 		for (UUID id : eligibleViewers) {
-			Player p = Bukkit.getPlayer(id);
-			if (p == null || !p.isOnline())
+			Player p = cachedPlayers.get(id);
+			if (p == null)
 				continue;
 			try {
 				if (reensure || !spawnedTo.contains(id))

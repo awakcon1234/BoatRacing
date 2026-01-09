@@ -474,6 +474,9 @@ public final class LobbyBoardService {
 				+ " &8● &7hướng &f" + placement.facing;
 	}
 
+	// Performance: cache players to avoid repeated Bukkit.getPlayer lookups
+	private final java.util.Map<UUID, Player> cachedPlayers = new java.util.HashMap<>();
+
 	private void tick() {
 		if (placement == null || !placement.isValid())
 			return;
@@ -488,10 +491,17 @@ public final class LobbyBoardService {
 		if (!boardDisplay.isReady())
 			return;
 
-		// Determine eligible viewers.
-		eligibleViewers.clear();
+		// Build player cache once per tick
+		cachedPlayers.clear();
 		for (Player p : Bukkit.getOnlinePlayers()) {
-			if (p == null || !p.isOnline() || p.getWorld() == null)
+			if (p != null && p.isOnline())
+				cachedPlayers.put(p.getUniqueId(), p);
+		}
+
+		// Determine eligible viewers using cached players
+		eligibleViewers.clear();
+		for (Player p : cachedPlayers.values()) {
+			if (p.getWorld() == null)
 				continue;
 			// Hide lobby board from Bedrock players (MapEngine not supported there).
 			if (GeyserCompat.isBedrockPlayer(p.getUniqueId()))
@@ -508,30 +518,29 @@ public final class LobbyBoardService {
 
 		dbgTick("tick(): eligible=" + eligibleViewers.size() + " spawnedTo=" + spawnedTo.size());
 
-		// Despawn players that are no longer eligible.
-		for (java.util.Iterator<UUID> it = spawnedTo.iterator(); it.hasNext();) {
-			UUID id = it.next();
+		// Despawn players that are no longer eligible (use cached players)
+		spawnedTo.removeIf(id -> {
 			if (eligibleViewers.contains(id))
-				continue;
-			Player p = Bukkit.getPlayer(id);
+				return false;
+			Player p = cachedPlayers.get(id);
 			if (p != null && p.isOnline()) {
 				try {
 					despawnFor(p);
 				} catch (Throwable ignored) {
 				}
 			}
-			it.remove();
-		}
+			return true;
+		});
 
 		long now = System.currentTimeMillis();
 		boolean reensure = (now - lastReensureAtMs) >= REENSURE_EXISTING_VIEWERS_MS;
 		if (reensure)
 			lastReensureAtMs = now;
 
-		// Spawn to new eligible viewers.
+		// Spawn to new eligible viewers (use cached players)
 		for (UUID id : eligibleViewers) {
-			Player p = Bukkit.getPlayer(id);
-			if (p == null || !p.isOnline())
+			Player p = cachedPlayers.get(id);
+			if (p == null)
 				continue;
 			try {
 				// Ensure for newly eligible viewers; periodically re-ensure existing viewers to

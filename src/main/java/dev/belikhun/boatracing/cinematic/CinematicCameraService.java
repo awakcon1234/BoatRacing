@@ -40,6 +40,9 @@ public class CinematicCameraService {
 		final Runnable onComplete;
 		BukkitTask tickTask;
 		int tick;
+		// Performance: cache player lookups and last teleport location
+		final Map<UUID, Player> playerCache = new HashMap<>();
+		Location lastCameraLocation = null;
 
 		Running(String id, Set<UUID> players, CinematicSequence sequence, Runnable onComplete) {
 			this.id = id;
@@ -204,13 +207,18 @@ public class CinematicCameraService {
 		if (r == null)
 			return;
 
-		// Prune offline players.
-		for (UUID pid : new HashSet<>(r.players)) {
+		// Refresh player cache and prune offline (avoid repeated Bukkit.getPlayer calls)
+		r.playerCache.clear();
+		r.players.removeIf(pid -> {
 			Player p = Bukkit.getPlayer(pid);
 			if (p == null || !p.isOnline()) {
 				removePlayerFromRunning(r, pid, true);
+				return true;
 			}
-		}
+			r.playerCache.put(pid, p);
+			return false;
+		});
+
 		if (r.players.isEmpty()) {
 			stopSequenceInternal(id, true, false);
 			return;
@@ -219,22 +227,23 @@ public class CinematicCameraService {
 		int total = r.sequence.totalTicks();
 		int now = r.tick;
 
-		// Sound events.
+		// Sound events (use cached players)
 		try {
 			for (CinematicSoundEvent se : r.sequence.soundEvents) {
 				if (se == null)
 					continue;
 				if (se.atTick != now)
 					continue;
-				playSoundTo(r.players, se.sound, se.volume, se.pitch);
+				playSoundToCached(r.playerCache.values(), se.sound, se.volume, se.pitch);
 			}
 		} catch (Throwable ignored) {
 		}
 
-		// Position interpolation.
+		// Position interpolation (only teleport if camera moved)
 		Location cam = sample(r.sequence, now);
-		if (cam != null) {
-			teleportAll(r.players, cam);
+		if (cam != null && !isSameLocation(r.lastCameraLocation, cam)) {
+			teleportAllCached(r.playerCache.values(), cam);
+			r.lastCameraLocation = cam.clone();
 		}
 
 		r.tick++;
@@ -318,6 +327,24 @@ public class CinematicCameraService {
 		}
 	}
 
+	// Optimized version: use cached players (no UUID lookup)
+	private void playSoundToCached(Collection<Player> players, Sound sound, float volume, float pitch) {
+		if (sound == null || players == null)
+			return;
+		for (Player p : players) {
+			if (p == null || !p.isOnline())
+				continue;
+			try {
+				p.playSound(p, sound, SoundCategory.RECORDS, volume, pitch);
+			} catch (Throwable t) {
+				try {
+					p.playSound(p.getLocation(), sound, SoundCategory.RECORDS, volume, pitch);
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
 	private void teleportAll(Set<UUID> players, Location loc) {
 		if (loc == null || loc.getWorld() == null)
 			return;
@@ -330,6 +357,36 @@ public class CinematicCameraService {
 			} catch (Throwable ignored) {
 			}
 		}
+	}
+
+	// Optimized version: use cached players (no UUID lookup)
+	private void teleportAllCached(Collection<Player> players, Location loc) {
+		if (loc == null || loc.getWorld() == null || players == null)
+			return;
+		for (Player p : players) {
+			if (p == null || !p.isOnline())
+				continue;
+			try {
+				p.teleport(loc);
+			} catch (Throwable ignored) {
+			}
+		}
+	}
+
+	// Fast location equality check (within 0.001 threshold to account for FP errors)
+	private static boolean isSameLocation(Location a, Location b) {
+		if (a == null || b == null)
+			return false;
+		if (a.getWorld() == null || b.getWorld() == null)
+			return false;
+		if (!a.getWorld().equals(b.getWorld()))
+			return false;
+		double dx = Math.abs(a.getX() - b.getX());
+		double dy = Math.abs(a.getY() - b.getY());
+		double dz = Math.abs(a.getZ() - b.getZ());
+		float dyaw = Math.abs(a.getYaw() - b.getYaw());
+		float dpitch = Math.abs(a.getPitch() - b.getPitch());
+		return dx < 0.001 && dy < 0.001 && dz < 0.001 && dyaw < 0.1f && dpitch < 0.1f;
 	}
 
 	private void tryTeleportAllToFrame(Running r, CinematicKeyframe k) {

@@ -132,7 +132,12 @@ public class MatchmakingService {
 			return;
 
 		int size = queue.size();
-		long oldest = queue.values().stream().min(Long::compareTo).orElse(now);
+		// Performance: avoid stream overhead for min lookup
+		long oldest = now;
+		for (long t : queue.values()) {
+			if (t < oldest)
+				oldest = t;
+		}
 		boolean readyByCount = size >= minPlayers;
 		boolean readyByWait = (now - oldest) >= maxWaitMs;
 		if (!readyByCount && !readyByWait)
