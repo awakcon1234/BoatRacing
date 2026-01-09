@@ -6127,11 +6127,11 @@ public class RaceManager {
 		String label;
 		String color;
 		if (angle < 15.0) {
-			icon = "🡢";
+			icon = "🡡";
 			label = "Thẳng";
 			color = "green";
 		} else if (angle < 35.0) {
-			icon = left ? "🡧" : "🡥";
+			icon = left ? "🡤" : "🡥";
 			label = left ? "Cong trái" : "Cong phải";
 			color = "yellow";
 		} else if (angle < 80.0) {
@@ -6161,19 +6161,19 @@ public class RaceManager {
 	private static String navArrowForDelta(double delta) {
 		double a = Math.abs(delta);
 		if (a <= 15.0)
-			return "🡢";
+			return "🡡"; // straight ahead
 		if (delta < 0.0) {
 			if (a <= 45.0)
-				return "🡥";
+				return "🡥"; // slight right
 			if (a <= 110.0)
-				return "⮎";
-			return "🡡";
+				return "⮎"; // right turn
+			return "🡢"; // hard right/behind
 		}
 		if (a <= 45.0)
-			return "🡧";
+			return "🡤"; // slight left
 		if (a <= 110.0)
-			return "⮌";
-		return "🡡";
+			return "⮌"; // left turn
+		return "🡠"; // hard left/behind
 	}
 
 	private static String navColorForDelta(double delta) {

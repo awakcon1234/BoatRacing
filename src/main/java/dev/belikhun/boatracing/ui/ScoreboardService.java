@@ -1399,7 +1399,7 @@ public class ScoreboardService {
 		}
 		if (nav != null && nav.valid) {
 			String arrowColor = (nav.arrowColorName == null || nav.arrowColorName.isBlank()) ? "yellow" : nav.arrowColorName;
-			String arrowIcon = (nav.arrowIcon == null || nav.arrowIcon.isBlank()) ? "🡢" : nav.arrowIcon;
+			String arrowIcon = (nav.arrowIcon == null || nav.arrowIcon.isBlank()) ? "🡡" : nav.arrowIcon;
 			ph.put("nav_arrow_icon", arrowIcon);
 			ph.put("nav_arrow_color", miniOpenTag(arrowColor));
 			ph.put("nav_arrow_color_close", miniCloseTag(arrowColor));
@@ -1408,7 +1408,7 @@ public class ScoreboardService {
 			ph.put("nav_distance", nav.distanceMeters >= 0.0 ? fmt1(nav.distanceMeters) : "-");
 
 			String turnColor = (nav.turnColorName == null || nav.turnColorName.isBlank()) ? "yellow" : nav.turnColorName;
-			String turnIcon = (nav.turnIcon == null || nav.turnIcon.isBlank()) ? "🡢" : nav.turnIcon;
+			String turnIcon = (nav.turnIcon == null || nav.turnIcon.isBlank()) ? "🡡" : nav.turnIcon;
 			String turnLabel = (nav.turnLabel == null || nav.turnLabel.isBlank()) ? "Thẳng" : nav.turnLabel;
 			ph.put("next_turn_icon", turnIcon);
 			ph.put("next_turn_label", turnLabel);
@@ -1417,17 +1417,17 @@ public class ScoreboardService {
 			ph.put("next_turn", miniWrapTag(turnColor, turnIcon + " " + turnLabel));
 			ph.put("next_turn_angle", fmt1(nav.turnAngle));
 		} else {
-			ph.put("nav_arrow_icon", "🡢");
+			ph.put("nav_arrow_icon", "🡡");
 			ph.put("nav_arrow_color", "<gray>");
 			ph.put("nav_arrow_color_close", "</gray>");
-			ph.put("nav_arrow", miniWrapTag("gray", "🡢"));
+			ph.put("nav_arrow", miniWrapTag("gray", "🡡"));
 			ph.put("nav_angle", "-");
 			ph.put("nav_distance", "-");
-			ph.put("next_turn_icon", "🡢");
+			ph.put("next_turn_icon", "🡡");
 			ph.put("next_turn_label", "Thẳng");
 			ph.put("next_turn_color", "<gray>");
 			ph.put("next_turn_color_close", "</gray>");
-			ph.put("next_turn", miniWrapTag("gray", "🡢 Thẳng"));
+			ph.put("next_turn", miniWrapTag("gray", "🡡 Thẳng"));
 			ph.put("next_turn_angle", "-");
 		}
 
