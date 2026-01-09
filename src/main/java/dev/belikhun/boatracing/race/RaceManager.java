@@ -2204,6 +2204,43 @@ public class RaceManager {
 		}
 	}
 
+	/**
+	 * Global cleanup for shutdown: remove every checkpoint display tagged by this plugin across all worlds.
+	 */
+	public static void sweepAllCheckpointDisplays(org.bukkit.plugin.Plugin plugin) {
+		if (plugin == null)
+			return;
+
+		NamespacedKey key = new NamespacedKey(plugin, "boatracing_checkpoint_display");
+		NamespacedKey trackKey = new NamespacedKey(plugin, "boatracing_checkpoint_display_track");
+		NamespacedKey idxKey = new NamespacedKey(plugin, "boatracing_checkpoint_display_index");
+
+		for (World w : Bukkit.getWorlds()) {
+			if (w == null)
+				continue;
+			for (org.bukkit.entity.Display d : w.getEntitiesByClass(org.bukkit.entity.Display.class)) {
+				if (d == null)
+					continue;
+				try {
+					var pdc = d.getPersistentDataContainer();
+					if (!pdc.has(key, PersistentDataType.BYTE))
+						continue;
+					// Remove regardless of track/index; shutdown cleanup is global.
+					try {
+						pdc.remove(trackKey);
+					} catch (Throwable ignored) {
+					}
+					try {
+						pdc.remove(idxKey);
+					} catch (Throwable ignored) {
+					}
+					d.remove();
+				} catch (Throwable ignored) {
+				}
+			}
+		}
+	}
+
 	public TrackConfig getTrackConfig() {
 		return trackConfig;
 	}

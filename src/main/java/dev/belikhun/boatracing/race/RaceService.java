@@ -1014,6 +1014,11 @@ public class RaceService {
 		}
 		for (UUID id : touched) trackByPlayer.remove(id);
 		raceByTrack.clear();
+		// Global cleanup so displays can't linger across plugin reload/shutdown.
+		try {
+			RaceManager.sweepAllCheckpointDisplays(plugin);
+		} catch (Throwable ignored) {
+		}
 		// Cleanup spectate state to prevent memory leak.
 		for (SpectateState st : spectateByPlayer.values()) {
 			try {
