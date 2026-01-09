@@ -138,19 +138,19 @@ public class EventRegistrationNpcService {
 				boolean slim = readSkinSlim();
 				String npcName = "br-event-register-" + System.currentTimeMillis();
 				String npcId = dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.spawnPlayerNpc(
-					npcName,
-					skin,
-					slim,
-					loc,
-					display,
-					false,
-					false
-				);
+						npcName,
+						skin,
+						slim,
+						loc,
+						display,
+						false,
+						false);
 				if (npcId != null && !npcId.isBlank()) {
 					// Tagging the underlying entity is version-dependent; do not fail hard if we
 					// can't tag it. We'll use a separate invisible click-proxy entity instead.
 					try {
-						dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.tagNpcEntityById(npcId, registerNpcKey);
+						dev.belikhun.boatracing.integrations.fancynpcs.FancyNpcsApi.tagNpcEntityById(npcId,
+								registerNpcKey);
 					} catch (Throwable ignored) {
 					}
 					spawnedFancyNpcId = npcId;
@@ -161,7 +161,8 @@ public class EventRegistrationNpcService {
 			fancyOk = false;
 		}
 
-		// If FancyNpcs is installed but not ready during early startup, don't immediately
+		// If FancyNpcs is installed but not ready during early startup, don't
+		// immediately
 		// fall back to the ArmorStand head (skull) variant. We'll retry later (tick)
 		// and also on first player join.
 		if (!fancyOk && fancyEnabled) {
@@ -228,7 +229,8 @@ public class EventRegistrationNpcService {
 			}
 		}
 
-		// Same approach as podium NPC: use a fixed TextDisplay block in front of the NPC.
+		// Same approach as podium NPC: use a fixed TextDisplay block in front of the
+		// NPC.
 		textDisplayId = spawnNpcFrontTextBlock(loc, buildText(e), 0.35, 0.38, 0.95f);
 		if (textDisplayId != null)
 			spawned.add(textDisplayId);
@@ -239,7 +241,8 @@ public class EventRegistrationNpcService {
 			return null;
 		ensureChunkLoaded(loc);
 
-		// Prefer Interaction entity (no visuals, good hitbox). Fallback to invisible armorstand.
+		// Prefer Interaction entity (no visuals, good hitbox). Fallback to invisible
+		// armorstand.
 		try {
 			org.bukkit.entity.Interaction it = loc.getWorld().spawn(loc, org.bukkit.entity.Interaction.class, ent -> {
 				try {
@@ -434,7 +437,8 @@ public class EventRegistrationNpcService {
 		}
 	}
 
-	private UUID spawnNpcFrontTextBlock(Location base, String legacyMultiline, double yOffset, double forward, float scale) {
+	private UUID spawnNpcFrontTextBlock(Location base, String legacyMultiline, double yOffset, double forward,
+			float scale) {
 		if (base == null || base.getWorld() == null)
 			return null;
 		ensureChunkLoaded(base);
@@ -488,8 +492,7 @@ public class EventRegistrationNpcService {
 							new org.joml.Vector3f(0, 0, 0),
 							new org.joml.Quaternionf(),
 							new org.joml.Vector3f(scale, scale, scale),
-							new org.joml.Quaternionf()
-					));
+							new org.joml.Quaternionf()));
 				} catch (Throwable ignored) {
 				}
 			});

@@ -617,7 +617,22 @@ public class RaceService {
 		if (rm == null) return false;
 		boolean ok = rm.leave(p);
 		try { matchmakingRemove(p.getUniqueId()); } catch (Throwable ignored) {}
-		if (ok) trackByPlayer.remove(p.getUniqueId());
+		if (ok) {
+			trackByPlayer.remove(p.getUniqueId());
+			// Free memory: if race is empty and idle, remove it.
+			boolean hasCountdown = false;
+			try {
+				for (UUID id : rm.getInvolved()) {
+					if (rm.isCountdownActiveFor(id)) {
+						hasCountdown = true;
+						break;
+					}
+				}
+			} catch (Throwable ignored) {}
+			if (!rm.isRunning() && !hasCountdown && rm.getInvolved().isEmpty()) {
+				raceByTrack.remove(trackName);
+			}
+		}
 		return ok;
 	}
 
@@ -987,6 +1002,16 @@ public class RaceService {
 		}
 		for (UUID id : touched) trackByPlayer.remove(id);
 		raceByTrack.clear();
+		// Cleanup spectate state to prevent memory leak.
+		for (SpectateState st : spectateByPlayer.values()) {
+			try {
+				if (st != null && st.monitorTask != null)
+					st.monitorTask.cancel();
+			} catch (Throwable ignored) {}
+		}
+		spectateByPlayer.clear();
+		pendingRestoreSpectateModes.clear();
+		pendingLobbyTeleport.clear();
 		try {
 			matchmaking.stop();
 		} catch (Throwable ignored) {

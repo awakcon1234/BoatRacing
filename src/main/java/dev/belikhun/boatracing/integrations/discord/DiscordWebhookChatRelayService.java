@@ -45,6 +45,9 @@ public final class DiscordWebhookChatRelayService {
 	private volatile boolean workerRunning = false;
 	private Thread workerThread;
 	private final ConcurrentHashMap<UUID, LastMessage> lastMessageByPlayer = new ConcurrentHashMap<>();
+	private static final long DEDUPE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000L; // 5 min
+	private static final long DEDUPE_ENTRY_MAX_AGE_MS = 10 * 60 * 1000L; // 10 min
+	private long lastDedupeCleanupMs = 0L;
 
 	public DiscordWebhookChatRelayService(BoatRacingPlugin plugin) {
 		this.plugin = Objects.requireNonNull(plugin, "plugin");

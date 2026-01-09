@@ -19,7 +19,9 @@ public class EventRegistrationNpcListener implements Listener {
 
 	private EventRegistrationNpcService svc() {
 		try {
-			return plugin != null && plugin.getEventService() != null ? plugin.getEventService().getRegistrationNpcService() : null;
+			return plugin != null && plugin.getEventService() != null
+					? plugin.getEventService().getRegistrationNpcService()
+					: null;
 		} catch (Throwable ignored) {
 			return null;
 		}

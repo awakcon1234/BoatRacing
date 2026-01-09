@@ -767,6 +767,7 @@ public class EventService {
 		e.state = EventState.CANCELLED;
 		e.startTimeMillis = 0L;
 		resetStartNotices(e);
+		cleanupOldStartNotices();
 		EventStorage.saveEvent(dataFolder, e);
 		try {
 			if (activeTrackName != null && !activeTrackName.isBlank()) {
@@ -1006,6 +1007,10 @@ public class EventService {
 			trackWasRunning = true;
 			trackDeadlineMillis = 0L;
 			trackSafetyDeadlineMillis = System.currentTimeMillis() + (TRACK_SAFETY_SECONDS * 1000L);
+			try {
+				notifyDiscordTrackStart(e, activeTrackName);
+			} catch (Throwable ignored) {
+			}
 		}
 
 		boolean anyFinished = false;
@@ -1201,6 +1206,11 @@ public class EventService {
 		trackWasRunning = false;
 		trackDeadlineMillis = 0L;
 		trackSafetyDeadlineMillis = 0L;
+
+		try {
+			notifyDiscordTrackEnd(e, rm, timedOut);
+		} catch (Throwable ignored) {
+		}
 
 		if (timedOut)
 			broadcastToParticipants(e, "&c⌛ Hết giờ chặng! &7DNF = 0 điểm.");
@@ -1408,6 +1418,7 @@ public class EventService {
 		} catch (Throwable ignored) {
 		}
 		resetStartNotices(e);
+		cleanupOldStartNotices();
 		e.state = EventState.COMPLETED;
 		EventStorage.saveEvent(dataFolder, e);
 		broadcastToParticipants(e, msg);
@@ -1606,6 +1617,12 @@ public class EventService {
 		startNoticesSent.remove(e.id);
 	}
 
+	private void cleanupOldStartNotices() {
+		// Remove notices for events that no longer exist to prevent memory leak.
+		java.util.Set<String> validIds = eventsById.keySet();
+		startNoticesSent.keySet().removeIf(id -> !validIds.contains(id));
+	}
+
 	private void sendDiscordEventMessage(String content) {
 		if (plugin == null)
 			return;
@@ -1615,6 +1632,53 @@ public class EventService {
 				svc.sendSystemMessage(content);
 		} catch (Throwable ignored) {
 		}
+	}
+
+	private void notifyDiscordTrackStart(RaceEvent e, String trackName) {
+		String title = safeName(e == null ? null : e.title);
+		String track = safeName(trackName);
+		String content = "🚤 Chặng " + track + " của sự kiện " + title + " đã bắt đầu.";
+		sendDiscordEventMessage(content);
+	}
+
+	private void notifyDiscordTrackEnd(RaceEvent e, RaceManager rm, boolean timedOut) {
+		if (rm == null)
+			return;
+		String title = safeName(e == null ? null : e.title);
+		String track = safeName(activeTrackName != null ? activeTrackName
+				: (rm.getTrackConfig() != null ? rm.getTrackConfig().getCurrentName() : null));
+
+		RaceManager.ParticipantState winner = null;
+		try {
+			java.util.List<RaceManager.ParticipantState> standings = rm.getStandings();
+			if (standings != null) {
+				for (RaceManager.ParticipantState s : standings) {
+					if (s != null && s.finished) {
+						winner = s;
+						break;
+					}
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+
+		StringBuilder sb = new StringBuilder("🏁 Chặng " + track + " của sự kiện " + title);
+		if (timedOut)
+			sb.append(" đã kết thúc do hết giờ");
+		else
+			sb.append(" đã kết thúc");
+
+		if (winner != null) {
+			long rawMs = Math.max(0L, winner.finishTimeMillis - rm.getRaceStartMillis());
+			long penaltyMs = Math.max(0L, winner.penaltySeconds) * 1000L;
+			long totalMs = rawMs + penaltyMs;
+			String name = resolveRacerName(winner.id);
+			sb.append(". #1 ").append(name).append(" ● ⌚ ").append(Time.formatStopwatchMillis(totalMs)).append('.');
+		} else {
+			sb.append(". Không có tay đua cán đích.");
+		}
+
+		sendDiscordEventMessage(sb.toString());
 	}
 
 	// ===================== Opening titles runtime =====================
@@ -2825,6 +2889,23 @@ public class EventService {
 			return "--------";
 		String s = id.toString();
 		return s.length() >= 8 ? s.substring(0, 8) : s;
+	}
+
+	private String resolveRacerName(java.util.UUID id) {
+		if (id == null)
+			return "Tay đua ?";
+		try {
+			String n = null;
+			try {
+				n = Bukkit.getOfflinePlayer(id).getName();
+			} catch (Throwable ignored) {
+				n = null;
+			}
+			if (n != null && !n.isBlank())
+				return n;
+		} catch (Throwable ignored) {
+		}
+		return "Tay đua " + shortId(id);
 	}
 
 	private java.util.List<Player> collectEligibleOnline(RaceEvent e) {

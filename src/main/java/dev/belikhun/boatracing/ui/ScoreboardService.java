@@ -157,6 +157,18 @@ public class ScoreboardService {
 			for (Player p : Bukkit.getOnlinePlayers())
 				onlineIdsTmp.add(p.getUniqueId());
 			onlineIds = onlineIdsTmp;
+			// Cleanup offline players to prevent memory leak (use removeIf to avoid allocation).
+			players.entrySet().removeIf(entry -> {
+				if (!onlineIdsTmp.contains(entry.getKey())) {
+					try {
+						PlayerEntry pe = entry.getValue();
+						if (pe != null && pe.sidebar != null)
+							pe.sidebar.close();
+					} catch (Throwable ignored) {}
+					return true;
+				}
+				return false;
+			});
 		}
 
 		for (Player p : Bukkit.getOnlinePlayers()) {
