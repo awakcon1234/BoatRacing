@@ -296,11 +296,38 @@ public class ProfileGUI implements Listener {
 	}
 
 	private void promptNumber(Player p) {
+		int prevLevel = 0;
+		float prevExp = 0f;
+		boolean bumpedLevel = false;
+		try {
+			prevLevel = p.getLevel();
+			prevExp = p.getExp();
+			if (p.getLevel() < 1) {
+				p.setLevel(1);
+				p.setExp(0f);
+				bumpedLevel = true;
+			}
+		} catch (Throwable ignored) {
+		}
+
+		final int prevLevelSnapshot = prevLevel;
+		final float prevExpSnapshot = prevExp;
+		final boolean bumpedLevelSnapshot = bumpedLevel;
 		new AnvilGUI.Builder()
 			.plugin(plugin)
 			.title(Text.plain(Text.title("Nhập số đua (1-99)")))
 			.text("7")
 			.itemLeft(new ItemStack(Material.NAME_TAG))
+			.onClose(state -> {
+				if (!bumpedLevelSnapshot)
+					return;
+				Player pl = state.getPlayer();
+				try {
+					pl.setLevel(prevLevelSnapshot);
+					pl.setExp(prevExpSnapshot);
+				} catch (Throwable ignored) {
+				}
+			})
 			.onClick((slot, state) -> {
 				if (slot != AnvilGUI.Slot.OUTPUT) return List.of();
 				String input = state.getText() == null ? "" : state.getText().trim();

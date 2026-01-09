@@ -627,6 +627,25 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 					}
 					return true;
 				}
+				case "force-finish", "forcefinish" -> {
+					if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
+						Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
+						p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+						return true;
+					}
+					if (args.length < 3) {
+						Text.msg(p, "&cCách dùng: /" + label + " race force-finish <track>");
+						return true;
+					}
+					String tname = args[2];
+					boolean any = plugin.getRaceService().forceFinishRace(tname);
+					if (!any) {
+						Text.msg(p, "&7Không có tay đua nào cần hoàn tất.");
+					} else {
+						Text.msg(p, "&a🏁 Đã đánh dấu hoàn thành mọi tay đua còn lại và kết thúc cuộc đua.");
+					}
+					return true;
+				}
 				case "revert" -> {
 					if (!(p.hasPermission("boatracing.race.admin") || p.hasPermission("boatracing.setup"))) {
 						Text.msg(p, "&cBạn không có quyền thực hiện điều đó.");
@@ -1375,7 +1394,7 @@ public class BoatRacingCommandHandler implements CommandExecutor, TabCompleter {
 
 			// For subcommands that take <track>, suggest track names from library
 			if (args.length == 3
-					&& java.util.Arrays.asList("open", "join", "leave", "spectate", "force", "start", "stop", "force-stop", "forcestop", "revert", "restart", "status")
+					&& java.util.Arrays.asList("open", "join", "leave", "spectate", "force", "start", "stop", "force-stop", "forcestop", "force-finish", "forcefinish", "revert", "restart", "status")
 							.contains(args[1].toLowerCase())) {
 				String prefix = args[2] == null ? "" : args[2].toLowerCase();
 				java.util.List<String> names = new java.util.ArrayList<>();

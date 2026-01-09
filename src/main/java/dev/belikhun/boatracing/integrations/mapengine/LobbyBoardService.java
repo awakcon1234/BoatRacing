@@ -491,6 +491,11 @@ public final class LobbyBoardService {
 		if (!boardDisplay.isReady())
 			return;
 
+		// Skip heavy board renders while any race intro flyby is playing to avoid
+		// stuttering the cinematic.
+		if (shouldPauseForIntro())
+			return;
+
 		// Build player cache once per tick
 		cachedPlayers.clear();
 		for (Player p : Bukkit.getOnlinePlayers()) {
@@ -585,6 +590,19 @@ public final class LobbyBoardService {
 		} catch (Throwable t) {
 			dbg("tick(): render/flush failed: " + t.getClass().getSimpleName() + ": " + t.getMessage());
 		}
+	}
+
+	private boolean shouldPauseForIntro() {
+		try {
+			if (raceService != null) {
+				for (RaceManager rm : raceService.allRaces()) {
+					if (rm != null && rm.isIntroActive())
+						return true;
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+		return false;
 	}
 
 	private void ensureDisplay(MapEngineApi api) {

@@ -433,6 +433,11 @@ public final class EventBoardService {
 		if (!boardDisplay.isReady())
 			return;
 
+		// Pause board updates during event intro flyby to avoid hitching the camera
+		// sequence.
+		if (shouldPauseForIntro())
+			return;
+
 		RaceEvent active = null;
 		try {
 			active = eventService != null ? eventService.getActiveEvent() : null;
@@ -499,6 +504,25 @@ public final class EventBoardService {
 
 		BufferedImage img = renderUi(active, placement.pixelWidth(), placement.pixelHeight());
 		boardDisplay.renderAndFlush(img);
+	}
+
+	private boolean shouldPauseForIntro() {
+		long now = System.currentTimeMillis();
+		try {
+			if (eventService != null && eventService.getIntroEndMillis() > now)
+				return true;
+		} catch (Throwable ignored) {
+		}
+		try {
+			if (plugin != null && plugin.getRaceService() != null) {
+				for (RaceManager rm : plugin.getRaceService().allRaces()) {
+					if (rm != null && rm.isIntroActive())
+						return true;
+				}
+			}
+		} catch (Throwable ignored) {
+		}
+		return false;
 	}
 
 	private BufferedImage renderUi(RaceEvent active, int w, int h) {

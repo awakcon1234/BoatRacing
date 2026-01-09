@@ -5,7 +5,7 @@
 	private static final Component TITLE_LEAVE_CONFIRM = Text.title("Rời đội?");
 	// Resolve allowed boat/raft materials by name to avoid NoSuchFieldError on servers lacking newer enums
 	private static final Material[] ALLOWED_BOATS = resolveAllowedBoats();
-	
+
 	private static Material[] resolveAllowedBoats() {
 		java.util.List<Material> list = new java.util.ArrayList<>();
 		addIfPresent(list, "OAK_BOAT");
@@ -30,7 +30,7 @@
 		addIfPresent(list, "BAMBOO_CHEST_RAFT");
 		return list.toArray(new Material[0]);
 	}
-	
+
 	private static void addIfPresent(java.util.List<Material> out, String name) {
 		// Resolve strictly by modern enum name; avoids triggering legacy material support
 		Material m = org.bukkit.Material.matchMaterial(name);
@@ -39,7 +39,7 @@
 	private final BoatRacingPlugin plugin;
 	private final NamespacedKey KEY_TEAM_ID;
 	private final NamespacedKey KEY_TARGET_ID;
-	
+
 
 	public TeamGUI(BoatRacingPlugin plugin) {
 		this.plugin = plugin;
@@ -81,7 +81,7 @@
 			inv.setItem(slot++, item);
 			if (slot >= size - 9) break;
 		}
-		
+
 		int base = size - 9;
 		fillRow(inv, base, pane(Material.GRAY_STAINED_GLASS_PANE));
 		boolean allowCreate = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
@@ -488,10 +488,10 @@
 				// Disband (admin, or member if enabled in config)
 				boolean cfgDisband = plugin.getConfig().getBoolean("player-actions.allow-team-disband", false);
 				boolean allowed = p.hasPermission("boatracing.admin") || (cfgDisband && team.isMember(p.getUniqueId()));
-				if (!allowed) { 
-					dev.belikhun.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội."); 
-					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f); 
-					return; 
+				if (!allowed) {
+					dev.belikhun.boatracing.util.Text.msg(p, "&cMáy chủ này đã hạn chế việc giải tán đội. Chỉ quản trị viên mới có thể giải tán đội.");
+					p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
+					return;
 				}
 				// Notify all members
 				java.util.Set<java.util.UUID> members = new java.util.HashSet<>(team.getMembers());
@@ -978,16 +978,43 @@
 		openAnvil(p, "create", null, "", "Tên đội");
 	}
 	private void openAnvil(Player p, String action, UUID teamId, String initialText, String title) {
+		int prevLevel = 0;
+		float prevExp = 0f;
+		boolean bumpedLevel = false;
+		try {
+			prevLevel = p.getLevel();
+			prevExp = p.getExp();
+			if (p.getLevel() < 1) {
+				p.setLevel(1);
+				p.setExp(0f);
+				bumpedLevel = true;
+			}
+		} catch (Throwable ignored) {
+		}
+
 		ItemStack left = new ItemStack(Material.PAPER); // blank display name to avoid showing "Paper"
 		ItemMeta leftMeta = left.getItemMeta();
 		if (leftMeta != null) {
 			leftMeta.displayName(Component.empty());
 			left.setItemMeta(leftMeta);
 		}
+		final int prevLevelSnapshot = prevLevel;
+		final float prevExpSnapshot = prevExp;
+		final boolean bumpedLevelSnapshot = bumpedLevel;
 		new AnvilGUI.Builder()
 			.title(title)
 			.text((initialText == null || initialText.isEmpty()) ? BLANK : initialText)
 			.itemLeft(left)
+			.onClose(state -> {
+				if (!bumpedLevelSnapshot)
+					return;
+				Player pl = state.getPlayer();
+				try {
+					pl.setLevel(prevLevelSnapshot);
+					pl.setExp(prevExpSnapshot);
+				} catch (Throwable ignored) {
+				}
+			})
 			.interactableSlots() // deny item interactions
 			.onClick((slot, state) -> {
 				if (slot != AnvilGUI.Slot.OUTPUT) return java.util.Collections.emptyList();
@@ -1019,8 +1046,8 @@
 				return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
 			}
 			boolean exists = plugin.getTeamManager().getTeams().stream().anyMatch(t -> t != team && t.getName().equalsIgnoreCase(input));
-			if (exists) { 
-				dev.belikhun.boatracing.util.Text.msg(p, "&cĐã tồn tại đội với tên đó."); 
+			if (exists) {
+				dev.belikhun.boatracing.util.Text.msg(p, "&cĐã tồn tại đội với tên đó.");
 				String retry = input.isEmpty() ? BLANK : input;
 				p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
 				return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
@@ -1049,7 +1076,7 @@
 				return java.util.Collections.emptyList();
 			}
 			String err = validateNumberFormatRange(input);
-			if (err != null) { 
+			if (err != null) {
 				dev.belikhun.boatracing.util.Text.msg(p, "&c" + err);
 				String retry = input.isEmpty() ? BLANK : input;
 				p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
@@ -1064,9 +1091,9 @@
 				AnvilGUI.ResponseAction.run(() -> openMemberProfile(p, team))
 			);
 		} else if ("create".equals(action)) {
-			if (plugin.getTeamManager().getTeamByMember(p.getUniqueId()).isPresent()) { 
-				dev.belikhun.boatracing.util.Text.msg(p, "&cBạn đã ở trong một đội. Hãy rời đội trước."); 
-				return null; 
+			if (plugin.getTeamManager().getTeamByMember(p.getUniqueId()).isPresent()) {
+				dev.belikhun.boatracing.util.Text.msg(p, "&cBạn đã ở trong một đội. Hãy rời đội trước.");
+				return null;
 			}
 			boolean allowCreate = plugin.getConfig().getBoolean("player-actions.allow-team-create", true);
 			if (!allowCreate) {
@@ -1074,15 +1101,15 @@
 				return java.util.Collections.emptyList();
 			}
 			String err = validateNameMessage(input);
-			if (err != null) { 
+			if (err != null) {
 				dev.belikhun.boatracing.util.Text.msg(p, "&c" + err);
 				String retry = input.isEmpty() ? BLANK : input;
 				p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
 				return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(retry));
 			}
 			boolean exists = plugin.getTeamManager().getTeams().stream().anyMatch(t -> t.getName().equalsIgnoreCase(input));
-			if (exists) { 
-				dev.belikhun.boatracing.util.Text.msg(p, "&cĐã tồn tại đội với tên đó."); 
+			if (exists) {
+				dev.belikhun.boatracing.util.Text.msg(p, "&cĐã tồn tại đội với tên đó.");
 				p.playSound(p.getLocation(), org.bukkit.Sound.BLOCK_NOTE_BLOCK_BASS, 0.8f, 0.6f);
 				return java.util.Arrays.asList(AnvilGUI.ResponseAction.replaceInputText(input));
 			}

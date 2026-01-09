@@ -27,19 +27,25 @@ public class Region {
 	}
 
 	public boolean containsXZ(Location loc) {
+		return containsXZ(loc, 0.0);
+	}
+
+	public boolean containsXZ(Location loc, double padding) {
 		World w = loc.getWorld();
 		if (w == null || worldName == null) return false;
 		if (!w.getName().equals(worldName)) return false;
 		if (box == null) return false;
 
+		double pad = Math.max(0.0, padding);
+
 		// Treat regions as *block selections* in X/Z:
 		// - min/max in config typically come from clicked block coords
 		// - a single-line selection (minZ == maxZ) should still cover one block of thickness
 		// Use half-open upper bounds with +1 to include the full block volume.
-		double minX = Math.min(box.getMinX(), box.getMaxX());
-		double maxX = Math.max(box.getMinX(), box.getMaxX()) + 1.0;
-		double minZ = Math.min(box.getMinZ(), box.getMaxZ());
-		double maxZ = Math.max(box.getMinZ(), box.getMaxZ()) + 1.0;
+		double minX = Math.min(box.getMinX(), box.getMaxX()) - pad;
+		double maxX = Math.max(box.getMinX(), box.getMaxX()) + 1.0 + pad;
+		double minZ = Math.min(box.getMinZ(), box.getMaxZ()) - pad;
+		double maxZ = Math.max(box.getMinZ(), box.getMaxZ()) + 1.0 + pad;
 
 		double x = loc.getX();
 		double z = loc.getZ();
@@ -52,6 +58,10 @@ public class Region {
 	 * Uses the same block-selection semantics as {@link #containsXZ(Location)}.
 	 */
 	public boolean intersectsXZ(Location from, Location to) {
+		return intersectsXZ(from, to, 0.0);
+	}
+
+	public boolean intersectsXZ(Location from, Location to, double padding) {
 		World wf = from.getWorld();
 		World wt = to.getWorld();
 		if (wf == null || wt == null || worldName == null) return false;
@@ -59,10 +69,11 @@ public class Region {
 		if (!wf.getName().equals(worldName)) return false;
 		if (box == null) return false;
 
-		double minX = Math.min(box.getMinX(), box.getMaxX());
-		double maxX = Math.max(box.getMinX(), box.getMaxX()) + 1.0;
-		double minZ = Math.min(box.getMinZ(), box.getMaxZ());
-		double maxZ = Math.max(box.getMinZ(), box.getMaxZ()) + 1.0;
+		double pad = Math.max(0.0, padding);
+		double minX = Math.min(box.getMinX(), box.getMaxX()) - pad;
+		double maxX = Math.max(box.getMinX(), box.getMaxX()) + 1.0 + pad;
+		double minZ = Math.min(box.getMinZ(), box.getMaxZ()) - pad;
+		double maxZ = Math.max(box.getMinZ(), box.getMaxZ()) + 1.0 + pad;
 
 		double x1 = from.getX(), z1 = from.getZ();
 		double x2 = to.getX(), z2 = to.getZ();

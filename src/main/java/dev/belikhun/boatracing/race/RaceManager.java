@@ -48,6 +48,9 @@ public class RaceManager {
 	@SuppressWarnings("unused")
 	private final TrackConfig trackConfig;
 
+	private static final double CHECKPOINT_PADDING_BLOCKS = 2.0;
+	private static final double FINISH_PADDING_BLOCKS = 2.0;
+
 	// Stable id for tagging world entities belonging to this race/track (used
 	// across reloads).
 	// TrackConfig.currentName is set by TrackConfig.load(name).
@@ -2827,7 +2830,8 @@ public class RaceManager {
 			int insideAny = -1;
 			for (int i = 0; i < checkpoints.size(); i++) {
 				Region r = checkpoints.get(i);
-				if (r != null && (r.containsXZ(to) || r.intersectsXZ(segFrom, to))) {
+				if (r != null && (r.containsXZ(to, CHECKPOINT_PADDING_BLOCKS)
+						|| r.intersectsXZ(segFrom, to, CHECKPOINT_PADDING_BLOCKS))) {
 					insideAny = i;
 					break;
 				}
@@ -2851,7 +2855,8 @@ public class RaceManager {
 			while (advancedCount < 6 && s.nextCheckpointIndex >= 0 && s.nextCheckpointIndex < checkpoints.size()) {
 				Region expected = checkpoints.get(s.nextCheckpointIndex);
 				boolean hitExpected = expected != null
-						&& (expected.containsXZ(to) || expected.intersectsXZ(segFrom, to));
+						&& (expected.containsXZ(to, CHECKPOINT_PADDING_BLOCKS)
+								|| expected.intersectsXZ(segFrom, to, CHECKPOINT_PADDING_BLOCKS));
 				if (!hitExpected)
 					break;
 
@@ -2876,12 +2881,13 @@ public class RaceManager {
 				org.bukkit.World w = to.getWorld();
 				if (b != null && w != null && expected.getWorldName() != null
 						&& expected.getWorldName().equals(w.getName())) {
+					double pad = CHECKPOINT_PADDING_BLOCKS;
 					// Match Region.containsXZ(): treat as block-selection in X/Z with +1 upper
-					// bounds.
-					double minX = Math.min(b.getMinX(), b.getMaxX());
-					double maxX = Math.max(b.getMinX(), b.getMaxX()) + 1.0;
-					double minZ = Math.min(b.getMinZ(), b.getMaxZ());
-					double maxZ = Math.max(b.getMinZ(), b.getMaxZ()) + 1.0;
+					// bounds (plus padding for leniency).
+					double minX = Math.min(b.getMinX(), b.getMaxX()) - pad;
+					double maxX = Math.max(b.getMinX(), b.getMaxX()) + 1.0 + pad;
+					double minZ = Math.min(b.getMinZ(), b.getMaxZ()) - pad;
+					double maxZ = Math.max(b.getMinZ(), b.getMaxZ()) + 1.0 + pad;
 
 					double x = to.getX();
 					double z = to.getZ();
@@ -2891,14 +2897,14 @@ public class RaceManager {
 					double dz = z - cz;
 					double dist = Math.sqrt(dx * dx + dz * dz);
 					int bucket = (int) Math.floor(dist); // 0..n
-					if (dist <= 4.0 && bucket != s.lastNearExpectedBucket) {
+					if (dist <= (4.0 + pad) && bucket != s.lastNearExpectedBucket) {
 						s.lastNearExpectedBucket = bucket;
 						dbg("[CPDBG] " + player.getName() + " near expected checkpoint " + (s.nextCheckpointIndex + 1)
 								+ " dist=" + String.format(java.util.Locale.US, "%.2f", dist)
 								+ " pos=" + dev.belikhun.boatracing.util.Text.fmtPos(to)
 								+ " boxXZ=[" + minX + "," + minZ + "]..[" + (maxX - 1.0) + "," + (maxZ - 1.0) + "]");
 					}
-					if (dist > 6.0)
+					if (dist > (6.0 + pad))
 						s.lastNearExpectedBucket = -1;
 				}
 			}
@@ -2909,7 +2915,8 @@ public class RaceManager {
 		// checkpoint flow.
 		// Finish should only be used as lap completion when there are NO checkpoints.
 		Region finish = trackConfig.getFinish();
-		boolean inFinish = finish != null && (finish.containsXZ(to) || finish.intersectsXZ(segFrom, to));
+		boolean inFinish = finish != null
+				&& (finish.containsXZ(to, FINISH_PADDING_BLOCKS) || finish.intersectsXZ(segFrom, to, FINISH_PADDING_BLOCKS));
 		boolean enteredFinish = inFinish && !s.wasInsideFinish;
 		s.wasInsideFinish = inFinish;
 
@@ -2924,9 +2931,19 @@ public class RaceManager {
 				s.awaitingFinish = false;
 				s.nextCheckpointIndex = 0;
 				completeLap(player.getUniqueId(), to);
-			} else if (debugCheckpoints()) {
-				dbg("[CPDBG] " + player.getName() + " entered finish but lap not ready (expectedNext="
-						+ (s.nextCheckpointIndex + 1) + ")");
+			} else {
+				long nowWarn = System.currentTimeMillis();
+				if ((nowWarn - s.lastCheckpointWarnMs) >= 2000L) {
+					s.lastCheckpointWarnMs = nowWarn;
+					try {
+						Text.msg(player, "&eℹ Bạn cần đi qua đủ checkpoint theo thứ tự trước khi về đích.");
+					} catch (Throwable ignored) {
+					}
+				}
+				if (debugCheckpoints()) {
+					dbg("[CPDBG] " + player.getName() + " entered finish but lap not ready (expectedNext="
+							+ (s.nextCheckpointIndex + 1) + ")");
+				}
 			}
 		}
 
@@ -3611,6 +3628,25 @@ public class RaceManager {
 	}
 
 	/**
+	 * Force all remaining racers to finish immediately, preserving current standing
+	 * order (finished racers keep their positions; unfinished racers are ordered by
+	 * getStandings()). Useful for admins to resolve stuck races.
+	 *
+	 * @return true if any racer was force-finished.
+	 */
+	public boolean forceFinishAllRemaining() {
+		boolean changed = false;
+		java.util.List<ParticipantState> order = getStandings();
+		for (ParticipantState s : order) {
+			if (s == null || s.finished)
+				continue;
+			finishPlayer(s.id);
+			changed = true;
+		}
+		return changed;
+	}
+
+	/**
 	 * Lightweight check: whether any participant has finished.
 	 * Avoids building/sorting standings when only a boolean is needed.
 	 */
@@ -3657,6 +3693,7 @@ public class RaceManager {
 		// Debug-only state (to avoid spam)
 		public int lastInsideCheckpoint = -1;
 		public int lastNearExpectedBucket = -1;
+		public long lastCheckpointWarnMs = 0L;
 
 		// Used to edge-trigger finish crossings (avoid repeated lap completions when
 		// inside the finish area)
@@ -4040,6 +4077,13 @@ public class RaceManager {
 				} catch (Throwable ignored) {
 				}
 			}
+		}
+
+		// Keep registration roster populated so HUD/scoreboard/actionbar show correct counts
+		registered.clear();
+		for (Player p : online) {
+			if (p != null)
+				registered.add(p.getUniqueId());
 		}
 
 		CinematicCameraService cam = cinematic();

@@ -827,6 +827,18 @@ public class RaceService {
 	}
 
 	/**
+	 * Force-finish a race: immediately mark all unfinished racers as finished in
+	 * current standing order and trigger normal completion flow (fireworks,
+	 * results boards, cleanup).
+	 */
+	public synchronized boolean forceFinishRace(String trackName) {
+		RaceManager rm = get(trackName);
+		if (rm == null)
+			return false;
+		return rm.forceFinishAllRemaining();
+	}
+
+	/**
 	 * Stop and forget a track entirely: ends any running race, clears player mappings, and
 	 * removes spectate state. Use before deleting the track file.
 	 */
